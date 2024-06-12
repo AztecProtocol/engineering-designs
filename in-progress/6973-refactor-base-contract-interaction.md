@@ -90,7 +90,7 @@ const { request: transferRequest } = await aliceWallet.simulate({
     value: privateBalance,
     nonce: 0n
   },
-  paymentMethod
+  paymentMethod,
 });
 
 
@@ -170,17 +170,6 @@ This would clear up concerns like:
 > // REFACTOR: Having a `request` method with different semantics than the ones in the other
   // derived ContractInteractions is confusing. We should unify the flow of all ContractInteractions.
 
-
-
-
-
-
-Implementing this in the current API would be difficult
-
-The complexity in the current API is shown elsewhere
-
-
-Further, it is presently difficult to estimate the gas cost of a transaction.
 
 ### The old UML
 
@@ -277,63 +266,60 @@ export interface AuthWitnessProvider {
   ): Promise<AuthWitness>;
 }
 
-export interface EntrypointInterface {
-  /**
-   * Generates an execution request out of set of function calls.
-   * @param execution - The execution intents to be run.
-   * @returns The authenticated transaction execution request.
-   */
-  createTxExecutionRequest(execution: ExecutionRequestInit): Promise<TxExecutionRequest>;
-}
-
 export class TxExecutionRequest {
   constructor(
-    /**
-     * Sender.
-     */
+    // All these are the same:
     public origin: AztecAddress,
-    /**
-     * Selector of the function to call.
-     */
     public functionSelector: FunctionSelector,
-    /**
-     * The hash of arguments of first call to be executed (usually account entrypoint).
-     * @dev This hash is a pointer to `argsOfCalls` unordered array.
-     */
     public firstCallArgsHash: Fr,
-    /**
-     * Transaction context.
-     */
     public txContext: TxContext,
-    /**
-     * An unordered array of packed arguments for each call in the transaction.
-     * @dev These arguments are accessed in Noir via oracle and constrained against the args hash. The length of
-     * the array is equal to the number of function calls in the transaction (1 args per 1 call).
-     */
     public argsOfCalls: PackedValues[],
-    /**
-     * Transient authorization witnesses for authorizing the execution of one or more actions during this tx.
-     * These witnesses are not expected to be stored in the local witnesses database of the PXE.
-     */
     public authWitnesses: AuthWitness[],
+    // Add:
+    /**
+     * Transient capsules needed for this execution.
+     */
+    public capsules: Fr[][],
   ) {}
   // ...
 }
 
-export type ExecutionRequestInit = {
-  /** The function calls to be executed. */
-  calls: FunctionCall[];
-  /** Any transient auth witnesses needed for this execution */
-  authWitnesses?: AuthWitness[];
-  /** Any transient packed arguments for this execution */
-  packedArguments?: PackedValues[];
-  /** Any transient capsules needed for this execution */
-  capsules?: Fr[][];
-  /** The fee payment method to use */
-  paymentMethod: FeePaymentMethod;
-  /** The gas settings */
-  gasSettings: GasSettings;
-};
+export type TxExecutionRequestEntrypoint = Pick<TxExecutionRequest,
+  | 'functionSelector'
+  | 'firstCallArgsHash'
+  | 'argsOfCalls'
+  | 'authWitnesses' >
+
+export interface ExecutionRequestInit {
+  contractInstance: ContractInstanceWithAddress;
+  functionName: string;
+  args: any;
+  paymentMethod?: FeePaymentMethod;
+  contractArtifact?: ContractArtifact;
+  functionAbi?: FunctionAbi;
+  from?: AztecAddress;
+  simulatePublicFunctions?: boolean;
+}
+
+export interface FeePaymentMethod {
+  getSetup(gasSettings: GasSettings): Promise<{
+    functionCalls: FunctionCall[],
+    authWitnesses: AuthWitness[],
+  }>;
+
+  getEquivalentAztBalance(): Promise<Fr>;
+}
+
+
+export interface EntrypointInterface {
+  createTxExecutionRequestEntrypoint(
+    functionCalls: {
+      appFunctionCalls: FunctionCall[];
+      setupFunctionCalls: FunctionCall[];
+    }, 
+    authWitnessProvider: AuthWitnessProvider
+  ): TxExecutionRequestEntrypoint;
+}
 
 ```
 
@@ -377,32 +363,191 @@ Assume we're dealing with schnorr.
 
 Get the contract artifact out of the PXE using the contractInstance's contractClassId.
 
-Scan its `FunctionAbi`s for the one with the given name.
-
-Construct the `FunctionCall` as:
 ```ts
-{
-  name: functionAbi.name,
-  args,
-  selector: FunctionSelector.fromNameAndParameters(functionAbi.name, functionAbi.parameters),
-  type: functionAbi.functionType,
-  to: contractInstance.address,
-  isStatic: functionAbi.isStatic,
-  returnTypes: functionAbi.returnTypes,
+
+function findFunctionAbi(contractArtifact: ContractArtifact, functionName: string): FunctionAbi {
+  const functionAbi = contractArtifact.abi.find((abi) => abi.name === functionName);
+  if (!functionAbi) {
+    throw new Error(`Function ${functionName} not found in contract artifact`);
+  }
+  return functionAbi;
+}
+
+function makeFunctionCall(
+  functionAbi: FunctionAbi,
+  instanceAddress: AztecAddress,
+  args: any,
+): FunctionCall {
+  return FunctionCall.from({
+    name: functionAbi.name,
+    args: mapArgsObjectToArray(functionAbi.parameters, args),
+    selector: FunctionSelector.fromNameAndParameters(functionAbi.name, functionAbi.parameters),
+    type: functionAbi.functionType,
+    to: instanceAddress,
+    isStatic: functionAbi.isStatic,
+    returnTypes: functionAbi.returnTypes,
+  });
+}
+
+
+```
+
+Note that since `gasSettings` was not provided, we need to determine them. 
+
+In order to do this, we need to simulate the function call without the FPC to get the gas cost of the app logic, then simulate with the FPC to get the gas cost of the entire transaction.
+
+#### Get the `TxExecutionRequestEntrypoint`
+
+```ts
+createTxExecutionRequestAccountEntrypoint(
+    functionCalls: {
+      appFunctionCalls: FunctionCall[];
+      setupFunctionCalls: FunctionCall[];
+    },
+    authWitnessProvider: AuthWitnessProvider
+  ): TxExecutionRequestEntrypoint {
+  const appPayload = EntrypointPayload.fromFunctionCalls(functionCalls.appFunctionCalls);
+  const setupPayload = EntrypointPayload.fromFunctionCalls(functionCalls.setupFunctionCalls);
+  const abi = this.getEntrypointAbi();
+  const entrypointPackedArgs = PackedValues.fromValues(encodeArguments(abi, [appPayload, setupPayload]));
+  const firstCallArgsHash = entrypointPackedArgs.hash();
+  const argsOfCalls = [...appPayload.packedArguments, ...feePayload.packedArguments, entrypointPackedArgs];
+  const functionSelector = FunctionSelector.fromNameAndParameters(abi.name, abi.parameters);
+
+  // Does not insert into PXE
+  const appAuthWit = await authWitnessProvider.createAuthWit(appPayload.hash());
+  const setupAuthWit = await authWitnessProvider.createAuthWit(setupPayload.hash());
+
+  return {
+    functionSelector,
+    firstCallArgsHash,
+    argsOfCalls,
+    authWitnesses: [appAuthWit, setupAuthWit],
+  }
+}
+```
+
+#### Fill in the `TxExecutionRequest`
+
+```ts
+// within alice wallet.
+// This is a low level call that requires us to have resolved the contract artifact and function abi.
+// It is intentionally synchronous.
+#getTxExecutionRequest(requestInit: ExecutionRequestInit) {
+  if (!requestInit.functionAbi) {
+    throw new Error('Function ABI must be provided');
+  }
+
+  const builder = new TxExecutionRequestBuilder();
+  builder.setOrigin(this.getAddress());
+
+  builder.setTxContext({
+    chainId: this.getChainId(),
+    version: this.getVersion(),
+    gasSettings: requestInit.gasSettings,
+  });
+
+  const setup = requestInit.paymentMethod.getSetup(requestInit.gasSettings);
+
+  builder.addAuthWitnesses(setup.authWitnesses);
+
+  // Could also allow users to pass the artifact and short-circuit this
+  const appFunctionCall = makeFunctionCall(
+    requestInit.functionAbi,
+    requestInit.contractInstance.address,
+    requestInit.args
+  );
+  const entrypointInfo = createTxExecutionRequestAccountEntrypoint({
+    appFunctionCalls: [appFunctionCall],
+    setupFunctionCalls: setup.functionCalls,
+  }, this.account);
+
+  builder.setFunctionSelector(entrypointInfo.functionSelector);
+  builder.setFirstCallArgsHash(entrypointInfo.firstCallArgsHash);
+  builder.setArgsOfCalls(entrypointInfo.argsOfCalls);
+  builder.addAuthWitnesses(entrypointInfo.authWitnesses);
+
+  return builder.build();
+
 }
 ```
 
 
 
 
+#### Define top-level `Simulate`
 
-1. Extract the "app" EntrypointPayload
+```ts
+// helpers somewhere
 
-2. Collect all authwits
-   1. For the app payload
-   2. For the fee payment
-   3. For anything needed by the fee payment method
-3. 
+function decodeSimulatedTx(simulatedTx: SimulatedTx, functionAbi: FunctionAbi): DecodedReturn | [] {
+  const rawReturnValues =
+    functionAbi.functionType == FunctionType.PRIVATE
+      ? simulatedTx.privateReturnValues?.nested?.[0].values
+      : simulatedTx.publicOutput?.publicReturnValues?.[0].values;
+
+  return rawReturnValues ? decodeReturnValues(functionAbi.returnTypes, rawReturnValues) : [];
+}
+
+// within alice wallet
+
+async #simulateInner(requestInit: ExecutionRequestInit): {
+  tx: SimulatedTx,
+  result: DecodedReturn | [],
+  request: ExecutionRequestInit,
+} {
+  const txExecutionRequest = this.getTxExecutionRequest(initRequest);
+  // Call the PXE
+  const simulatedTx = await this.simulateTx(txExecutionRequest, builder.simulatePublicFunctions, builder.from); 
+  const decodedReturn = decodeSimulatedTx(simulatedTx, builder.functionAbi);
+  return {
+    tx: simulatedTx,
+    result: decodedReturn,
+    request: initRequest,
+  };
+}
+
+async simulate(requestInit: ExecutionRequestInit):  {
+  const builder = new ExecutionRequestInitBuilder(requestInit);
+
+  if (!builder.functionAbi) {
+    const contractArtifact = builder.contractArtifact ?? await pxe.getContractArtifact(builder.contractInstance.contractClassId);
+    builder.setContractArtifact(contractArtifact);
+    const functionAbi = findFunctionAbi(builder.contractArtifact, builder.functionName);
+    builder.setFunctionAbi(functionAbi);
+  }
+
+  // If we're not paying, e.g. this is just a read that we don't intend to submit as a TX,
+  // set the gas settings to default
+  if (!builder.paymentMethod){
+    builder.setFeePaymentMethod(new NoFeePaymentMethod());
+    builder.setGasSettings(GasSettings.default());
+    return this.#simulateInner(builder.build());
+  }
+  if (builder.gasSettings) {
+    return this.#simulateInner(builder.build());
+  }
+
+  // If we're paying, e.g. in bananas, figure out how much AZT that is.
+  // Note: this may call simulate recursively,
+  // but it *should* set the payment method to a NoFeePaymentMethod or undefined.
+  // perhaps we need a `read` method on the wallet.
+  const equivalentAztBalance = await builder.paymentMethod.getEquivalentAztBalance();
+  gasEstimator = GasEstimator.fromAztBalance(equivalentAztBalance);
+  builder.setGasSettings(gasEstimator.proposeGasSettings());
+
+  while (!gasEstimator.isConverged()) {
+    const result = await this.#simulateInner(builder.build());
+    gasEstimator.update(result);
+    builder.setGasSettings(gasEstimator.proposeGasSettings());
+  }
+
+  return result;
+
+}
+
+
+```
 
 
 
