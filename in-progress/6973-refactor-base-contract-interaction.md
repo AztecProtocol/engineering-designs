@@ -1,17 +1,42 @@
-|                      |                                   |
-| -------------------- | --------------------------------- |
-| Issue                | [title](github.com/link/to/issue) |
-| Owners               | @you                              |
-| Approvers            | @alice @bob                       |
-| Target Approval Date | YYYY-MM-DD                        |
-
+|                      |                                                                                               |
+| -------------------- | --------------------------------------------------------------------------------------------- |
+| Issue                | [Refactor Contract Interactions](https://github.com/AztecProtocol/aztec-packages/issues/6973) |
+| Owners               | @just-mitch                                                                                   |
+| Approvers            | @PhilWindle @LHerskind                                                                        |
+| Target Approval Date | 2024-06-21                                                                                    |
 
 
 ## Executive Summary
 
-This is a refactor of the `BaseContractInteraction` class to simplify the API and improve the user (developer) experience.
+This is a refactor of the API for interacting with contracts to improve the user (developer) experience, focused on aztec.js.
 
 The refactored approach mimics Viem's API, with some enhancements and modifications to fit our needs.
+
+In a nutshell, by being more verbose in the API, we can remove a lot of complexity and make the code easier to understand and maintain; this also affords greater understanding and control over the lifecycle of their contracts and transactions.
+
+Key changes:
+- the wallet is the central point of interaction to simulate/prove/send transactions instead of `BaseContractInteraction`
+- unified api for deploying contracts, deploying accounts, and calling functions
+- idempotent simulations
+- enables more sophisticated gas estimation mechanism
+
+### Major Interface Update
+
+Remove `BaseContractInteraction` and its subclasses.
+
+Define the following:
+
+```ts
+export interface UserAPI {
+  getTxExecutionRequest(userRequest: UserRequest): Promise<TxExecutionRequest>;
+  simulate(userRequest: UserRequest): Promise<SimulationOutput>;
+  read(userRequest: UserRequest): Promise<SimulationOutput>;
+  prove(userRequest: UserRequest): Promise<UserRequest>;
+  send(userRequest: UserRequest): Promise<SentTx>;
+}
+
+export type Wallet = UserAPI & AccountInterface & PXE & AccountKeyRotationInterface;
+```
 
 ### Account Creation
 
@@ -22,36 +47,54 @@ const salt = 42;
 
 // Returns the wallet and deployment options. 
 // Does not modify PXE state.
-const { wallet: aliceWallet, deploymentOptions } = await getSchnorrWallet(pxe, secretKey, salt);
+const { wallet: aliceWallet, deploymentArgs } = await getSchnorrWallet(pxe, secretKey, salt);
+
+const aliceContractInstance = getContractInstanceFromDeployParams(
+  SchnorrAccountContract.artifact, 
+  deploymentArgs
+);
 
 // Register the account in PXE, and wait for it to sync.
 await aliceWallet.registerAccountInPXE({ sync: true });
 
-// No wallet or secret passed to FPC
-const paymentMethod = new PrivateFeePaymentMethod(someCoin.address, someFPC.address);
+const paymentMethod = new SomeFeePaymentMethod(
+  someCoin.address,
+  someFPC.address,
+  // the fee payment method may need a wallet,
+  // e.g. for reading the balance or producing authwits
+  aliceWallet
+);
 
 // Changes to the PXE (e.g. notes, nullifiers, auth wits, contract deployments, capsules) are not persisted.
-const { request: deployAliceAccountRequest } = await aliceWallet.deploy.simulate({
+const { request: deployAliceAccountRequest } = await aliceWallet.simulate({
   artifact: SchnorrAccountContract.artifact,
-  deploymentOptions,
+  instance: aliceContractInstance,
+  functionName: deploymentArgs.constructorName,
+  args: deploymentArgs.constructorArgs,
   paymentMethod,
-  skipClassRegistration: true, 
-  skipPublicDeployment: true,
-  skipInitialization: false, 
   // gasSettings: undefined => automatic gas estimation. the returned `request` will have the gasSettings set.
 });
 
-const { contractInstance } = await aliceWallet.deploy.send(deployAliceAccountRequest).wait();
+// Wallet can stop here to prompt the user to confirm the gas estimation.
 
-debugLogger(`Alice's account deployed at ${contractInstance.address.toString()}`);
+const deployAliceAccountRequestWithProof = await aliceWallet.prove(deployAliceAccountRequest);
+
+const sentTx = await aliceWallet.send(deployAliceAccountRequestWithProof)
+
+const receipt = await sentTx.wait({
+  // permanently add the transient contracts to the wallet if the tx is successful.
+  // defaults to true.
+  registerOnSuccess: true
+});
+
 
 ```
 
-### Deploy and Use Contract
+### Deploy Token
 
 ```ts
-const bananaCoinDeploymentOptions = {
-  constructorArtifact: 'constructor',
+const bananaCoinDeploymentArgs: InstanceDeploymentParams = {
+  constructorName: 'constructor',
   constructorArgs: {
     admin: aliceWallet.getAddress(),
     name: 'BananaCoin',
@@ -63,18 +106,33 @@ const bananaCoinDeploymentOptions = {
   deployer: aliceWallet.getAddress()
 }
 
-const { request: deployTokenRequest } = await aliceWallet.deploy.simulate({
+const bananaCoinInstance = getContractInstanceFromDeployParams(
+  TokenContract.artifact,
+  bananaCoinDeploymentArgs
+);
+
+const { request: deployTokenRequest } = await aliceWallet.simulate({
   artifact: TokenContract.artifact,
-  deploymentOptions: bananaCoinDeploymentOptions,
-  skipClassRegistration: false, 
-  skipPublicDeployment: false, 
-  skipInitialization: false,
+  instance: bananaCoinInstance,
+  functionName: bananaCoinDeploymentArgs.constructorName,
+  args: bananaCoinDeploymentArgs.constructorArgs,
+  deploymentOptions: {
+    registerClass: true,
+    publicDeploy: true,
+  },
   paymentMethod
 })
 
-const { contractInstance: bananaCoinInstance } = await aliceWallet.deploy.send(deployTokenRequest).wait();
+const deployTokenRequestWithProof = await aliceWallet.prove(deployTokenRequest);
+const sentTx = await aliceWallet.send(deployTokenRequestWithProof)
+const receipt = await sentTx.wait()
 
-const { result: privateBalance } = await aliceWallet.simulate({
+```
+
+### Use Token
+
+```ts
+const { result: privateBalance } = await aliceWallet.read({
   contractInstance: bananaCoinInstance,
   functionName: 'balance_of_private'
   args: {owner: aliceWallet.getAddress()},
@@ -93,33 +151,17 @@ const { request: transferRequest } = await aliceWallet.simulate({
   paymentMethod,
 });
 
-
-// Proving is done automatically since `request` wouldn't have it set after just simulation.
-// Users can prove explicitly ahead of time with 
-// const { request: requestWithProof } = await aliceWallet.prove(request);
-// await aliceWallet.send(requestWithProof).wait();
-await aliceWallet.send(transferRequest).wait();
+const transferRequestWithProof = await aliceWallet.prove(transferRequest);
+const sentTx = await aliceWallet.send(transferRequestWithProof)
+const receipt = await sentTx.wait()
 
 ```
-
-### Scoping Instances
-
-A bit of a "nice to have".
-
-```ts
-const aliceBananaCoinInstance = aliceWallet.useContractInstanceAt(TokenContract.artifact, bananaCoinInstance.address);
-const {result: privateBalance} = await aliceBananaCoinInstance.simulate.balance_of_private({
-  args: {owner: aliceWallet.getAddress()},
-});
-```
-
 
 ## Introduction
 
 Developers and users have to think too hard when deploying accounts and submitting transactions.
 
-This is due in part to holding mutable state in the `BaseContractInteraction` class, which is a base class for all contract interactions: 
-it has multiple subclasses that mutate the state, so it is hard to know what has been set. 
+This is due in part to holding mutable state in the `BaseContractInteraction` class, which is a base class for all contract interactions; it has multiple subclasses that mutate the state, so it is hard to know what has been set.
 
 For example, the current attempt to estimate gas has a section that reads:
 ```ts
@@ -135,8 +177,6 @@ For example, the current attempt to estimate gas has a section that reads:
   // Ensure we don't accidentally cache a version of tx request that has estimateGas forcefully set to false.
   this.txRequest = undefined;
 ```
-
-This push for a refactor was motivated by the realization that we need a more sophisticated gas estimation mechanism where we first simulate without the FPC to get the gas cost of app logic, then plug that into a simulation with the FPC. 
 
 Doing this well also requires that simulations to be idempotent: all changes to the PXE including notes, nullifiers, auth wits, contract deployments, capsules, etc. should not be persisted until the user explicitly sends the transaction.
 
@@ -171,101 +211,34 @@ This would clear up concerns like:
   // derived ContractInteractions is confusing. We should unify the flow of all ContractInteractions.
 
 
-### The old UML
-
-```mermaid
-classDiagram
-
-class BaseContractInteraction {
-  Tx
-  TxExecutionRequest
-  Wallet
-}
-
-class BatchCall {
-  FunctionCall[]
-}
-BatchCall -->BaseContractInteraction
-
-class ContractFunctionInteraction {
-  AztecAddress contractAddress
-  FunctionAbi
-  any[] args
-}
-ContractFunctionInteraction --> BaseContractInteraction
-
-class DeployMethod {
-  Fr publicKeysHash
-  ContractArtifact
-  PostDeployCtor
-  any[] args
-  string|FunctionArtifact constructorNameOrArtifact
-}
-DeployMethod --> BaseContractInteraction
-
-class DeployAccountMethod {
-  AuthWitnessProvider 
-  FunctionArtifact feePaymentArtifact
-}
-DeployAccountMethod --> DeployMethod
-
-
-```
-
-
-
-
 ## Interface
 
 The key operations we want to perform are:
-- Producing a valid Tx Request
-- Simulating a Tx Request
-- Estimating the gas cost of a Tx Request
-- Proving a Tx Request
-- Submitting a Tx Request
+- Simulating/Reading
+- Proving
+- Submitting
 
 These operations should be accessible from a `Wallet`, which will generally be `Schnorr` or `Signerless`. 
 
 This is analogous to `viem` having a `walletClient` and a `publicClient`.
 
+The main idea in this design is to have the BaseWallet define all the functionality to perform the key operations; the specific entrypoint in use will be able to adapt the `TxExecutionRequest`s produced to its needs.
 
-### What is a Wallet?
+To accomplish this, we have the BaseWallet construct a `TxExecutionRequestBuilder` that can be passed to various `TxExecutionRequestAdapters`, such as one for the account entrypoint, one for the fee payment method, etc.
+
+Further, we expand `TxExecutionRequest` to allow passing things that we were previously setting directly on the PXE, so simulations can be idempotent.
+
+The interfaces are as follows:
 
 ```ts
-export type Wallet = AccountInterface & PXE & AccountKeyRotationInterface;
 
-export interface AccountInterface extends AuthWitnessProvider, EntrypointInterface {
-  /** Returns the complete address for this account. */
-  getCompleteAddress(): CompleteAddress;
-
-  /** Returns the address for this account. */
-  getAddress(): AztecAddress;
-
-  /** Returns the chain id for this account */
-  getChainId(): Fr;
-
-  /** Returns the rollup version for this account */
-  getVersion(): Fr;
+// new
+export interface ArtifactAndInstance {
+  artifact: ContractArtifact;
+  instance: ContractInstanceWithAddress;
 }
 
-export interface AuthWitnessProvider {
-  createAuthWit(
-    messageHashOrIntent:
-      | Fr
-      | Buffer
-      | {
-          /** The caller to approve  */
-          caller: AztecAddress;
-          /** The action to approve */
-          action: ContractFunctionInteraction | FunctionCall;
-          /** The chain id to approve */
-          chainId?: Fr;
-          /** The version to approve  */
-          version?: Fr;
-        },
-  ): Promise<AuthWitness>;
-}
-
+// modified
 export class TxExecutionRequest {
   constructor(
     // All these are the same:
@@ -280,45 +253,96 @@ export class TxExecutionRequest {
      * Transient capsules needed for this execution.
      */
     public capsules: Fr[][],
+    /**
+     * Transient contracts needed for this execution.
+     */
+    public transientContracts: ArtifactAndInstance[],
   ) {}
   // ...
 }
 
-export type TxExecutionRequestEntrypoint = Pick<TxExecutionRequest,
-  | 'functionSelector'
-  | 'firstCallArgsHash'
-  | 'argsOfCalls'
-  | 'authWitnesses' >
+// new
+export interface InstanceDeploymentParams {
+  constructorName: string;
+  constructorArgs: any;
+  salt: Fr;
+  publicKeysHash: Fr;
+  deployer: AztecAddress;
+}
 
-export interface ExecutionRequestInit {
+// new
+export interface DeploymentOptions {
+  registerClass?: boolean;
+  publicDeploy?: boolean;
+}
+
+// new
+export interface UserRequest {
   contractInstance: ContractInstanceWithAddress;
   functionName: string;
   args: any;
+  deploymentOptions?: DeploymentOptions;
+  gasSettings?: GasSettings;
   paymentMethod?: FeePaymentMethod;
   contractArtifact?: ContractArtifact;
   functionAbi?: FunctionAbi;
   from?: AztecAddress;
   simulatePublicFunctions?: boolean;
+  executionResult?: ExecutionResult; // the raw output of a simulation that can be proven
+  tx?: Tx; // a proven tx to send
 }
 
-export interface FeePaymentMethod {
-  getSetup(gasSettings: GasSettings): Promise<{
-    functionCalls: FunctionCall[],
-    authWitnesses: AuthWitness[],
-  }>;
+export type TxExecutionRequestAdapter = (builder: TxExecutionRequestBuilder, userRequest: UserRequest) => Promise<void>;
 
+export interface TxExecutionRequestComponent {
+  adaptTxExecutionRequest: TxExecutionRequestAdapter;
+}
+
+export interface FeePaymentMethod extends TxExecutionRequestComponent {
   getEquivalentAztBalance(): Promise<Fr>;
 }
 
+export interface SimulationOutput {
+  tx: Tx;
+  result: DecodedReturn | [];
+  request: UserRequest;
+  executionResult: ExecutionResult;
+  publicOutput: PublicSimulationOutput;
+  privateOutput: NestedProcessReturnValues;
+}
 
-export interface EntrypointInterface {
-  createTxExecutionRequestEntrypoint(
-    functionCalls: {
-      appFunctionCalls: FunctionCall[];
-      setupFunctionCalls: FunctionCall[];
-    }, 
-    authWitnessProvider: AuthWitnessProvider
-  ): TxExecutionRequestEntrypoint;
+export interface UserAPI {
+  getTxExecutionRequest(userRequest: UserRequest): Promise<TxExecutionRequest>;
+  simulate(userRequest: UserRequest): Promise<SimulationOutput>;
+  read(userRequest: UserRequest): Promise<SimulationOutput>;
+  prove(userRequest: UserRequest): Promise<UserRequest>;
+  send(userRequest: UserRequest): Promise<SentTx>;
+}
+
+export type Wallet = UserAPI & AccountInterface & PXE & AccountKeyRotationInterface;
+
+// Swap `EntrypointInterface` for `TxExecutionRequestComponent`
+export interface AccountInterface extends AuthWitnessProvider, TxExecutionRequestComponent {
+  getCompleteAddress(): CompleteAddress;
+  getAddress(): AztecAddress;
+  getChainId(): Fr;
+  getVersion(): Fr;
+
+}
+
+// unchanged
+export interface AuthWitnessProvider {
+  createAuthWit(
+    messageHashOrIntent:
+      | Fr
+      | Buffer
+      | {
+          caller: AztecAddress;
+          action: ContractFunctionInteraction | FunctionCall;
+          chainId?: Fr;
+          version?: Fr;
+        },
+  ): Promise<AuthWitness>;
 }
 
 ```
@@ -326,21 +350,27 @@ export interface EntrypointInterface {
 
 ## Implementation
 
+### Expose an explicit `proveTx` on PXE
+
+We currently don't have a way to *only* prove a transaction; everything must be simulated first.
+
+So we will expose a `proveTx` method on the PXE that will take a `TxExecutionRequest` and an `ExecutionResult` and return a `Tx`.
+
 ### Drop `isFeePayer` from `FeeEntrypointPayload`
 
 
-I think removing this makes the code simpler and more flexible: account contracts can just check if fee payer has been set and set it if not.
+Removing this makes the code simpler and more flexible: account contracts can just check if fee payer has been set and set it if not.
 
 Concerned users can just inspect the simulation result to see if they are paying the fee.
 
 Then we just have `EntrypointPayload` as a single, concrete class.
 
-### Translating user requests to TxExecutionRequests
+### BaseWallet.getTxExecutionRequest
 
-Consider that we have
+Consider that we have, e.g.:
 
 ```ts
-const { request: transferRequest } = await aliceWallet.simulate({
+{
   contractInstance: bananaCoinInstance,
   functionName: 'transfer',
   args: { 
@@ -350,18 +380,14 @@ const { request: transferRequest } = await aliceWallet.simulate({
     nonce: 0n
   },
   paymentMethod
-});
+}
 ```
 
 We need to ultimately get to a `TxExecutionRequest`.
 
-There are a few key steps to get there. 
+#### Translate a `contractInstance`, `functionName` and `args` to a `FunctionCall`
 
-Assume we're dealing with schnorr.
-
-#### Translate the `contractInstance`, `functionName` and `args` to a `FunctionCall`
-
-Get the contract artifact out of the PXE using the contractInstance's contractClassId.
+Define helpers somewhere as:
 
 ```ts
 
@@ -389,149 +415,231 @@ function makeFunctionCall(
   });
 }
 
-
 ```
 
-Note that since `gasSettings` was not provided, we need to determine them. 
+#### class registration
 
-In order to do this, we need to simulate the function call without the FPC to get the gas cost of the app logic, then simulate with the FPC to get the gas cost of the entire transaction.
-
-#### Get the `TxExecutionRequestEntrypoint`
+Define a helper somewhere as:
 
 ```ts
-createTxExecutionRequestAccountEntrypoint(
-    functionCalls: {
-      appFunctionCalls: FunctionCall[];
-      setupFunctionCalls: FunctionCall[];
-    },
-    authWitnessProvider: AuthWitnessProvider
-  ): TxExecutionRequestEntrypoint {
-  const appPayload = EntrypointPayload.fromFunctionCalls(functionCalls.appFunctionCalls);
-  const setupPayload = EntrypointPayload.fromFunctionCalls(functionCalls.setupFunctionCalls);
-  const abi = this.getEntrypointAbi();
-  const entrypointPackedArgs = PackedValues.fromValues(encodeArguments(abi, [appPayload, setupPayload]));
-  const firstCallArgsHash = entrypointPackedArgs.hash();
-  const argsOfCalls = [...appPayload.packedArguments, ...feePayload.packedArguments, entrypointPackedArgs];
-  const functionSelector = FunctionSelector.fromNameAndParameters(abi.name, abi.parameters);
+export const addClassRegistration: TxExecutionRequestAdapter = (
+  builder: TxExecutionRequestBuilder, request: UserRequest
+) => {
+    if (!request.contractArtifact) {
+      throw new Error('Contract artifact must be provided to register class');
+    }
 
-  // Does not insert into PXE
-  const appAuthWit = await authWitnessProvider.createAuthWit(appPayload.hash());
-  const setupAuthWit = await authWitnessProvider.createAuthWit(setupPayload.hash());
+    const contractClass = getContractClassFromArtifact(request.contractArtifact);
 
-  return {
-    functionSelector,
-    firstCallArgsHash,
-    argsOfCalls,
-    authWitnesses: [appAuthWit, setupAuthWit],
+    builder.addCapsule(
+      bufferAsFields(
+        contractClass.packedBytecode,
+        MAX_PACKED_PUBLIC_BYTECODE_SIZE_IN_FIELDS
+    ));
+
+    const { artifact, instance } = getCanonicalClassRegisterer();
+
+    const registerFnAbi = findFunctionAbi(artifact, 'register');
+
+    builder.addAppFunctionCall(
+      makeFunctionCall(
+        registerFnAbi,
+        instance.address,
+        {
+          artifact_hash: contractClass.artifactHash,
+          private_functions_root: contractClass.privateFunctionsRoot,
+          public_bytecode_commitment: contractClass.publicBytecodeCommitment
+        }
+    ));
+}
+```
+
+#### public deployment
+
+Define a helper somewhere as
+
+```ts
+
+export const addPublicDeployment: TxExecutionRequestAdapter = (
+  builder: TxExecutionRequestBuilder, request: UserRequest
+) => {
+  const { artifact, instance } = getCanonicalInstanceDeployer();
+  const deployFnAbi = findFunctionAbi(artifact, 'deploy');
+  builder.addAppFunctionCall(
+    makeFunctionCall(
+      deployFnAbi,
+      instance.address,
+      {
+        salt: request.contractInstance.salt,
+        contract_class_id: request.contractInstance.contractClassId,
+        initialization_hash: request.contractInstance.initializationHash,
+        public_keys_hash: request.contractInstance.publicKeysHash,
+        universal_deploy: request.contractInstance.deployer.isZero(),
+      }
+  ));
+}
+```
+
+#### Entrypoints implement `TxExecutionRequestComponent`
+
+Below is what a default account entrypoint might look like, but other entrypoints could implement this differently
+
+```ts
+
+export class DefaultAccountEntrypoint implements TxExecutionRequestComponent {
+  constructor(
+    private address: AztecAddress,
+    private auth: AuthWitnessProvider,
+    private chainId: number = DEFAULT_CHAIN_ID,
+    private version: number = DEFAULT_VERSION,
+  ) {}
+
+  async adaptTxExecutionRequest(
+    builder: TxExecutionRequestBuilder,
+    userRequest: UserRequest
+  ): Promise<void> {
+    const appPayload = EntrypointPayload.fromFunctionCalls(builder.appFunctionCalls);
+    const setupPayload = EntrypointPayload.fromFunctionCalls(builder.setupFunctionCalls);
+    const abi = this.getEntrypointAbi();
+    const entrypointPackedArgs = PackedValues.fromValues(encodeArguments(abi, [appPayload, setupPayload]));
+
+    return builder
+      .setOrigin(this.address)
+      .setTxContext({
+        chainId: this.chainId,
+        version: this.version,
+        gasSettings: userRequest.gasSettings,
+      })
+      .setFunctionSelector(
+        FunctionSelector.fromNameAndParameters(abi.name, abi.parameters)
+      )
+      .setFirstCallArgsHash(entrypointPackedArgs.hash());
+      .setArgsOfCalls([
+        ...appPayload.packedArguments,
+        ...feePayload.packedArguments,
+         entrypointPackedArgs
+      ])
+      .addAuthWitness(
+        await this.auth.createAuthWit(appPayload.hash())
+      )
+      .addAuthWitness(
+        await this.auth.createAuthWit(setupPayload.hash())
+      )
+  }
+
+  private getEntrypointAbi() {
+    return {
+      name: 'entrypoint',
+      isInitializer: false,
+      // ... same as before
+    }
   }
 }
+
 ```
 
 #### Fill in the `TxExecutionRequest`
 
+The abstract `BaseWallet` can implement:
+
 ```ts
-// within alice wallet.
-// This is a low level call that requires us to have resolved the contract artifact and function abi.
-// It is intentionally synchronous.
-#getTxExecutionRequest(requestInit: ExecutionRequestInit) {
-  if (!requestInit.functionAbi) {
+async getTxExecutionRequest(userRequest: UserRequest): Promise<TxExecutionRequest> {
+  if (!userRequest.functionAbi) {
     throw new Error('Function ABI must be provided');
+  }
+  if (!userRequest.gasSettings) {
+    throw new Error('Gas settings must be provided');
+  }
+  if (!userRequest.paymentMethod) {
+    throw new Error('Payment method must be provided');
   }
 
   const builder = new TxExecutionRequestBuilder();
-  builder.setOrigin(this.getAddress());
 
-  builder.setTxContext({
-    chainId: this.getChainId(),
-    version: this.getVersion(),
-    gasSettings: requestInit.gasSettings,
-  });
+  // Add the "main" function call
+  builder.addAppFunctionCall(
+    makeFunctionCall(
+      userRequest.functionAbi,
+      userRequest.contractInstance.address,
+      userRequest.args
+  ));
 
-  const setup = requestInit.paymentMethod.getSetup(requestInit.gasSettings);
+  // Add stuff needed for setup, e.g. function calls, auth witnesses, etc.
+  await userRequest.paymentMethod.adaptTxExecutionRequest(builder, userRequest);
 
-  builder.addAuthWitnesses(setup.authWitnesses);
+  if (userRequest.deploymentOptions?.registerClass) {
+    addClassRegistration(builder, userRequest);
+  }
 
-  // Could also allow users to pass the artifact and short-circuit this
-  const appFunctionCall = makeFunctionCall(
-    requestInit.functionAbi,
-    requestInit.contractInstance.address,
-    requestInit.args
-  );
-  const entrypointInfo = createTxExecutionRequestAccountEntrypoint({
-    appFunctionCalls: [appFunctionCall],
-    setupFunctionCalls: setup.functionCalls,
-  }, this.account);
+  if (userRequest.deploymentOptions?.publicDeploy) {
+    addPublicDeployment(builder, userRequest);
+  }
 
-  builder.setFunctionSelector(entrypointInfo.functionSelector);
-  builder.setFirstCallArgsHash(entrypointInfo.firstCallArgsHash);
-  builder.setArgsOfCalls(entrypointInfo.argsOfCalls);
-  builder.addAuthWitnesses(entrypointInfo.authWitnesses);
+  // if the user is giving us an artifact,
+  // allow the PXE to access it
+  if (userRequest.contractArtifact) {
+    builder.addTransientContract({
+      artifact: userRequest.contractArtifact,
+      instance: userRequest.contractInstance,
+    });
+  }
+
+  // Adapt the request to the entrypoint in use.
+  // Since BaseWallet is abstract, this will be implemented by the concrete class.
+  this.adaptTxExecutionRequest(builder, userRequest);
 
   return builder.build();
 
 }
 ```
 
-
-
-
-#### Define top-level `Simulate`
+### BaseWallet.#simulateInner
 
 ```ts
-// helpers somewhere
-
-function decodeSimulatedTx(simulatedTx: SimulatedTx, functionAbi: FunctionAbi): DecodedReturn | [] {
-  const rawReturnValues =
-    functionAbi.functionType == FunctionType.PRIVATE
-      ? simulatedTx.privateReturnValues?.nested?.[0].values
-      : simulatedTx.publicOutput?.publicReturnValues?.[0].values;
-
-  return rawReturnValues ? decodeReturnValues(functionAbi.returnTypes, rawReturnValues) : [];
-}
-
-// within alice wallet
-
-async #simulateInner(requestInit: ExecutionRequestInit): {
-  tx: SimulatedTx,
-  result: DecodedReturn | [],
-  request: ExecutionRequestInit,
-} {
-  const txExecutionRequest = this.getTxExecutionRequest(initRequest);
-  // Call the PXE
+// Used by simulate and read
+async #simulateInner(userRequest: UserRequest): ReturnType<Wallet['simulate']> {
+  const txExecutionRequest = await this.getTxExecutionRequest(initRequest);
   const simulatedTx = await this.simulateTx(txExecutionRequest, builder.simulatePublicFunctions, builder.from); 
   const decodedReturn = decodeSimulatedTx(simulatedTx, builder.functionAbi);
   return {
-    tx: simulatedTx,
+    tx: simulatedTx.tx,
+    publicOutput: simulatedTx.publicOutput,
+    privateOutput: simulatedTx.privateReturnValues,
+    executionResult: simulatedTx.executionResult,
     result: decodedReturn,
     request: initRequest,
   };
 }
+```
 
-async simulate(requestInit: ExecutionRequestInit):  {
-  const builder = new ExecutionRequestInitBuilder(requestInit);
+### BaseWallet.simulate
 
-  if (!builder.functionAbi) {
-    const contractArtifact = builder.contractArtifact ?? await pxe.getContractArtifact(builder.contractInstance.contractClassId);
-    builder.setContractArtifact(contractArtifact);
-    const functionAbi = findFunctionAbi(builder.contractArtifact, builder.functionName);
-    builder.setFunctionAbi(functionAbi);
+```ts
+
+async simulate(userRequest: UserRequest): {
+    tx: simulatedTx.tx,
+    publicOutput: simulatedTx.publicOutput,
+    privateOutput: simulatedTx.privateReturnValues,
+    executionResult: simulatedTx.executionResult,
+    result: decodedReturn,
+    request: initRequest,
+} {
+  // If we're simulating, we need to have the payment method set.
+  // Users should use `read` if they just want to see the result.
+  if (!userRequest.paymentMethod){
+    throw new Error('Payment method must be set before simulating');
   }
 
-  // If we're not paying, e.g. this is just a read that we don't intend to submit as a TX,
-  // set the gas settings to default
-  if (!builder.paymentMethod){
-    builder.setFeePaymentMethod(new NoFeePaymentMethod());
-    builder.setGasSettings(GasSettings.default());
-    return this.#simulateInner(builder.build());
-  }
+  const builder = new UserRequestBuilder(userRequest);
+
+  await this.#ensureFunctionAbi(builder);
+
   if (builder.gasSettings) {
     return this.#simulateInner(builder.build());
   }
 
   // If we're paying, e.g. in bananas, figure out how much AZT that is.
-  // Note: this may call simulate recursively,
-  // but it *should* set the payment method to a NoFeePaymentMethod or undefined.
-  // perhaps we need a `read` method on the wallet.
+  // Note: paymentMethod.getEquivalentAztBalance() may call `read` internally.
   const equivalentAztBalance = await builder.paymentMethod.getEquivalentAztBalance();
   gasEstimator = GasEstimator.fromAztBalance(equivalentAztBalance);
   builder.setGasSettings(gasEstimator.proposeGasSettings());
@@ -543,251 +651,117 @@ async simulate(requestInit: ExecutionRequestInit):  {
   }
 
   return result;
-
 }
 
+async #ensureFunctionAbi(builder: UserRequestBuilder): void {
+  // User can call simulate without the artifact if they have the function ABI
+  if (!builder.functionAbi) {
+    // If the user provides the contract artifact, we don't need to ask the PXE
+    if (!builder.contractArtifact) {
+      const contractArtifact = await this.getContractArtifact(builder.contractInstance.contractClassId);
+      builder.setContractArtifact(contractArtifact);
+    }
+    const functionAbi = findFunctionAbi(builder.contractArtifact, builder.functionName);
+    builder.setFunctionAbi(functionAbi);
+  }
+}
 
+// helpers somewhere
+
+function decodeSimulatedTx(simulatedTx: SimulatedTx, functionAbi: FunctionAbi): DecodedReturn | [] {
+  const rawReturnValues =
+    functionAbi.functionType == FunctionType.PRIVATE
+      ? simulatedTx.privateReturnValues?.nested?.[0].values
+      : simulatedTx.publicOutput?.publicReturnValues?.[0].values;
+
+  return rawReturnValues ? decodeReturnValues(functionAbi.returnTypes, rawReturnValues) : [];
+}
 ```
 
+### BaseWallet.read
 
-
-
-### Kitchen Sink
+Like `simulate`, but without the gas estimation.
 
 ```ts
-
-// Create a new schnorr account
-
-const aliceSecretKey = Fr.random(),
-
-const signingPrivateKey = deriveSigningKey(aliceSecretKey);
-const signingPublicKey = new Schnorr().computePublicKey(signingPrivateKey); 
+async read(userRequest: UserRequest): DecodedReturn | [] {
+  const builder = new UserRequestBuilder(userRequest);
 
 
-const aliceDeploymentOptions = {
-  constructorArtifact: 'constructor',
-  constructorArgs: {
-    signing_pub_key_x: signingPublicKey.x,
-    signing_pub_key_y: signingPublicKey.y
-  },
-  salt: 42,
-  publicKeysHash: deriveKeys(aliceSecretKey).publicKeys.hash(),
-  deployer: AztecAddress.ZERO
+  if (!builder.paymentMethod) {
+    builder.setFeePaymentMethod(new NoFeePaymentMethod());
+  }
+
+  if (!builder.gasSettings) {
+    builder.setGasSettings(GasSettings.default());
+  }
+
+  await this.#ensureFunctionAbi(builder);
+
+  return this.#simulateInner(builder.build());
 }
-
-const aliceContractInstance = getContractInstanceFromDeployParams(
-  SchnorrAccountContract.artifact, 
-  aliceDeploymentOptions
-);
-
-const aliceCompleteAddress = CompleteAddress.fromSecretKeyAndInstance(aliceSecretKey, aliceContractInstance);
-
-await pxe.registerAccount(
-  aliceSecretKey,
-  aliceCompleteAddress.partialAddress
-);
-await waitForAccountSynch(pxe, aliceCompleteAddress);
-
-const aliceAuthWitProvider = new SchnorrAuthWitnessProvider(signingPrivateKey)
-const nodeInfo = await pxe.getNodeInfo();
-const aliceInterface = new DefaultAccountInterface(aliceAuthWitProvider, aliceCompleteAddress, nodeInfo)
-const aliceWallet = new AccountWallet(pxe, aliceInterface);
-
-
-// Everything above could be rolled into a single function call:
-// const wallet = await getSchnorrAccount(
-//   pxe,
-//   alice.secretKey,
-//   deriveSigningKey(alice.secretKey),
-//   aliceDeploymentOptions.salt
-// ).getWallet();
-
-const paymentMethod = new PrivateFeePaymentMethod(someCoin.address, someFPC.address);
-
-const { request: deployAliceAccountRequest } = await aliceWallet.deploy.simulate({
-  artifact: SchnorrAccountContract.artifact,
-  deploymentOptions: aliceDeploymentOptions,
-  paymentMethod,
-  skipClassRegistration: true, 
-  skipPublicDeployment: true,
-});
-
-await aliceWallet.deploy.send(deployAliceAccountRequest).wait();
-
-
-// Deploy BananaCoin as an instance of TokenContract
-
-const bananaCoinDeploymentOptions = {
-  constructorArtifact: 'constructor',
-  constructorArgs: {
-    admin: aliceWallet.getAddress(),
-    name: 'BananaCoin',
-    symbol: 'BC',
-    decimals: 18
-  },
-  salt: 43,
-  publicKeysHash: Fr.ZERO,
-  deployer: aliceWallet.getAddress()
-}
-
-const bananaCoinInstance = getContractInstanceFromDeployParams(
-  TokenContract.artifact,
-  bananaCoinDeploymentOptions
-);
-
-// simulate to get the gas estimation
-const { request: deployTokenRequest } = await aliceWallet.deploy.simulate({
-  artifact: TokenContract.artifact,
-  deploymentOptions: bananaCoinDeploymentOptions,
-  skipClassRegistration: false, // injects the capsule and function call below
-  skipPublicDeployment: false, // injects the function call below
-  // skipInitialization: false, assumed false since we specified the initializerFunction
-  paymentMethod
-})
-
-// wallet.deploy does the following under the hood:
-
-// Use contract instances to prepare function calls
-// const initializeBCFnCall = bananaCoinInstance.prepareCall({
-//     functionName: 'constructor',
-//     args: bananaCoinDeploymentOptions.constructorArgs
-// });
-
-// await aliceWallet.registerContract({
-//   artifact: TokenContract.artifact,
-//   instance: bananaCoinInstance
-// });
-// note: if we are `simulating`, the contract will be transient and not actually registered
-
-
-// prepare a capsule for contract class registration
-// const encodedBytecode = bufferAsFields(
-//   bananaCoinClass.packedBytecode,
-//   MAX_PACKED_PUBLIC_BYTECODE_SIZE_IN_FIELDS
-// );
-
-// inject a function call to deploy the contract class, which will consume the capsule
-// const tokenContractClass = getContractClassFromArtifact(TokenContract.artifact);
-// const registerBCClassFnCall = getRegistererContract().prepareCall({
-//   functionName: 'register',
-//   args: {
-//     artifact_hash: tokenContractClass.artifactHash,
-//     private_functions_root: tokenContractClass.privateFunctionsRoot,
-//     public_bytecode_commitment: tokenContractClass.publicBytecodeCommitment
-//   }
-// });
-
-// inject a function call to deploy the contract instance
-// const deployBCInstanceFnCall = getDeployerContract().prepareCall({
-//   functionName: 'deploy',
-//   args: {
-//     salt: bananaCoinInstance.salt,
-//     contract_class_id: bananaCoinInstance.contractClassId,
-//     initialization_hash: bananaCoinInstance.initializationHash,
-//     public_keys_hash: bananaCoinInstance.publicKeysHash,
-//     universal_deploy: bananaCoinInstance.deployer.isZero(),
-//   }
-// });
-
-
-
-const { contractInstance: bananaCoinInstance } = await aliceWallet.deploy.send(deployTokenRequest).wait();
-
-
-
-// Now use the contract
-const { result: privateBalance } = await aliceWallet.simulate({
-  contractInstance: bananaCoinInstance,
-  functionName: 'balance_of_private'
-  args: {owner: aliceWallet.getAddress()},
-});
-
-// Can also scope the instance to Alice's wallet
-// But this requires the contract to be registered in the wallet
-const aliceBananaCoinInstance = aliceWallet.useContractInstanceAt(BananaCoin, bananaCoinInstance.address);
-
-const {result: privateBalance} = await aliceBananaCoinInstance.simulate.balance_of_private({
-  args: {owner: aliceWallet.getAddress()},
-});
-
-
-// Let's transfer the balance to Bob
-
-const bobAddress = AztecAddress.random();
-
-// Gas estimation is done automatically and set on the request object
-const { request: transferRequest } = await aliceWallet.simulate({
-  contractInstance: bananaCoinInstance,
-  functionName: 'transfer',
-  args: { 
-    from: aliceAddress,
-    to: bobAddress,
-    value: privateBalance,
-    nonce: 0n
-  },
-  paymentMethod
-});
-
-
-// Proving is done automatically since `request` wouldn't have it set after just simulation.
-// Users can prove explicitly ahead of time with 
-// const { request: requestWithProof } = await aliceWallet.prove(request);
-// await aliceWallet.send(requestWithProof).wait();
-await aliceWallet.send(transferRequest).wait();
-
-
-
-
-/////////////////////////
-/// Over on Bob's PXE ///
-/////////////////////////
-
-// somehow Bob gets the following:
-const bananaCoinInstance: ContractInstanceWithAddress = {
-  version: 1,
-  contractClassId: getContractClassFromArtifact(TokenContract.artifact).id,
-  salt, // somehow bob gets this
-  initializationHash, // somehow bob gets this
-  publicKeysHash, // somehow bob gets this
-  address, // somehow bob gets this
-  deployer, // somehow bob gets this
-};
-
-pxe.registerContract({
-  artifact: TokenContract.artifact,
-  instance: bananaCoinInstance,
-});
-
-const { result: bobPrivateBalance } = await bobWallet.simulate({
-  contractInstance: bobBananaCoinInstance,
-  functionName: 'balance_of_private'
-  args: {owner: bobWallet.getAddress()},
-});
-
-
-// can also use the wallet to load a particular instance
-const bobBananaCoinInstance = bobWallet.useContractInstanceAt(BananaCoin, bananaCoinInstance.address);
-
-const { result: bobPrivateBalance } = await bobBananaCoinInstance.simulate.balance_of_private({
-  args: {owner: bobWallet.getAddress()},
-});
-
-const { request: transferRequest } = await bobBananaCoinInstance.simulate.transfer({
-  args: { 
-    from: bobWallet.getAddress(),
-    to: aliceWallet.getAddress(),
-    value: bobPrivateBalance,
-    nonce: 0n
-  },
-  paymentMethod
-});
-
-await bobBananaCoinInstance.send.transfer(transferRequest).wait();
 ```
 
-Delve into the specifics of the design. Include diagrams, code snippets, API descriptions, and database schema changes as necessary. Highlight any significant changes to the existing architecture or interfaces.
 
-Discuss any alternative or rejected solutions.
+### BaseWallet.prove
+
+```ts
+async prove(request: UserRequest): Promise<UserRequest> {
+  if (!request.executionResult) {
+    throw new Error('Execution result must be set before proving');
+  }
+  const builder = new UserRequestBuilder(request);
+  await this.#ensureFunctionAbi(builder);
+  const initRequest = builder.build();
+  const txExecutionRequest = await this.getTxExecutionRequest(initRequest);
+  const provenTx = await this.proveTx(txExecutionRequest, request.executionResult);
+  builder.setTx(provenTx);
+  return builder.build();
+}
+```
+
+### BaseWallet.send
+
+```ts
+async send(request: UserRequest): Promise<UserRequest> {
+  if (!request.tx) {
+    throw new Error('Tx must be set before sending');
+  }
+  if (!request.tx.proof || request.tx.proof.isEmpty()) {
+    throw new Error('Tx must be proven before sending');
+  }
+  const builder = new UserRequestBuilder(request);
+  await this.#ensureFunctionAbi(builder);
+  const initRequest = builder.build();
+  const txExecutionRequest = await this.getTxExecutionRequest();
+  const txHash = await this.sendTx(txExecutionRequest, request.tx);
+  return new SentTx(this.pxe, txHash, txExecutionRequest);
+}
+```
+
+### Concerns
+
+#### `UserRequest` is a kitchen sink
+
+The `UserRequest` object is a bit of a kitchen sink. It might be better to have a `DeployRequest`, `CallRequest`, etc. that extends `UserRequest`.
+
+#### Just shifting the mutable subclass problem
+
+Arguably the builder + adapter pattern just shifts the "mutable subclass" problem around. I think that since the entire lifecycle of the builder is contained to the `getTxExecutionRequest` method within a single abstract class, it's not nearly as bad as the current situation.
+
+#### Verbosity + loss of convenience
+
+People might be concerned that we lose the ability to do:
+```ts
+const bananaCoin = await BananaCoin.at(bananaCoinAddress, this.aliceWallet);
+bananaCoin.methods.mint_public(this.aliceAddress, this.ALICE_INITIAL_BANANAS).send().wait()
+```
+
+I think this is a good thing. It's not clear what `mint_public` does (which is create a stateful `ContractFunctionInteraction`), and it's not clear what `send().wait()` does. It's not even clear what `at` does (which asks the PXE for the underlying instance at the provided address). It's also hard to specify gas settings and payment methods: they're presently pushed into `send`, which doesn't make sense because they're needed for the simulation.
+
+I think we can still have a `BananaCoin` class that wraps the `UserAPI` and provides a more user-friendly interface, but it should be explicit about what it's doing.
+
+I'd suggest we do that in a follow-up design.
+
 
 ## Change Set
 
@@ -799,22 +773,22 @@ Fill in bullets for each area that will be affected by this change.
 - [ ] Public Kernel Circuits
 - [ ] Rollup Circuits
 - [ ] Aztec.nr
+- [x] Aztec.js
 - [ ] Noir
 - [ ] AVM
-- [ ] Sequencer
-- [ ] Fees
+- [x] Sequencer
+- [x] Fees
 - [ ] P2P Network
 - [ ] Cryptography
 - [ ] DevOps
 
 ## Test Plan
 
-Outline what unit and e2e tests will be written. Describe the logic they cover and any mock objects used.
+Implement the above changes and get all the tests to pass.
 
 ## Documentation Plan
 
-Identify changes or additions to the user documentation or protocol spec.
-
+An enormous amount of documentation will need to be updated. Will likely need to ask DevRel for help.
 
 ## Rejection Reason
 
