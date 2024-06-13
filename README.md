@@ -129,6 +129,7 @@ Fill in bullets for each area that will be affected by this change.
 - [ ] L1 Contracts
 - [ ] Prover
 - [ ] Economics
+- [ ] Fees
 - [ ] P2P Network
 - [ ] DevOps
 
