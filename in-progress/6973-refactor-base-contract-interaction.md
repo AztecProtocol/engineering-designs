@@ -12,7 +12,7 @@ This is a refactor of the API for interacting with contracts to improve the user
 
 The refactored approach mimics Viem's API, with some enhancements and modifications to fit our needs.
 
-In a nutshell, by being more verbose in the API, we can remove a lot of complexity and make the code easier to understand and maintain; this also affords greater understanding and control over the lifecycle of their contracts and transactions.
+In a nutshell, by being more verbose in the API, we can remove a lot of complexity and make the code easier to understand and maintain; this also affords greater understanding and control over the lifecycle of contracts and transactions.
 
 Key changes:
 - the wallet is the central point of interaction to simulate/prove/send transactions instead of `BaseContractInteraction`
@@ -67,10 +67,13 @@ const paymentMethod = new SomeFeePaymentMethod(
 
 // Changes to the PXE (e.g. notes, nullifiers, auth wits, contract deployments, capsules) are not persisted.
 const { request: deployAliceAccountRequest } = await aliceWallet.simulate({
-  artifact: SchnorrAccountContract.artifact,
-  instance: aliceContractInstance,
-  functionName: deploymentArgs.constructorName,
-  args: deploymentArgs.constructorArgs,
+  // easy multicall support
+  calls: [{
+    artifact: SchnorrAccountContract.artifact,
+    instance: aliceContractInstance,
+    functionName: deploymentArgs.constructorName,
+    args: deploymentArgs.constructorArgs,
+  }],
   paymentMethod,
   // gasSettings: undefined => automatic gas estimation. the returned `request` will have the gasSettings set.
 });
@@ -112,14 +115,16 @@ const bananaCoinInstance = getContractInstanceFromDeployParams(
 );
 
 const { request: deployTokenRequest } = await aliceWallet.simulate({
-  artifact: TokenContract.artifact,
-  instance: bananaCoinInstance,
-  functionName: bananaCoinDeploymentArgs.constructorName,
-  args: bananaCoinDeploymentArgs.constructorArgs,
-  deploymentOptions: {
-    registerClass: true,
-    publicDeploy: true,
-  },
+  calls: [{
+    artifact: TokenContract.artifact,
+    instance: bananaCoinInstance,
+    functionName: bananaCoinDeploymentArgs.constructorName,
+    args: bananaCoinDeploymentArgs.constructorArgs,
+    deploymentOptions: {
+      registerClass: true,
+      publicDeploy: true,
+    },
+  }],
   paymentMethod
 })
 
@@ -133,9 +138,11 @@ const receipt = await sentTx.wait()
 
 ```ts
 const { result: privateBalance } = await aliceWallet.read({
-  contractInstance: bananaCoinInstance,
-  functionName: 'balance_of_private'
-  args: {owner: aliceWallet.getAddress()},
+  calls: [{
+    contractInstance: bananaCoinInstance,
+    functionName: 'balance_of_private'
+    args: {owner: aliceWallet.getAddress()}
+  }]
 });
 
 
@@ -276,16 +283,20 @@ export interface DeploymentOptions {
   publicDeploy?: boolean;
 }
 
-// new
-export interface UserRequest {
+export interface UserFunctionCall {
   contractInstance: ContractInstanceWithAddress;
   functionName: string;
   args: any;
   deploymentOptions?: DeploymentOptions;
-  gasSettings?: GasSettings;
-  paymentMethod?: FeePaymentMethod;
   contractArtifact?: ContractArtifact;
   functionAbi?: FunctionAbi;
+}
+
+// new
+export interface UserRequest {
+  calls: UserFunctionCall[];
+  gasSettings?: GasSettings;
+  paymentMethod?: FeePaymentMethod;
   from?: AztecAddress;
   simulatePublicFunctions?: boolean;
   executionResult?: ExecutionResult; // the raw output of a simulation that can be proven
@@ -371,14 +382,16 @@ Consider that we have, e.g.:
 
 ```ts
 {
-  contractInstance: bananaCoinInstance,
-  functionName: 'transfer',
-  args: { 
-    from: aliceAddress,
-    to: bobAddress,
-    value: privateBalance,
-    nonce: 0n
-  },
+  calls: [{
+    contractInstance: bananaCoinInstance,
+    functionName: 'transfer',
+    args: { 
+      from: aliceAddress,
+      to: bobAddress,
+      value: privateBalance,
+      nonce: 0n
+    },
+  }],
   paymentMethod
 }
 ```
@@ -417,40 +430,60 @@ function makeFunctionCall(
 
 ```
 
+#### main function calls
+
+Define a helper somewhere as:
+
+```ts
+const addMainFunctionCall: TxExecutionRequestAdapter = (
+  builder: TxExecutionRequestBuilder, call: UserFunctionCall
+) => {
+  if (!call.functionAbi) {
+    throw new Error('Function ABI must be provided');
+  }
+  builder.addAppFunctionCall(
+    makeFunctionCall(
+      call.functionAbi,
+      call.contractInstance.address,
+      call.args
+  ));
+}
+```
+
 #### class registration
 
 Define a helper somewhere as:
 
 ```ts
-export const addClassRegistration: TxExecutionRequestAdapter = (
-  builder: TxExecutionRequestBuilder, request: UserRequest
+const addClassRegistration = (
+  builder: TxExecutionRequestBuilder, call: UserFunctionCall
 ) => {
-    if (!request.contractArtifact) {
-      throw new Error('Contract artifact must be provided to register class');
-    }
+  if (!call.contractArtifact) {
+    throw new Error('Contract artifact must be provided to register class');
+  }
 
-    const contractClass = getContractClassFromArtifact(request.contractArtifact);
+  const contractClass = getContractClassFromArtifact(call.contractArtifact);
 
-    builder.addCapsule(
-      bufferAsFields(
-        contractClass.packedBytecode,
-        MAX_PACKED_PUBLIC_BYTECODE_SIZE_IN_FIELDS
-    ));
+  builder.addCapsule(
+    bufferAsFields(
+      contractClass.packedBytecode,
+      MAX_PACKED_PUBLIC_BYTECODE_SIZE_IN_FIELDS
+  ));
 
-    const { artifact, instance } = getCanonicalClassRegisterer();
+  const { artifact, instance } = getCanonicalClassRegisterer();
 
-    const registerFnAbi = findFunctionAbi(artifact, 'register');
+  const registerFnAbi = findFunctionAbi(artifact, 'register');
 
-    builder.addAppFunctionCall(
-      makeFunctionCall(
-        registerFnAbi,
-        instance.address,
-        {
-          artifact_hash: contractClass.artifactHash,
-          private_functions_root: contractClass.privateFunctionsRoot,
-          public_bytecode_commitment: contractClass.publicBytecodeCommitment
-        }
-    ));
+  builder.addAppFunctionCall(
+    makeFunctionCall(
+      registerFnAbi,
+      instance.address,
+      {
+        artifact_hash: contractClass.artifactHash,
+        private_functions_root: contractClass.privateFunctionsRoot,
+        public_bytecode_commitment: contractClass.publicBytecodeCommitment
+      }
+  ));
 }
 ```
 
@@ -460,8 +493,8 @@ Define a helper somewhere as
 
 ```ts
 
-export const addPublicDeployment: TxExecutionRequestAdapter = (
-  builder: TxExecutionRequestBuilder, request: UserRequest
+const addPublicDeployment = (
+  builder: TxExecutionRequestBuilder, call: UserFunctionCall
 ) => {
   const { artifact, instance } = getCanonicalInstanceDeployer();
   const deployFnAbi = findFunctionAbi(artifact, 'deploy');
@@ -478,6 +511,7 @@ export const addPublicDeployment: TxExecutionRequestAdapter = (
       }
   ));
 }
+
 ```
 
 #### Entrypoints implement `TxExecutionRequestComponent`
@@ -544,9 +578,6 @@ The abstract `BaseWallet` can implement:
 
 ```ts
 async getTxExecutionRequest(userRequest: UserRequest): Promise<TxExecutionRequest> {
-  if (!userRequest.functionAbi) {
-    throw new Error('Function ABI must be provided');
-  }
   if (!userRequest.gasSettings) {
     throw new Error('Gas settings must be provided');
   }
@@ -556,33 +587,26 @@ async getTxExecutionRequest(userRequest: UserRequest): Promise<TxExecutionReques
 
   const builder = new TxExecutionRequestBuilder();
 
-  // Add the "main" function call
-  builder.addAppFunctionCall(
-    makeFunctionCall(
-      userRequest.functionAbi,
-      userRequest.contractInstance.address,
-      userRequest.args
-  ));
+  for (const call of request.calls) {
+    addMainFunctionCall(builder, call);
+    if (call.deploymentOptions?.registerClass) {
+      addClassRegistration(builder, call);
+    }
+    if (call.deploymentOptions?.publicDeploy) {
+      addPublicDeployment(builder, call);
+    }
+    // if the user is giving us an artifact,
+    // allow the PXE to access it
+    if (call.contractArtifact) {
+      builder.addTransientContract({
+        artifact: call.contractArtifact,
+        instance: call.contractInstance,
+      });
+    }
+  }
 
   // Add stuff needed for setup, e.g. function calls, auth witnesses, etc.
   await userRequest.paymentMethod.adaptTxExecutionRequest(builder, userRequest);
-
-  if (userRequest.deploymentOptions?.registerClass) {
-    addClassRegistration(builder, userRequest);
-  }
-
-  if (userRequest.deploymentOptions?.publicDeploy) {
-    addPublicDeployment(builder, userRequest);
-  }
-
-  // if the user is giving us an artifact,
-  // allow the PXE to access it
-  if (userRequest.contractArtifact) {
-    builder.addTransientContract({
-      artifact: userRequest.contractArtifact,
-      instance: userRequest.contractInstance,
-    });
-  }
 
   // Adapt the request to the entrypoint in use.
   // Since BaseWallet is abstract, this will be implemented by the concrete class.
@@ -597,8 +621,8 @@ async getTxExecutionRequest(userRequest: UserRequest): Promise<TxExecutionReques
 
 ```ts
 // Used by simulate and read
-async #simulateInner(userRequest: UserRequest): ReturnType<Wallet['simulate']> {
-  const txExecutionRequest = await this.getTxExecutionRequest(initRequest);
+async #simulateInner(userRequest: UserRequest): ReturnType<BaseWallet['simulate']> {
+  const txExecutionRequest = await this.getTxExecutionRequest(userRequest);
   const simulatedTx = await this.simulateTx(txExecutionRequest, builder.simulatePublicFunctions, builder.from); 
   const decodedReturn = decodeSimulatedTx(simulatedTx, builder.functionAbi);
   return {
@@ -607,7 +631,7 @@ async #simulateInner(userRequest: UserRequest): ReturnType<Wallet['simulate']> {
     privateOutput: simulatedTx.privateReturnValues,
     executionResult: simulatedTx.executionResult,
     result: decodedReturn,
-    request: initRequest,
+    request: userRequest,
   };
 }
 ```
@@ -632,7 +656,7 @@ async simulate(userRequest: UserRequest): {
 
   const builder = new UserRequestBuilder(userRequest);
 
-  await this.#ensureFunctionAbi(builder);
+  await this.#ensureFunctionAbis(builder);
 
   if (builder.gasSettings) {
     return this.#simulateInner(builder.build());
@@ -653,16 +677,18 @@ async simulate(userRequest: UserRequest): {
   return result;
 }
 
-async #ensureFunctionAbi(builder: UserRequestBuilder): void {
-  // User can call simulate without the artifact if they have the function ABI
-  if (!builder.functionAbi) {
-    // If the user provides the contract artifact, we don't need to ask the PXE
-    if (!builder.contractArtifact) {
-      const contractArtifact = await this.getContractArtifact(builder.contractInstance.contractClassId);
-      builder.setContractArtifact(contractArtifact);
+async #ensureFunctionAbis(builder: UserRequestBuilder): void {
+  for (const call of builder.calls) {
+    // User can call simulate without the artifact if they have the function ABI
+    if (!call.functionAbi) {
+      // If the user provides the contract artifact, we don't need to ask the PXE
+      if (!call.contractArtifact) {
+        const contractArtifact = await this.getContractArtifact(call.contractInstance.contractClassId);
+        call.setContractArtifact(contractArtifact);
+      }
+      const functionAbi = findFunctionAbi(call.contractArtifact, call.functionName);
+      call.setFunctionAbi(functionAbi);
     }
-    const functionAbi = findFunctionAbi(builder.contractArtifact, builder.functionName);
-    builder.setFunctionAbi(functionAbi);
   }
 }
 
@@ -695,7 +721,7 @@ async read(userRequest: UserRequest): DecodedReturn | [] {
     builder.setGasSettings(GasSettings.default());
   }
 
-  await this.#ensureFunctionAbi(builder);
+  await this.#ensureFunctionAbis(builder);
 
   return this.#simulateInner(builder.build());
 }
@@ -710,7 +736,7 @@ async prove(request: UserRequest): Promise<UserRequest> {
     throw new Error('Execution result must be set before proving');
   }
   const builder = new UserRequestBuilder(request);
-  await this.#ensureFunctionAbi(builder);
+  await this.#ensureFunctionAbis(builder);
   const initRequest = builder.build();
   const txExecutionRequest = await this.getTxExecutionRequest(initRequest);
   const provenTx = await this.proveTx(txExecutionRequest, request.executionResult);
@@ -730,7 +756,7 @@ async send(request: UserRequest): Promise<UserRequest> {
     throw new Error('Tx must be proven before sending');
   }
   const builder = new UserRequestBuilder(request);
-  await this.#ensureFunctionAbi(builder);
+  await this.#ensureFunctionAbis(builder);
   const initRequest = builder.build();
   const txExecutionRequest = await this.getTxExecutionRequest();
   const txHash = await this.sendTx(txExecutionRequest, request.tx);
@@ -743,6 +769,8 @@ async send(request: UserRequest): Promise<UserRequest> {
 #### `UserRequest` is a kitchen sink
 
 The `UserRequest` object is a bit of a kitchen sink. It might be better to have a `DeployRequest`, `CallRequest`, etc. that extends `UserRequest`.
+
+Downside here is that the "pipeline" it goes through would be less clear, and components would have to be more aware of the type of request they are dealing with.
 
 #### Just shifting the mutable subclass problem
 
