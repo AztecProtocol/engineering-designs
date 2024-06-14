@@ -764,6 +764,132 @@ async send(request: UserRequest): Promise<UserRequest> {
 }
 ```
 
+### Dapp Funded Transactions
+
+
+#### A `TxExecutionRequestComponent` for the Dapp
+
+```ts
+export class DefaultDappInterface implements AccountInterface {
+  constructor(
+    private completeAddress: CompleteAddress,
+    private userAuthWitnessProvider: AuthWitnessProvider,
+    private dappEntrypointAddress: AztecAddress,
+    private chainId: number = DEFAULT_CHAIN_ID,
+    private version: number = DEFAULT_VERSION,
+  ) {}
+
+  async adaptTxExecutionRequest(
+    builder: TxExecutionRequestBuilder,
+    userRequest: UserRequest
+  ): Promise<void> {
+    if (builder.appFunctionCalls.length !== 1) {
+      throw new Error(`Expected exactly 1 function call, got ${calls.length}`);
+    }
+    if (builder.setupFunctionCalls.length !== 0) {
+      throw new Error(`Expected exactly 0 setup function calls, got ${calls.length}`);
+    }
+    const payload = EntrypointPayload.fromFunctionCalls(builder.appFunctionCalls);
+    const abi = this.getEntrypointAbi();
+
+    const entrypointPackedArgs = PackedValues.fromValues(encodeArguments(abi, [payload, this.completeAddress.address]));
+    const functionSelector = FunctionSelector.fromNameAndParameters(abi.name, abi.parameters);
+
+    const innerHash = computeInnerAuthWitHash([Fr.ZERO, functionSelector.toField(), entrypointPackedArgs.hash]);
+    const outerHash = computeOuterAuthWitHash(
+      this.dappEntrypointAddress,
+      new Fr(this.chainId),
+      new Fr(this.version),
+      innerHash,
+    );
+    const authWitness = await this.userAuthWitnessProvider.createAuthWit(outerHash);
+
+    builder
+      .setOrigin(this.dappEntrypointAddress)
+      .setTxContext({
+        chainId: this.chainId,
+        version: this.version,
+        gasSettings: userRequest.gasSettings,
+      })
+      .setFunctionSelector(functionSelector)
+      .setFirstCallArgsHash(entrypointPackedArgs.hash)
+      .setArgsOfCalls([...payload.packedArguments, entrypointPackedArgs])
+      .addAuthWitness(authWitness);
+
+  }
+
+
+  createAuthWit(messageHash: Fr): Promise<AuthWitness> {
+    return this.authWitnessProvider.createAuthWit(messageHash);
+  }
+
+  getCompleteAddress(): CompleteAddress {
+    return this.completeAddress;
+  }
+
+  getAddress(): AztecAddress {
+    return this.completeAddress.address;
+  }
+
+  getChainId(): Fr {
+    return this.chainId;
+  }
+
+  getVersion(): Fr {
+    return this.version;
+  }
+
+  private getEntrypointAbi() {
+    return {
+      name: 'entrypoint',
+      // ... same as before
+    }
+  }
+
+}
+```
+
+#### Create the wallet as normal
+
+```ts
+export async function getDappWallet(
+  pxe: PXE,
+  accountAddress: AztecAddress,
+  dappAddress: AztecAddress,
+  userAuthWitnessProvider: AuthWitnessProvider,
+): Promise<AccountWallet> {
+  const completeAddress = await pxe.getRegisteredAccount(accountAddress);
+  if (!completeAddress) {
+    throw new Error(`Account ${address} not found`);
+  }
+  const nodeInfo = await pxe.getNodeInfo();
+  const entrypoint = new DefaultDappInterface(completeAddress, userAuthWitnessProvider, dappAddress);
+  return new AccountWallet(pxe, entrypoint);
+}
+
+
+const schnorr = new SchnorrAccountContract(signingPrivateKey);
+const authWitProvider = schnorr.getAuthWitnessProvider();
+const aliceDappWrappedWallet = await getDappWallet(pxe, aliceAddress, dappAddress, userAuthWitnessProvider);
+
+const { request: deployAliceAccountRequest } = await aliceDappWrappedWallet.simulate({
+  calls: [{
+    contractInstance: bananaCoinInstance,
+    functionName: 'transfer',
+    args: { 
+      from: aliceAddress,
+      to: bobAddress,
+      value: privateBalance,
+      nonce: 0n
+    },
+  }],
+  paymentMethod: new NoFeePaymentMethod(),
+})
+
+```
+
+
+
 ### Concerns
 
 #### `UserRequest` is a kitchen sink
