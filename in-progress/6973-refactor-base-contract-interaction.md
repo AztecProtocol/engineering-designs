@@ -320,6 +320,7 @@ export interface SimulationOutput {
   executionResult: ExecutionResult;
   publicOutput: PublicSimulationOutput;
   privateOutput: NestedProcessReturnValues;
+  error?: SimulationError;
 }
 
 export interface UserAPI {
@@ -665,7 +666,7 @@ async simulate(userRequest: UserRequest): {
   // If we're paying, e.g. in bananas, figure out how much AZT that is.
   // Note: paymentMethod.getEquivalentAztBalance() may call `read` internally.
   const equivalentAztBalance = await builder.paymentMethod.getEquivalentAztBalance();
-  gasEstimator = GasEstimator.fromAztBalance(equivalentAztBalance);
+  gasEstimator = new BinarySearchGasEstimator(equivalentAztBalance);
   builder.setGasSettings(gasEstimator.proposeGasSettings());
 
   while (!gasEstimator.isConverged()) {
@@ -889,6 +890,136 @@ const { request: deployAliceAccountRequest } = await aliceDappWrappedWallet.simu
 ```
 
 
+### Gas Estimation
+
+```ts
+
+
+export interface GasEstimator {
+  proposeGasSettings(): GasSettings;
+  isConverged(): boolean;
+  update(simulationOutput: SimulationOutput): void;
+}
+
+interface SearchRatios {
+  daToL2: number;
+  daTearDown: number;
+  l2TearDown: number;
+}
+
+// Finds a balance that is enough to cover the gas costs of the simulation.
+// Marks as converged if the simulation did not run out of gas,
+// or if it is not possible to increase the balance further.
+export class BinarySearchGasEstimator implements GasEstimator {
+  // keep the initial balance
+  // and the ratios of daGas to l2Gas
+  // as well as the ratios to teardownGas
+  private balance: number
+
+  // The upper and lower bounds of the search space.
+  // We start at the midpoint of these bounds.
+  // The search space is the balance, and the ratios of daGas to l2Gas
+  // as well as the ratios to teardownGas.
+  // The goal is to find a balance that is enough to cover the gas costs of the simulation.
+  // Then we can just use the true gas costs for the actual transaction.
+  private upperBounds: SearchRatios;
+  private lowerBounds: SearchRatios;
+  private current: SearchRatios;
+  private mostRecentSimulation?: SimulationOutput;
+  private iterations: number = 0;
+  private maxIterations: number = 10;
+  private epsilon: number = 0.01;
+
+
+
+  constructor(private balance: number) {
+    this.lowerBounds = {
+      daToL2: 0,
+      daTearDown: 0,
+      l2TearDown: 0,
+    };
+    this.upperBounds = {
+      daToL2: 1,
+      daTearDown: 1,
+      l2TearDown: 1,
+    };
+    this.current = {
+      daToL2: .5,
+      daTearDown: .1,
+      l2TearDown: .1,
+    };
+  }
+
+  update(simulationOutput: SimulationOutput): void {
+    // If the simulation ran out of DA gas
+    const oog = simulationOutput.getOutOfGas();
+    if (!oog) {
+      return
+    } else if (oog === 'da') {
+      // increase the balance
+      this.lowerBounds.daToL2 = this.current.daToL2;
+    } else if (oog === 'l2') {
+      // increase the balance
+      this.lowerBounds.daToL2 = this.current.daToL2;
+    } else if (oog === 'da_teardown') {
+      // increase the balance
+      this.lowerBounds.daTearDown = this.current.daTearDown;
+    } else if (oog === 'l2_teardown') {
+      // increase the balance
+      this.lowerBounds.l2TearDown = this.current.l2TearDown;
+    }
+    // update the current balance
+    this.current.daToL2 = (this.lowerBounds.daToL2 + this.upperBounds.daToL2) / 2;
+    this.current.daTearDown = (this.lowerBounds.daTearDown + this.upperBounds.daTearDown) / 2;
+    this.current.l2TearDown = (this.lowerBounds.l2TearDown + this.upperBounds.l2TearDown) / 2;
+  }
+
+  proposeGasSettings(): GasSettings {
+    return GasSettings.from({
+      gasLimits: {
+        daGas: this.balance * this.current.daToL2,
+        l2Gas: this.balance * (1-this.current.daToL2),
+      },
+      teardownGasLimits: {
+        daGas: this.balance * this.current.daToL2 * this.current.daTearDown,
+        l2Gas: this.balance * (1 - this.current.daToL2) * this.current.l2TearDown,
+      },
+      // This should actually be informed somehow
+      maxFeesPerGas: { daGas: 1, l2Gas: 1 },
+      inclusionFee: 0
+    });
+  }
+
+// 
+  isConverged(): boolean {
+    // If the simulation did not run out of gas, we are converged.
+    if (!this.mostRecentSimulation?.getOutOfGas()) {
+      return true;
+    }
+
+    // If we have reached the maximum number of iterations, we are converged.
+    if (this.iterations >= this.maxIterations) {
+      return true;
+    }
+
+    // If the search space is too small, we are converged.
+    if (this.upperBounds.daToL2 - this.lowerBounds.daToL2 < this.epsilon) {
+      return true;
+    }
+    if (this.upperBounds.daTearDown - this.lowerBounds.daTearDown < this.epsilon) {
+      return true;
+    }
+    if (this.upperBounds.l2TearDown - this.lowerBounds.l2TearDown < this.epsilon) {
+      return true;
+    }
+
+    return false;
+
+  }
+
+}
+
+```
 
 ### Concerns
 
