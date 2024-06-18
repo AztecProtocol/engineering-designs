@@ -456,7 +456,7 @@ const addMainFunctionCall: TxExecutionRequestAdapter = (
 Define a helper somewhere as:
 
 ```ts
-const addClassRegistration = (
+const addContractClassRegistration = (
   builder: TxExecutionRequestBuilder, call: UserFunctionCall
 ) => {
   if (!call.contractArtifact) {
@@ -494,7 +494,7 @@ Define a helper somewhere as
 
 ```ts
 
-const addPublicDeployment = (
+const addPublicContractDeployment = (
   builder: TxExecutionRequestBuilder, call: UserFunctionCall
 ) => {
   const { artifact, instance } = getCanonicalInstanceDeployer();
@@ -591,10 +591,10 @@ async getTxExecutionRequest(userRequest: UserRequest): Promise<TxExecutionReques
   for (const call of request.calls) {
     addMainFunctionCall(builder, call);
     if (call.deploymentOptions?.registerClass) {
-      addClassRegistration(builder, call);
+      addContractClassRegistration(builder, call);
     }
     if (call.deploymentOptions?.publicDeploy) {
-      addPublicDeployment(builder, call);
+      addPublicContractDeployment(builder, call);
     }
     // if the user is giving us an artifact,
     // allow the PXE to access it
