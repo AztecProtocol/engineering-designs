@@ -1023,6 +1023,10 @@ export class BinarySearchGasEstimator implements GasEstimator {
 
 ### Concerns
 
+#### Long time to simulate for gas estimation
+
+The binary search proposed in the gas estimation algorithm could add a lot of time needed for simulation. If/when we find this to be the case, we could impose an interface on FPCs to provide more information around how much gas the use of that FPC is going to cost, though the exact mechanism here is a bit unclear. 
+
 #### `UserRequest` is a kitchen sink
 
 The `UserRequest` object is a bit of a kitchen sink. It might be better to have a `DeployRequest`, `CallRequest`, etc. that extends `UserRequest`.
