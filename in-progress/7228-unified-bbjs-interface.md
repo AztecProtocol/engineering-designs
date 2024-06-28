@@ -225,7 +225,7 @@ And are accessible from a `Prover` object that requires the `circuit` and `flavo
 
 ## Bundling
 
-Since it is now bb.js responsibility to install the native bb package, we'd need an `install` script in the `package.json` that mimics `bbup` behaviour and installs the binary that corresponds to the npm package version and current platform, only that it is downloaded local to the package instead of in the user's home.
+Since it is now bb.js responsibility to install the native bb package, we'd need an `install` script (ie script that is automatically triggered when the package is installed) in the bb.js `package.json` that mimics `bbup` behaviour and installs the binary that corresponds to the npm package version and current platform, only that it is downloaded local to the package instead of in the user's home.
 
 ## Change Set
 
@@ -241,3 +241,7 @@ TBD
 
 - Update [Noir documentation](https://noir-lang.org/docs/dev/getting_started/barretenberg/) on how to install bb and prove and verify circuits.
 - :question: Are there public API docs for bb?
+
+## Rejection Reason
+
+We're shifting our goal to having a common interface for WASM and native via IPC in bb itself, not as a wrapper in bb.js. This changes the design so that the API must be granular and stateful, given native invocation will not happen via CLI.
