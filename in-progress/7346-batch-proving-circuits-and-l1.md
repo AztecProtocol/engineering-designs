@@ -1,9 +1,9 @@
-|                      |                                         |
-| -------------------- | --------------------------------------- |
-| Issue                | Batch proving in Circuits and L1        |
-| Owners               | @spalladino                             |
-| Approvers            | @LeilaWang @LHerskind @iAmMichaelConnor |
-| Target Approval Date |                                         |
+|                      |                                                                                                  |
+| -------------------- | ------------------------------------------------------------------------------------------------ |
+| Issue                | [Batch proving in Circuits and L1](https://github.com/AztecProtocol/aztec3-packages/issues/7346) |
+| Owners               | @spalladino                                                                                      |
+| Approvers            | @LeilaWang @LHerskind @iAmMichaelConnor                                                          |
+| Target Approval Date |                                                                                                  |
 
 ## Summary
 
@@ -219,15 +219,19 @@ The `last*` fields are updated every time a new block is uploaded, while the `ve
 Today the `process` method does the following:
 
 1. Validate the new block header
-2. Check data availability against the availability oracle
-3. Update the `lastArchiveTreeRoot` and `lastBlockTimestamp` in the contract storage
-4. Consume L1-to-L2 messages from the Inbox
-5. Emit an `L2BlockProcessed` event with the block number
+2. Update the `lastArchiveTreeRoot` and `lastBlockTimestamp` in the contract storage
+3. Consume L1-to-L2 messages from the Inbox
+4. Emit an `L2BlockProcessed` event with the block number
+5. Test data availability against the availability oracle
 6. Verify the root rollup proof
 7. Insert L2-to-L1 messages into the Outbox using the `out_hash` and block number
 8. Pay out `total_fees` to `coinbase` in the L1 gas token
 
-The first five items can keep being carried out by the `process` method for each new block that gets submitted. Proof verification, L2-to-L1 messages, and fee payment messages are moved to `submitProof`.
+The first four items can keep being carried out by the `process` method for each new block that gets submitted. Proof verification, L2-to-L1 messages, and fee payment messages are moved to `submitProof`. Data availability needs more clarity based the interaction between the blob circuits and the point evaluation precompile, but it may be moved entirely to `submitProof`.
+
+As for consuming L1-to-L2 messages, note that these cannot be fully deleted from the Inbox, since we need to be able to rollback unproven blocks in the event of a missing proof, which requires being able to consume those messages again on the new chain.
+
+Last, we should rename `process` to something more descriptive, such as `submitBlock`.
 
 ### Submit proof
 
