@@ -92,7 +92,7 @@ struct RootRollupPublicInputs {
 
 ### New rollup structure
 
-We propose changing the current rollup structure introducing two new circuits, a **block root rollup** and a **merge block rollup** circuit. The block root rollup circuit acts exactly the same as today's root rollup, grouping multiple base rollup into a tree via merge rollups until it produces a block. The merge block rollup circuits would then merge multiple blocks into a tree, until it reaches a new root rollup that proves a block range.
+We propose changing the current rollup structure introducing two new circuits, a **block root rollup** and a **block merge rollup** circuit. The block root rollup circuit acts exactly the same as today's root rollup, grouping multiple base rollup into a tree via merge rollups until it produces a block. The block merge rollup circuits would then merge multiple blocks into a tree, until it reaches a new root rollup that proves a block range.
 
 The tree levels, from top to bottom, would then be:
 
