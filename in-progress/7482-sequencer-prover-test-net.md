@@ -32,16 +32,13 @@ Note that there is no integration with the execution environment required: the b
 
 ## Introduction
 
-There is a belief held in Aztec Labs that users will demand an experience with state updates at least every 30 seconds; our current network does not support this demand: each block must be proven before it can be added to the chain.
-
-This design as drawn from recent thoughts on how we might support such a UX while maintaining a decentralized sequencer set, and we introduce several novel ideas that will allow us to build a minimally viable network within a compressed timeline.
+This design draws heavily from recent thoughts on how we might support a UX with fast state updates while maintaining a decentralized sequencer set; we introduce new ideas that will allow us to build a minimally viable network within a compressed timeline.
 
 We recognize that there may be aspects of this design that we may wish to change in the future, but we believe that:
 
-1. The design is viable.
-2. The design can be implemented in the prescribed timeline.
-3. The design is flexible enough to support future changes.
-4. Collecting feedback as soon as possible from real users within the above constraints is the best way to iterate on the design.
+1. The design meets the requirements and can be implemented in the prescribed timeline.
+2. The design is flexible enough to support future changes.
+3. The best way to iterate is through measurement and feedback from users in the wild.
 
 ### Definitions
 
@@ -62,9 +59,9 @@ A vote on the head on the chain.
 
 ### Multiple Chains
 
-We will explicitly support multiple chains. Specifically, there are 4 to acknowledge:
+We will explicitly support multiple concurrent "chains":
 
-- "Pending Chain" - Blocks of transactions will be published at least every 30 seconds. None of the data on this chain need be on L1.
+- "Pending Chain" - Blocks of transactions within an L2 consensus network. None of the data on this chain need be on L1.
 - "Assured Chain" - Reflects blocks published to L1, but not yet been proven.
 - "Proven Chain" - Reflects blocks that have had their state diffs and proof published and verified on L1.
 - "Finalized Chain" - Reflects blocks in the "Proven Chain" that have been finalized on L1 (Casper).
@@ -85,11 +82,13 @@ We refer to this as falling back to "based sequencing".
 
 In such a circumstance, the Pending and Assured Chains will be truncated to the last block in the Proven Chain.
 
+However, this outlines the fact that the Pending Chain is not strictly necessary for liveness, and is more of a UX feature or optimization.
+
 ### Pending Chain Consensus
 
 Apart from the "based sequencing" case, in order to add a block to the Pending Chain, the proposer must submit proof that the committee has reached consensus on the block.
 
-We will use CometBFT to facilitate this consensus.
+We will initially explore CometBFT to facilitate this consensus.
 
 ### Top-Level Governance
 
