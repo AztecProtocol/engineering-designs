@@ -26,9 +26,11 @@ The requirements we have designed against are as follows:
 - do not require a hard fork to take advantage of most software updates
 - have a design that can support forced inclusions in the future
 - have a CI/CD framework to easily deploy the network in different configurations for modeling, stress and regression tests
+- a governance mechanism to support upgrades and integration with execution environment
+- demonstrate building of full, proven rollup blocks on L1
 - demonstrate an operational network with all the above requirements satisfied on/before 2024-09-16
 
-Note that there is no integration with the execution environment required: the blocks submitted to the TestNet my be meaningless/empty.
+Note that there is no integration with the execution environment required: the blocks submitted to the TestNet my be meaningless.
 
 ## Introduction
 
@@ -88,7 +90,7 @@ However, this outlines the fact that the Pending Chain is not strictly necessary
 
 Apart from the "based sequencing" case, in order to add a block to the Pending Chain, the proposer must submit proof that the committee has reached consensus on the block.
 
-We will initially explore CometBFT to facilitate this consensus.
+We will explore whether integrating with CometBFT or modifying our existing networking stack.
 
 ### Top-Level Governance
 
