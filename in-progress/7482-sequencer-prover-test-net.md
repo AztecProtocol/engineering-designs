@@ -1,4 +1,4 @@
-# Sequencer/Prover TestNet
+# SPRTN v1.0.0 Design and Implementation Plan 
 
 |                      |                                                                                         |
 | -------------------- | --------------------------------------------------------------------------------------- |
@@ -9,40 +9,47 @@
 
 ## Executive Summary
 
-This is a design and implementation plan for a minimally viable Sequencer/Prover TestNet (SPTN).
+This design and implementation plan describes version 1.0.0 of a Sequencer/Prover TestNet (SPRTN, pronounced "Spartan") that will be operational on/before 2024-09-16.
 
-The requirements we have designed against are as follows:
+We consider delivery of this network to be an engineering milestone; it remains to be seen if/how the network will be:
+- communicated to the public
+- used by developers
 
-- have a "pending chain" with state updates at least every 30s
-- have a design that can support 10 TPS
-- have a quantifiable guarantee on the "pending chain" at the time a block is added such that:
-  - app developers and users can rely on the pending chain state for UX
-  - "proposers" can build ahead on the "pending chain"
-- preserve pseudo-anonymity of "proposers"
-- be able to select/rotate the set of "proposers"
-- have a mechanism to incentivize "proposers" to participate in the "pending chain"
-- have a mechanism to punish "proposers" for misbehaving
-- do not depend on the "pending chain" for liveness
-- do not require a hard fork to take advantage of most software updates
-- have a design that can support forced inclusions in the future
-- have a CI/CD framework to easily deploy the network in different configurations for modeling, stress and regression tests
-- a governance mechanism to support upgrades and integration with execution environment
-- demonstrate building of full, proven rollup blocks on L1
-- demonstrate an operational network with all the above requirements satisfied on/before 2024-09-16
+We have designed against a subset of the requirements for MainNet; those with checkmarks are part of this milestone:
 
-Note that there is no integration with the execution environment required: the blocks submitted to the TestNet my be meaningless.
+- [x] have a "pending chain" with state updates at least every 30s
+- [x] have a design that can support 10 TPS
+- [x] "proposers" can build ahead on the "pending chain"
+- [x] app developers and users can rely on the pending chain state for UX
+- [x] have a mechanism to incentivize "proposers" to participate in the "pending chain"
+- [x] have a design that can support forced inclusions in the future
+- [x] have a CI/CD framework to easily deploy the network in different configurations for modeling, stress and regression tests
+- [x] demonstrate building of full, proven rollup blocks on L1
+- [ ] a governance mechanism to support upgrades and integration with execution environment
+- [ ] be able to select/rotate the set of "proposers" permissionlessly
+- [ ] have an enshrined mechanism to punish "proposers" for misbehaving, and a quantifiable guarantee of the punishment
+- [ ] support forced inclusions
+- [ ] do not depend on the "pending chain" for liveness
+- [ ] do not require a hard fork to take advantage of most software updates
+- [ ] integrated with the execution environment
+
+Thus, SPRTN v1.0.0 is effectively a stepping stone toward MainNet.
+
+In a sense, part of SPRTN v1.0.0 is a subset of [Option B-](https://hackmd.io/B1Ae2zp6QxaSDOQgdFKJkQ#Option-B-), with key differences:
+- the validator set is small and defined by an Aztec Labs multisig (no PoS)
+- all validators re-execute transactions
+- TxEffects are committed to DA as opposed to TxObjects
+- no built-in slashing
+- no forced inclusions
+- no fallback to direct L1 sequencing (i.e. based sequencing)
+
+**However, as stated, our design and implementation will be forward-compatible with the remaining MainNet requirements, and subsequent milestones will satisfy requirements based on their priority.**
 
 ## Introduction
 
-This design draws heavily from recent thoughts on how we might support a UX with fast state updates while maintaining a decentralized sequencer set; we introduce new ideas that will allow us to build a minimally viable network within a compressed timeline.
+We now introduce the broad design of the SPRTN v1.0.0.
 
-We recognize that there may be aspects of this design that we may wish to change in the future, but we believe that:
-
-1. The design meets the requirements and can be implemented in the prescribed timeline.
-2. The design is flexible enough to support future changes.
-3. The best way to iterate is through measurement and feedback from users in the wild.
-
-### Definitions
+### SPRTN v1.0.0 Definitions
 
 **Validator**
 A node that is participating in consensus by producing blocks and attesting to blocks
@@ -59,123 +66,146 @@ A list of validators to propose/attest blocks for an epoch. The committee is sta
 **Attestation**
 A vote on the head on the chain.
 
-### Multiple Chains
+**Confirmed**
+Of a block, if it is included in a chain.
+
+**Confirmation Rules**
+Of a chain, the set of conditions that must be met for a block to be considered confirmed.
+
+**Proof Coordinator**
+The final proposer in an epoch, responsible for submitting the proof of the epoch.
+
+### SPRTN v1.0.0 Chains
 
 We will explicitly support multiple concurrent "chains":
 
-- "Pending Chain" - Blocks of transactions within an L2 consensus network. None of the data on this chain need be on L1.
-- "Assured Chain" - Reflects blocks published to L1, but not yet been proven.
-- "Proven Chain" - Reflects blocks that have had their state diffs and proof published and verified on L1.
+- "Pending Chain" - Reflects blocks published to L1 with their state diffs, but not yet been proven.
+- "Proven Chain" - Reflects blocks that have had their proof published and verified on L1.
 - "Finalized Chain" - Reflects blocks in the "Proven Chain" that have been finalized on L1 (Casper).
 
-The Finalized Chain is a prefix of the Proven Chain, which is a prefix of the Assured Chain, which is a prefix of the Pending Chain.
+The Finalized Chain is a prefix of the Proven Chain, which is a prefix of the Pending Chain.
 
 Note: we do not need to "do" anything for the Finalized Chain, but it is relevant to users.
 
 E.g., a front-end with low-value transactions may display the Pending Chain, but a DEX bridge might wait to release funds until the transaction is in the Finalized Chain.
 
-### Committee and Timeliness
+In SPRTN v1.0.0 the committee will solely be responsible for building the Pending and Proven Chains.
 
-The committee will generally be responsible for building all chains (except the Finalized Chain).
+### SPRTN v1.0.0 Sequencer Selection
 
-If for some reason the committee is unable to build chains within a specified time, the network will preserve liveness by allowing anyone to build on the Proven Chain.
+At the beginning of each epoch, the committee will be selected by shuffling the validator set, and round-robining over them.
 
-We refer to this as falling back to "based sequencing". 
+Each validator will be assigned a slot in the epoch, and will be responsible for proposing a block in that slot.
 
-In such a circumstance, the Pending and Assured Chains will be truncated to the last block in the Proven Chain.
+The exact number of sequencers will be determined via stress tests, modeling, and feedback from the community.
 
-However, this outlines the fact that the Pending Chain is not strictly necessary for liveness, and is more of a UX feature or optimization.
+Part of the deliverable for this milestone will be an analysis of network performance based on the sequencer set size.
 
-### Pending Chain Consensus
+### SPRTN v1.0.0 Incentives
 
-Apart from the "based sequencing" case, in order to add a block to the Pending Chain, the proposer must submit proof that the committee has reached consensus on the block.
-
-We will explore whether integrating with CometBFT or modifying our existing networking stack.
-
-### Top-Level Governance
-
-We will have a "top-level" governance ("TLG") contract on L1. This TLG contract will be the minter of the AZT token on L1.
-
-We will deploy a suite of contracts to L1 (a "deployment"), which corresponds to the SPTN.
-
-A proposal will be sent to the TLG requesting that it fund the SPTN, which will be voted on by AZT holders.
-
-### SPTN Governance
-
-The SPTN will have its own governance contract.
-
-This will specify an L1 account that is able to add or remove sequencers. In this respect, the sequencer selection algorithm is a flavor of "proof of governance" (PoG).
-
-Initially, this account will be a contract owned Aztec Labs.
-
-Sequencers will be required to stake AZT within the SPTN governance contract.
-
-### Possible MainNet Governance
-
-The deployment for MainNet could be governed by the TLG instead of a contract owned by Aztec Labs.
-
-Any user with sufficient AZT can make proposals to the TLG to add or remove sequencers within MainNet.
-
-Candidates for sequencers will be required to stake AZT.
-
-Voting power on proposals will to the TLG be based on the amount of AZT held on L1.
-
-### Sequencer Set Size
-
-A flavor of the [scalability trilemma](https://eth2book.info/capella/part2/incentives/staking/#stake-size) is that we must balance among:
-- the number of sequencers
-- the time it takes to reach consensus
-- the cost of reaching consensus
-
-We have chosen to optimize for low cost and fast consensus. The exact number of sequencers will be determined via stress tests, modeling, and feedback from the community.
-
-### Why PoG and not PoS?
-
-For an L2 with a decentralized sequencer set, we believe that PoG is superior to PoS for the following reasons:
-
-1. PoG reduces complexity (simpler sequencer selection, slashing, pricing, proving coordination, etc.)
-2. Reduced complexity means lower costs for users
-3. PoG can meet our decentralization goals
-4. If we support upgrades, we can always switch to PoS in the future 
-5. If we support upgrades, we can always switch to PoG in the future
-   - so why not start with PoG, since governance already has implicit control over the sequencer set via upgrades?
-
-See [this talk](https://www.youtube.com/watch?v=toPd1vgHjVE) for more on PoG.
-
-### PoG Incentives and Slashing
-
-Different deployments can have different incentives and punishments.
-
-For the SPTN, we will create a simple incentives contract within the deployment:
-- Whenever a block is added to the Assured Chain, the proposer will receive a reward.
+For SPRTN v1.0.0, we will create a simple incentives contract within the deployment:
+- Whenever a block is added to the Pending Chain, the proposer will receive a reward.
 - Whenever a block is added to the Proven Chain, the proposer will receive a reward.
 
-We will need to add timeout parameters to allow other committee members to build on the Assured/Proven Chain if the proposer is unresponsive.
+### The SPRTN v1.0.0 Pending Chain
 
-If a block is added to the Assured Chain that is not in the Proven Chain (or any other bad outcome occurs), a proposal can be made to aggressively slash (e.g. 100%) and kick a large portion (e.g. 100%) of the committee. Note that this can stand in for a large "prover bond".
 
-The ability to have the community vote on slashing/kicking affords flexibility; perhaps the blame can be placed on a single committee member, or perhaps extenuating circumstances can be considered.
+#### Overview
 
-Another area where flexible slashing over a relatively small committee is useful is in the case of pricing transactions. We can allow proposers to name their own `fee_per_da/l2_gas` based on prevailing market rates; if a proposer consistently overprices transactions, the community can vote to slash/kick them, but **allowing the proposer set their own price greatly reduces the complexity of our in-protocol fee market**.
+```mermaid
+sequenceDiagram
+    participant PXE as PXE
+    participant L2N as L2 Node
+    participant MP as L2 P2P
+    participant P as L2 Proposer
+    participant V as L2 Validator
+    participant L1R as L1 Rollup Contracts
 
-#### Quantifiable Guarantees
+    P->>L1R: Watches for new L2PendingBlockProcessed events
+    P->>L1R: Download TxEffects
+    P->>P: Apply TxEffects to world state
+    PXE->>L2N: Submit TxObject+Proof
+    L2N->>MP: Add TxObject+Proof
+    MP->>P: Broadcast TxObjects+Proofs
+    MP->>V: Broadcast TxObjects+Proofs
+    P->>P: Execute TxObjects, construct L2 block header
+    P->>MP: Propose TxHashes and L2 block header for a slot 
+    MP->>V: Broadcast proposal
+    V->>V: Execute corresponding TxObjects, construct/compare header
+    V->>MP: Signed proposal (if correct)
+    MP->>P: Aggregate signatures
+    P->>L1R: Submit L2 block header to L1 DA Oracle
+    P->>L1R: Submit TxEffects to L1 DA Oracle
+    P->>L1R: Add L2 block to Pending Chain
+    L1R->>L1R: Check signatures, verify correct proposer, verify header/TxEffects available
+    L1R->>L1R: Add L2 block to Pending Chain, emit L2PendingBlockProcessed
+```
 
-For example, if we went with a committee of size 37, and demanded that committee members stake $1M, suppose have a watcher that automatically proposes to slash/kick the committee. If the float of AZT is $1B, the committee would only control 3.7% of the float. Suppose that we only require a 15% participation in the vote to slash/kick, and a 60% majority to pass. Suppose that all committee members vote against the proposal, and we have 963 other AZT holders only vote 15% of the time, and of those that do vote, 90% vote to slash/kick. 
+#### Confirmation Rules
 
-The probability that an arbitrary AZT holder:
-- votes to slash/kick is .15 * .9 * (1 - .037) = .13
-- votes against slash/kick is .15 * .1 * (1 - .037) + .037 = .0514
-- doesn't vote is .85 * (1 - .037) = .81855
+A proposer may submit a block B to the rollup contract on L1 for inclusion in the Pending Chain.
 
-Monte carlo simulations show that the probability that the committee is slashed/kicked in this scenario is 99.6%, so the effective bond is 37 * $1M * .996 = $36.996M.
+The rollup contract will verify that:
 
-The actual parameters required to ensure a high value bond at MainNet will require observation of the network in practice; this is just an illustrative example.
+- B is building on the tip of the Pending Chain:
+  - The block number of B is one greater than the block number of the tip of the Pending Chain.
+  - The slot of B is larger than the slot of the tip of the Pending Chain.
+  - The slot of B is in the past
+- B is submitted by the correct proposer for the slot.
+- B contains proof it has signatures from 2/3 + 1 of the committee members attesting to the block.
+- B's header has been made available on L1
+- B's constituent TxEffects have been made available on L1
 
-### The Proven Chain
+After this, the block is confirmed in the Pending Chain.
 
-In order to add a block to the Proven Chain, the block submitter must submit a proof that the block is valid; how they obtain this proof is up to them. We will provide a design for a prover marketplace in the future.
+### The SPRTN v1.0.0 Proven Chain
 
-As a side note, we believe that it will be easier to coordinate proving among a small PoG committee than among a large PoS committee, adding further benefits to users in the form of faster, cheaper updates to the Proven Chain.
+#### Overview
+
+It is the responsibility of the final proposer in an epoch to submit the proof of the epoch.
+
+```mermaid
+sequenceDiagram
+    participant P as L2 Proposer
+    participant MP as L2 P2P
+    participant PC as L2 Proof Coordinator
+    participant PM as L2 Prover Client
+    participant L1R as L1 Rollup Contracts
+
+    P->>MP: Propose TxHashes and L2 block header for a slot 
+    MP->>PC: Broadcast proposal
+    PC->>PC: Execute corresponding TxObjects, cache ProofRequests
+    PC->>L1R: Watches for new L2PendingBlockProcessed events
+    PC->>L1R: Download TxEffects
+    PC->>PM: Submit corresponding ProofRequests for pending block
+    PM->>PC: Proof of block
+    PC->>PC: Cache proof
+    Note over PC,PM: After epoch
+    PC->>PM: Submit proof requests for epoch
+    PM->>PC: Proof of epoch
+    PC->>L1R: Submit proof of epoch blocks to L1 DA Oracle
+    L1R->>L1R: Check signatures, verify blocks in Pending Chain, verify proof
+    L1R->>L1R: Add L2 block to Proven Chain, emit L2ProvenBlockProcessed
+```
+
+#### Confirmation Rules
+
+A node may submit a transaction to the rollup contract on L1 to add blocks from the Pending Chain to the Proven Chain.
+
+The rollup contract will verify that:
+
+- The transaction is submitted by the correct proposer.
+- The specified blocks are in the Pending Chain
+- A proof of the block's correctness has been verified on L1.
+
+After this, all blocks in the epoch are confirmed in the Proven Chain.
+
+### SPRTN v1.0.0 Governance
+
+The SPRTN will have its own governance contract.
+
+Version 1.0.0 will specify an L1 account owner by Aztec Labs that is able to add or remove sequencers. 
+
 
 ## Interface
 
