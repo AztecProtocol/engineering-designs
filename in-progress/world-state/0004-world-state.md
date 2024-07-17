@@ -29,8 +29,8 @@ In order to understand the changes being presented in this design, it is necessa
 
 Every tree instance is represented by 3 stores of state,
 
-1. Committed state - the latest value of every populated node in the tree, structured to enable fast random access. This state is persisted.
-2. Uncommitted state - an in-memory cache of updated nodes overlaying the committed store.
+1. Committed state - the latest value of every populated node in the tree, structured to enable fast random access. This state is persisted as a key/value store of node index to value.
+2. Uncommitted state - an in-memory cache of updated nodes overlaying the committed store also referenced by node index.
 3. Snapshotted state - the historical values of every populated node, structured to minimize space consumption at the expense of node retrieval speed. Reading this tree requires 'walking' down from the root at a given block number.
 
 The idea behind this structure is that sequencers are the only actor interested in uncommitted state. It represents the state of their pending block and they update the uncommitted state as part of building that block. Once a block has been published to L1, its state is committed and the uncommmitted state is destroyed. After each block is committed, the historical tree is traversed in a BFS manner checking for differences in each node. If a node is the same as previously, the search does not continue to its children. Modified nodes are updated in the snapshot tree.
@@ -77,7 +77,7 @@ The following illustrates this concept with an epoch length of 4 blocks:
 
 The reasoning behind this structure is:
 
-1. A single image at a given block should be very fast to construct. It is merely a copy of the accumulated change database for the block number before it with the further updates applied over the top.
+1. A single image at a given block should be very fast to construct. If the image already exists in the world state then we can simply copy the change database to a new image. Otherwise we take a copy of the change database for the block number before it with the further block updates applied over the top.
 2. It is assumed that taking a copy of the state changes of the previous block image is overall more efficient than somehow referencing all previous block images using a copy-on-write system (or similar). Accepting the obvious increase in resource usage.
 3. The block updates cache could be either in memory or persisted in a database. Based on the configuration of the node and what it is used for.
 4. The 'view' of the world state provided by an image is exactly as it was for that block, meaning historic state requests can be served against blocks on the pending chain.
