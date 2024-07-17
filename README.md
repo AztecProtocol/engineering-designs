@@ -121,6 +121,7 @@ Fill in bullets for each area that will be affected by this change.
 - [ ] Public Kernel Circuits
 - [ ] Rollup Circuits
 - [ ] Aztec.nr
+- [ ] Aztec.js
 - [ ] Noir
 - [ ] AVM
 - [ ] Sequencer
