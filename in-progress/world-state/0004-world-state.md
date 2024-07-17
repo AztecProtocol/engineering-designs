@@ -144,7 +144,7 @@ The 3 states of a node are illustrated by nodes 1, 2 and 3 in the above diagram.
 We can now determine the value of any node in the tree at any block height:
 
 ``` c++
-fr getNodeValue(uintt_32 level, index_t index, uint32_t blockHeight) {
+fr getNodeValue(uint32_t level, index_t index, uint32_t blockHeight) {
   // calculates the node state as above based on the stored index of tree sizes
   State nodeState = getNodeState(level, index, blockheight);
 
