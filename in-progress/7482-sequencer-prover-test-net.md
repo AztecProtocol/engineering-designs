@@ -25,10 +25,11 @@ We have designed against a subset of the requirements for MainNet; those with ch
 - [x] have a design that can support forced inclusions in the future
 - [x] have a CI/CD framework to easily deploy the network in different configurations for modeling, stress and regression tests
 - [x] demonstrate building of full, proven rollup blocks on L1
-- [ ] a governance mechanism to support upgrades and integration with execution environment
-- [ ] be able to select/rotate the set of "proposers" permissionlessly
-- [ ] have an enshrined mechanism to punish "proposers" for misbehaving, and a quantifiable guarantee of the punishment
+- [x] have a design that can support forced inclusions
 - [ ] support forced inclusions
+- [ ] be able to select/rotate the set of "proposers" permissionlessly
+- [ ] a governance mechanism to support upgrades and integration with execution environment
+- [ ] have an enshrined mechanism to punish "proposers" for misbehaving, and a quantifiable guarantee of the punishment
 - [ ] do not depend on the "pending chain" for liveness
 - [ ] do not require a hard fork to take advantage of most software updates
 - [ ] integrated with the execution environment
@@ -184,8 +185,8 @@ sequenceDiagram
     Note over PC,PM: After epoch
     PC->>PM: Submit proof requests for epoch
     PM->>PC: Proof of epoch
-    PC->>L1R: Submit proof of epoch blocks to L1 DA Oracle
-    L1R->>L1R: Check signatures, verify blocks in Pending Chain, verify proof
+    PC->>L1R: Submit proof of epoch to advance Proven Chain
+    L1R->>L1R: Verify blocks in Pending Chain, verify proof
     L1R->>L1R: Add L2 block to Proven Chain, emit L2ProvenBlockProcessed
 ```
 
@@ -243,6 +244,10 @@ Outline what unit and e2e tests will be written. Describe the logic they cover a
 ## Documentation Plan
 
 Identify changes or additions to the user documentation or protocol spec.
+
+## Suggested Immediate Next Steps
+
+- Publish TxObjects instead of TxEffects to the Pending Chain
 
 ## Rejection Reason
 
