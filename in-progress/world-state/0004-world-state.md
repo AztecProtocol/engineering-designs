@@ -121,7 +121,7 @@ This results in a node being protected from deletion if it has an **explicit** r
 We now add block 4, which updates leaf 0 again. Whilst this might not be likely in practice it demonstrates how we correctly maintain the required set of historical nodes to provide a view of the tree at each block. Some things to note as we inserted block 4 and removed block 2.
 
 1. All nodes added during block 2 have been deleted as all of their reference counts are now 0.
-2. The nodes added during block 1 and were referenced, either explicitly or implicitly by block 2 have now been deleted.
+2. The nodes added during block 1 and were referenced, either explicitly or implicitly by only block 2 have now been deleted.
 3. When block 4 is added the reference count for leaf at index 1 temporarily increases to 3, before being reduced to 2 by the pruning of block 2.
 5. The leaf at index 1 is protected from deletion as it is explicitly referenced by both snapshots 3 and 4, hence the final reference count of 2.
 
