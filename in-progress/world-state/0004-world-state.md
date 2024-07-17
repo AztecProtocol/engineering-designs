@@ -156,6 +156,7 @@ fr getNodeValue(uint32_t level, index_t index, uint32_t blockHeight) {
     return getCurrentNodeValue(level, index);
   } else {
     // we recurse through each child. each one is guaranteed to enter one of the above conditions at some point
+    // because a leaf can only be empty or full
     fr left = getNodeValue(level + 1, (index * 2) - 1);
     fr right = getNodeValue(level + 1, (index * 2));
     return computeNode(left, right);
