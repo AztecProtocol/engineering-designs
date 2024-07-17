@@ -77,7 +77,7 @@ The following illustrates this concept with an epoch length of 4 blocks:
 
 The reasoning behind this structure is:
 
-1. A single image at a given block should be very fast to construct. It is merely a copy of the accumulated change database for the block number before it.
+1. A single image at a given block should be very fast to construct. It is merely a copy of the accumulated change database for the block number before it with the further updates applied over the top.
 2. It is assumed that taking a copy of the state changes of the previous block image is overall more efficient than somehow referencing all previous block images using a copy-on-write system (or similar). Accepting the obvious increase in resource usage.
 3. The block updates cache could be either in memory or persisted in a database. Based on the configuration of the node and what it is used for.
 4. The 'view' of the world state provided by an image is exactly as it was for that block, meaning historic state requests can be served against blocks on the pending chain.
