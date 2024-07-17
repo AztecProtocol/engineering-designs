@@ -137,7 +137,7 @@ We are going to exploit a property of the append only tree that sub-trees become
 
 The 3 states of a node are illustrated by nodes 1, 2 and 3 in the above diagram. At block 2:
 
-1. Node 1 is full, its sub-tree is complete and we can easily calculate this by computing the index of the right-most leaf of its sub-tree.
+1. Node 1 is full, its sub-tree is complete and we can easily calculate this by computing the index of the right-most leaf of its sub-tree and confirming it to be <= the tree size after block 2.
 2. Node 2 is partially full. Again we can calculate that its left most leaf index is <= the tree size at block 2 and its right most leaf index is > tree size at block 2.
 3. Node 3 is empty, its left most leaf index is > the tree size at block 2.
 
@@ -163,7 +163,7 @@ fr getNodeValue(uintt_32 level, index_t index, uint32_t blockHeight) {
 } 
 ```
 
-Now that we have a way of computing the value of any node at any previous block height we can server requests for historic state directly from the `current` state. We are swapping a significant reduction in storage for an increase in compute to regenerate point-in-time state. This trade-off seems benficial however now that the underlying native merkle tree design affords us the ability to perform these operations concurrently across multiple cores.
+Now that we have a way of computing the value of any node at any previous block height we can serve requests for historic state directly from the `current` state. We are swapping a significant reduction in storage for an increase in compute to regenerate point-in-time state. This trade-off seems benficial however now that the underlying native merkle tree design affords us the ability to perform these operations concurrently across multiple cores.
 
 ## Change Set
 
