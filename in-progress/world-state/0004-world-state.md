@@ -114,7 +114,7 @@ We now have sufficient information to prune snapshots beyond a configured histor
 2. If the count is now 0, remove the node and move onto the node's children.
 3. For each child, goto step 1.
 
-This results in a node being protected from deletion if it has an **explicit** reference count **or** it has an implicit reference count through its parent. The following diagram illustrates this process and shows the modified reference count values leading to the top 2 nodes of snapshot 1 being deleted as no longer referenced (marked as red). Node 0x6195 has its reference count reduced from 2 to 1 and no further traversal takes place down this branch of the tree, protecting that node and its children from deletion.
+This results in a node being protected from deletion if it has an **explicit** reference count **or** an **implicit** reference count through its parent. The following diagram illustrates this process and shows the modified reference count values leading to the top 2 nodes of snapshot 1 being deleted as no longer referenced (marked as red). Node 0x6195 has its reference count reduced from 2 to 1 and no further traversal takes place down this branch of the tree, protecting that node and its children from deletion.
 
 ![first prune](./first-prune.png)
 
