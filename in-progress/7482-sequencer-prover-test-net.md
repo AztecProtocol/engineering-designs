@@ -22,7 +22,6 @@ We have designed against a subset of the requirements for MainNet; those with ch
 - [x] "proposers" can build ahead on the "pending chain"
 - [x] app developers and users can rely on the pending chain state for UX
 - [x] have a mechanism to incentivize "proposers" to participate in the "pending chain"
-- [x] have a design that can support forced inclusions in the future
 - [x] have a CI/CD framework to easily deploy the network in different configurations for modeling, stress and regression tests
 - [x] demonstrate building of full, proven rollup blocks on L1
 - [x] have a design that can support forced inclusions
