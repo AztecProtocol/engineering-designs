@@ -39,7 +39,7 @@ Clients only read committed or snapshotted state, they have no need to read unco
 
 ![image](./current-tree-state-structure.png)
 
-This structure however only facilitates the rolling back of the block currently being built, should that block become invalid for example. The committed state offers no ability to revert to any prior state.
+This structure only facilitates the rolling back of the block currently being built, should that block become invalid for example. The committed state offers no ability to revert to any prior state.
 
 ### Snapshot Tree Structure
 
