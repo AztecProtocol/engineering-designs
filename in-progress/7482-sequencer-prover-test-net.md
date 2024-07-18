@@ -27,6 +27,7 @@ We have designed against a subset of the requirements for MainNet; those with ch
 - [x] have a design that can support forced inclusions
 - [ ] support forced inclusions
 - [ ] be able to select/rotate the set of "proposers" permissionlessly
+- [ ] allow permissionless participation from "provers"
 - [ ] a governance mechanism to support upgrades and integration with execution environment
 - [ ] have an enshrined mechanism to punish "proposers" for misbehaving, and a quantifiable guarantee of the punishment
 - [ ] do not depend on the "pending chain" for liveness
@@ -57,6 +58,9 @@ We now introduce the broad design of the SPRTN v1.0.0.
 **Validator**
 A node that is participating in consensus by producing blocks and attesting to blocks
 
+**Prover**
+A node that is responsible for generating proofs for blocks/epochs.
+
 **Slot**
 Time is divided into fixed length slots. Within each slot, exactly one validator is selected to propose a block. A slot might be empty if no block is proposed. Sometimes the validator selected to propose is called proposer or sequencer
 
@@ -75,8 +79,6 @@ Of a block, if it is included in a chain.
 **Confirmation Rules**
 Of a chain, the set of conditions that must be met for a block to be considered confirmed.
 
-**Proof Coordinator**
-The final proposer in an epoch, responsible for submitting the proof of the epoch.
 
 ### SPRTN v1.0.0 Chains
 
@@ -98,11 +100,19 @@ In SPRTN v1.0.0 the committee will solely be responsible for building the Pendin
 
 At the beginning of each epoch, the committee will be selected by shuffling the validator set, and round-robining over them.
 
+The validator set will be selected by the multisig.
+
 Each validator will be assigned a slot in the epoch, and will be responsible for proposing a block in that slot.
 
 The exact number of sequencers will be determined via stress tests, modeling, and feedback from the community.
 
 Part of the deliverable for this milestone will be an analysis of network performance based on the sequencer set size.
+
+### SPRTN v1.0.0 Prover Selection
+
+At the beginning of each epoch, a single prover will be selected to generate proofs for the blocks in the epoch.
+
+The list of available provers will be determined by the multisig.
 
 ### SPRTN v1.0.0 Incentives
 
@@ -171,20 +181,19 @@ It is the responsibility of the final proposer in an epoch to submit the proof o
 sequenceDiagram
     participant P as L2 Proposer
     participant MP as L2 P2P
-    participant PC as L2 Proof Coordinator
     participant PN as L2 Prover Node
     participant L1R as L1 Rollup Contracts
 
-    PC->>PN: startEpoch
+    PN->>PN: startEpoch
     P->>MP: Propose TxHashes and L2 block header for a slot 
-    MP->>PC: Broadcast proposal
-    PC->>PC: Execute corresponding TxObjects, cache ProofRequests
-    PC->>L1R: Watches for new L2PendingBlockProcessed events
-    PC->>L1R: Download TxEffects
-    PC->>PN: Submit corresponding ProofRequests for pending block
+    MP->>PN: Broadcast proposal
+    PN->>PN: Execute corresponding TxObjects, cache ProofRequests
+    PN->>L1R: Watches for new L2PendingBlockProcessed events
+    PN->>L1R: Download TxEffects
+    PN->>PN: Submit corresponding ProofRequests for pending block
     Note over PN: Cache root rollup proof for block
-    Note over PC,PN: After epoch
-    PC->>PN: finalizeEpoch
+    Note over PN: After epoch
+    PN->>PN: finalizeEpoch
     PN->>L1R: Submit proof of epoch to advance Proven Chain
     L1R->>L1R: Verify blocks in Pending Chain, verify proof
     L1R->>L1R: Add L2 block to Proven Chain, emit L2ProvenBlockProcessed
@@ -206,7 +215,7 @@ After this, all blocks in the epoch are confirmed in the Proven Chain.
 
 The SPRTN will have its own governance contract.
 
-Version 1.0.0 will specify an L1 account owner by Aztec Labs that is able to add or remove sequencers. 
+Version 1.0.0 will specify an L1 account owner by Aztec Labs that is able to add or remove sequencers and provers. 
 
 
 ## Interface
@@ -287,13 +296,7 @@ At first, there will be no marketplace. Sequencers will be configured to communi
 
 ### Prover Coordination
 
-The Prover Client will expose the following interface:
-
-- startEpoch
-- addTx(processedTx)
-- finalizeEpoch
-
-
+The Prover Node will not need to coordinate with sequencers, and will interface with the L2 P2P network and L1 to generate proof requests (and prove them).
 
 ## Implementation
 
@@ -374,11 +377,13 @@ We will create a new branch called `sprtn` that we will merge master into whenev
 
 This will be the cluster that we run stress tests on, which will be triggered whenever the network is redeployed.
 
-**This will be primarily used for internal testing and will not be public.**
+**This will be a public deployment that external companies providing proving infrastructure can use.**
 
 ### Stress Tests
 
 We will have a series of scenarios that we will run on the network to test its performance.
+
+**It remains to be seen if we will run these tests on the public deployment or a separate deployment.**
 
 We will run these scenarios across a range of parameters (number of sequencers, number of provers, slot duration) to assess the network's performance profile.
 
@@ -403,7 +408,7 @@ Some key metrics will be:
 
 ## Documentation Plan
 
-We will add a README with information on how to submit transactions to the SPRTN.
+We will add a README with information on how provers can participate in the SPRTN.
 
 We will also add a README with information on how to run the network locally.
 
