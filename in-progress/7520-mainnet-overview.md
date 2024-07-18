@@ -23,11 +23,13 @@ The deployed network will be referred to as "TestNet", but it should reflect the
 - How we are using blobs
 - Prover marketplaces
 
-Thus, Aztec Labs will soon be running three networks:
+Thus, in the immediate term, Aztec Labs will be running two networks:
 
-- DevNet: a public network with a centralized sequencer
-- SPRTN: a private network with decentralized sequencers
-- TestNet: a public network with decentralized sequencers
+- DevNet: a public network with a centralized sequencer and prover
+- SPRTN: a public network with permissioned sequencers and provers
+
+These will be consolidated into:
+- TestNet: a public network with decentralized sequencers and provers
 
 This document needs to be detailed enough for blockscience to be able to start modelling economics of the system (to establish the best parameters that work), and for publishing on our forums for public scrutiny and feedback.
 
