@@ -212,6 +212,10 @@ Version 1.0.0 will specify an L1 account owner by Aztec Labs that is able to add
 
 Who are your users, and how do they interact with this? What is the top-level interface?
 
+
+### Prover Marketplace
+
+
 ## Implementation
 
 Delve into the specifics of the design. Include diagrams, code snippets, API descriptions, and database schema changes as necessary. Highlight any significant changes to the existing architecture or interfaces.
@@ -238,7 +242,17 @@ Fill in bullets for each area that will be affected by this change.
 
 ## Test Plan
 
-Outline what unit and e2e tests will be written. Describe the logic they cover and any mock objects used.
+We will be merging into master, so we will be adding unit and e2e test to the existing test suites that will run on every PR.
+
+New e2e tests will be added which create a network of nodes and test the functionality of the network.
+
+There will be a new cluster of nodes deployed in AWS called "SPRTN".
+
+We will create a new release-please PR that will be merged whenever we want to redeploy the network.
+
+This will be the cluster that we run stress tests on, which will be triggered whenever the network is redeployed.
+
+The operational network and stress test results will be the primary deliverable in the milestone.
 
 ## Documentation Plan
 
