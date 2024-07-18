@@ -170,21 +170,20 @@ sequenceDiagram
     participant P as L2 Proposer
     participant MP as L2 P2P
     participant PC as L2 Proof Coordinator
-    participant PM as L2 Prover Client
+    participant PN as L2 Prover Node
     participant L1R as L1 Rollup Contracts
 
+    PC->>PN: startEpoch
     P->>MP: Propose TxHashes and L2 block header for a slot 
     MP->>PC: Broadcast proposal
     PC->>PC: Execute corresponding TxObjects, cache ProofRequests
     PC->>L1R: Watches for new L2PendingBlockProcessed events
     PC->>L1R: Download TxEffects
-    PC->>PM: Submit corresponding ProofRequests for pending block
-    PM->>PC: Proof of block
-    PC->>PC: Cache proof
-    Note over PC,PM: After epoch
-    PC->>PM: Submit proof requests for epoch
-    PM->>PC: Proof of epoch
-    PC->>L1R: Submit proof of epoch to advance Proven Chain
+    PC->>PN: Submit corresponding ProofRequests for pending block
+    Note over PN: Cache root rollup proof for block
+    Note over PC,PN: After epoch
+    PC->>PN: finalizeEpoch
+    PN->>L1R: Submit proof of epoch to advance Proven Chain
     L1R->>L1R: Verify blocks in Pending Chain, verify proof
     L1R->>L1R: Add L2 block to Proven Chain, emit L2ProvenBlockProcessed
 ```
@@ -282,6 +281,17 @@ interface IRewardsContract {
 
 ### Prover Marketplace
 
+At first, there will be no marketplace. Sequencers will be configured to communicate with a single Prover Client.
+
+### Prover Coordination
+
+The Prover Client will expose the following interface:
+
+- startEpoch
+- addTx(processedTx)
+- finalizeEpoch
+
+
 
 ## Implementation
 
@@ -291,52 +301,108 @@ Discuss any alternative or rejected solutions.
 
 ## Change Set
 
-Fill in bullets for each area that will be affected by this change.
-
-- [x] L1 Contracts
+- [ ] Cryptography
+- [ ] Noir
+- [ ] Aztec.js
+- [ ] PXE
+- [ ] Aztec.nr
 - [ ] Enshrined L2 Contracts
 - [ ] Private Kernel Circuits
+- [x] Sequencer
+- [ ] AVM
 - [ ] Public Kernel Circuits
 - [x] Rollup Circuits
-- [ ] Aztec.nr
-- [ ] Noir
-- [ ] AVM
-- [x] Sequencer
-- [ ] Fees
+- [x] L1 Contracts
+- [x] Prover
+- [x] Economics
 - [x] P2P Network
-- [ ] Cryptography
 - [x] DevOps
 
 ## Test Plan
 
+### Local Clusters
+
 We will be merging into master, so we will be adding unit and e2e test to the existing test suites that will run on every PR.
 
-New e2e tests will be added which create a network of nodes and test the functionality of the network.
+New e2e tests will be added which create an ephemeral, local network of nodes and test the basic functionality of the network.
 
-There will be a new cluster of nodes deployed in AWS called "SPRTN".
+### Parameterized clusters
 
-We will create a new release-please PR that will be merged whenever we want to redeploy the network.
+We will have a set of parameters that can be passed to a deployment script to configure the network.
+
+The parameters will be:
+- Number of sequencers
+- Number of provers
+- Number of PXEs
+- Slot time
+- Epoch length
+- Committee size
+- P2P enabled
+- Proving enabled
+- Fees enabled
+- Cluster type (local, sprtn, devnet, etc.)
+
+### Byzantine Faults
+
+We will need to configure components to be able to simulate Byzantine faults.
+
+We will need to be able to simulate:
+- Sequencers going offline
+- Provers going offline
+- Sequencers submitting invalid blocks
+
+### E2E Tests
+
+The core cases we want to cover in our end-to-end tests are:
+
+- A block is proposed and added to the Pending Chain
+- A block is proven and added to the Proven Chain
+- A block is finalized
+- The network can tolerate a sequencer going offline
+- The network can tolerate a prover going offline
+- The network can tolerate a sequencer submitting an invalid block
+
+## Deployment Plan
+
+### The SPRTN Deployment
+
+There will be a new cluster of nodes deployed in AWS called `sprtn`.
+
+We will create a new branch called `sprtn` that we will merge master into whenever we want to redeploy the network.
 
 This will be the cluster that we run stress tests on, which will be triggered whenever the network is redeployed.
 
-The operational network and stress test results will be the primary deliverable in the milestone.
+**This will be primarily used for internal testing and will not be public.**
+
+### Stress Tests
+
+We will have a series of scenarios that we will run on the network to test its performance.
+
+We will run these scenarios across a range of parameters (number of sequencers, number of provers, slot duration) to assess the network's performance profile.
+
+Scenarios will include:
+- Sustained high TPS
+- Burst TPS
+- Sustained load with a sequencer offline
+- Sustained load with a prover offline
+- Sustained load with a sequencer submitting invalid blocks
+
+Some key metrics will be:
+- Time for the proposer to advance their world state based on the Pending Chain
+- Time for the proposer to prepare a block
+- Time for the proposer to collect signatures
+- Time for validators to verify a block
+- Time for the proposer to submit a block to L1
+- Number of simultaneous proofs that can be generated
+- TPS of sequencer simulation
+- TPS of the Pending Chain
+- TPS of the Proven Chain
+- TPS of a new node syncing
 
 ## Documentation Plan
 
-Identify changes or additions to the user documentation or protocol spec.
+We will add a README with information on how to submit transactions to the SPRTN.
 
-## Suggested Immediate Next Steps
+We will also add a README with information on how to run the network locally.
 
-- Publish TxObjects instead of TxEffects to the Pending Chain
 
-## Rejection Reason
-
-If the design is rejected, include a brief explanation of why.
-
-## Abandonment Reason
-
-If the design is abandoned mid-implementation, include a brief explanation of why.
-
-## Implementation Deviations
-
-If the design is implemented, include a brief explanation of deviations to the original design.
