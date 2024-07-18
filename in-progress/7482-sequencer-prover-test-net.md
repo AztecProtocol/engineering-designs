@@ -46,7 +46,7 @@ In a sense, part of SPRTN v1.0.0 is a subset of [Option B-](https://hackmd.io/B1
 
 **However, as stated, our design and implementation will be forward-compatible with the remaining MainNet requirements, and subsequent milestones will satisfy requirements based on their priority.**
 
-To that end, there is a separate issue for [outlining TestNet](https://github.com/AztecProtocol/aztec-packages/issues/7520) (which should have the same design as MainNet).
+To that end, there is a separate issue for [outlining MainNet](https://github.com/AztecProtocol/aztec-packages/issues/7520).
 
 ## Introduction
 
