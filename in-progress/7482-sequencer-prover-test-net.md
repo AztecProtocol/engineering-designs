@@ -298,12 +298,6 @@ At first, there will be no marketplace. Sequencers will be configured to communi
 
 The Prover Node will not need to coordinate with sequencers, and will interface with the L2 P2P network and L1 to generate proof requests (and prove them).
 
-## Implementation
-
-Delve into the specifics of the design. Include diagrams, code snippets, API descriptions, and database schema changes as necessary. Highlight any significant changes to the existing architecture or interfaces.
-
-Discuss any alternative or rejected solutions.
-
 ## Change Set
 
 - [ ] Cryptography
