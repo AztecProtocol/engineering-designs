@@ -212,6 +212,73 @@ Version 1.0.0 will specify an L1 account owner by Aztec Labs that is able to add
 
 Who are your users, and how do they interact with this? What is the top-level interface?
 
+### Smart Contracts
+The contracts to support this milestone will provide minimal functionality, an overview of their arrangement is shown below.
+![Alt text](./images/7482-contracts.png)
+
+#### Teocalli (Multisig)
+The Teocalli (Aztec great temple) contract will serve as governance for the testnet, for now it is sufficient that it be operated by Aztec Labs. In which case
+its interface will follow that of an arbitrary multisig (gnosis safe will likely be used in practice).
+```sol
+interface ITeocalli {
+  // Execute multisig operations
+  function execute(bytes calldata cmd) external;
+}
+```
+
+#### Validator Registry
+A simple validator registry owned by Teocalli. The addition and removal of validators / sequencers will be permissioned, governed by Teocalli. 
+
+```sol
+interface IValidatorRegistry {
+  // Allow validators to stake, in which they will enter a pending queue.
+  function stake(bytes32 pubkey) external;
+
+  // Allow validators to exit state, they will exit after a grace period (x epoch).
+  function exitStake(bytes32 pubkey) external;
+
+  // Add a validator (who has previously staked) to the staking set.
+  // @dev only admin
+  function addValidator(bytes32 pubkey) external;
+
+  // Remove a currently active validator from the staking set.
+  // @dev only admin
+  function removeValidator(bytes32 pubkey) external;
+
+  // Return the currently active sequencer
+  function getCurrentSequencer() view external;
+
+}
+```
+
+### Rollup Contract
+Much of the current rollup contract will remain unchanged, although sequencer / validator management will be moved to the registry.
+
+```sol
+interface IRollup {
+  // Append a block to the pending chain
+  function processPendingBlock(bytes calldata header, bytes32 archive, bytes calldata signatures) external;
+
+  // Prove a block in the pending chain
+  function processProvenBlock(bytes calldata header, bytes32 archive, bytes calldata proof);
+
+  function currentSlot() view external;
+
+  function currentEpoch() view external;
+}
+```
+
+### Rewards Contract
+The rewards contract is controlled by Teocalli and drips rewards to the rollup instance.
+```sol
+interface IRewardsContract {
+  // The rollup will pull rewards from the rewards contract if granted to do so by Teocalli in the function below.
+  function pullRewards() external;
+
+  // @dev only admin
+  function allocateRewards(address recipient, uint256 amount) external;
+}
+```
 
 ### Prover Marketplace
 
