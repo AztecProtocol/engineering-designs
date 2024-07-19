@@ -4,7 +4,6 @@
 | -------------------- | ---------- |
 | Owners               |            |
 | Approvers            |            |
-| Target Approval Date | 2024-07-30 |
 | Target Approval Date | 2024-08-06 |
 
 
