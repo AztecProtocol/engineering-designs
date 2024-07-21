@@ -72,23 +72,39 @@ There are two deployments as part of TestNet:
 
 ## Deployment Upgrades
 
+<!-- Lasse -->
+
 <!-- An overview of the upgrade process for a deployment of the Aztec Network. This will include the mechanisms for proposing and implementing changes to the network, and how users interact with different versions of the network. -->
 
 ## The Aztec Token
 
+<!-- Lasse -->
+
 ## Compliance
+
+<!-- Mitch (proxy Andre) -->
 
 <!-- An overview of the compliance model for the Aztec Network. This will include the mechanisms for enforcing compliance with regulations, the tools for monitoring and reporting on transactions. -->
 
 ## Bridging and Messaging
 
+<!-- Lasse -->
+
 <!-- An overview of the bridging model for the Aztec Network. Describes how assets and messages are passed between L1 and L2. -->
 
 ## Enshrined L2 Contracts
 
+<!-- Palla -->
+
 <!-- An overview of the enshrined L2 contracts for the Aztec Network. This will include the roles of the various contracts, and the mechanisms for interacting with them. -->
 
+## Contract Classes and Instances
+
+<!-- Palla -->
+
 ## Contract Interaction
+
+<!-- Nico -->
 
 <!-- An overview of how users deploy and interact with contracts on the Aztec Network. -->
 
@@ -132,6 +148,13 @@ The PXE submits to the network:
 
 ## The Pending Chain
 
+<!-- 
+This section needs work. 
+I think that we will want to post the TxObjects, but ALSO the block headers.
+
+Plus, require that everyone re-execute.
+ -->
+
 The purpose of the pending chain is to reduce the perceived latency of transactions: it allows clients to observe transactions that have been proposed, but the proof has not yet been made available.
 
 The proposer for a slot produces a list of transaction objects either by
@@ -143,20 +166,6 @@ The proposer gossips to the validators:
 - The list of transaction objects
 
 Validators check that the proposer is the current proposer, and that the transactions are valid.
-
-If the transactions are valid, the validator computes a hash of the list of transaction objects and signs it, and gossips the signature.
-
-Note, the validators do not need to execute the transactions.
-
-The proposer collects the signatures from the validators, and once it receives M/N signatures, it publishes the list of transaction objects and the signatures to DA.
-
-Additionally, it submits a transaction to the Rollup contract which...
-
-Nodes serving the pending chain:
-- download the list of transaction objects and signatures
-- check the signatures
-- check the transactions are valid
-- execute the transactions and apply the resulting state diffs to their local state
 
 ## The Proven Chain
 
@@ -190,17 +199,25 @@ It is a prefix of the proven chain, and blocks naturally move from the proven ch
 
 ## Proposers
 
+<!-- Mitch -->
+
 <!-- An overview of the role proposers play in the Aztec Network, as well as their high-level architecture. Includes a description of the tools for monitoring sequencer performance. -->
 
 ## Validators
+
+<!-- Mitch -->
 
 <!-- An overview of the role sequencer/proposers play in the Aztec Network, as well as their high-level architecture. Includes a description of the tools for monitoring sequencer performance. -->
 
 ## Provers
 
+<!-- Phil -->
+
 <!-- An overview of the role prover plays in the Aztec Network, as well as their high-level architecture. Includes a description of the tools for monitoring prover performance. -->
 
 ## Proposer/Validator Selection
+
+<!-- Lasse -->
 
 <!-- An overview of how proposers/validators are selected in the Aztec Network. -->
 
@@ -249,38 +266,57 @@ No guidance is given to proposers on this, but it is an area of active research 
 
 ## Prover Coordination
 
+<!-- Palla -->
+
 <!-- An overview of how proposers and provers coordinate in the Aztec Network. -->
 
 
 ## Transaction Lifecycle
 
+<!-- Mitch -->
+
 <!-- An overview of the lifecycle of a transaction in the Aztec Network. This will include the steps involved in creating, submitting, validating, and finalizing a transaction, as well as the mechanisms for monitoring and reporting on the status of a transaction. -->
 
 ## Data Availability
+
+<!-- Mike -->
 
 <!-- An overview of the data availability model for the Aztec Network. This will include a description of what data is published where, how, and by whom. -->
 
 ## Penalties and Slashing
 
+<!-- Sean -->
+
 <!-- An overview of the penalty and slashing model for the Aztec Network. This will include a description of various attacks on the network, and the mechanisms for penalizing proposers, validators, and provers. -->
 
 ## Censorship Resistance and Liveness
+
+
+<!-- Sean -->
 
 <!-- An overview of the censorship resistance and liveness model for the Aztec Network. This will include a description of the mechanisms for detecting and responding to censorship attacks. -->
 
 ## Safety
 
+<!-- Mitch -->
+
 <!-- An overview of the safety guarantees for the Aztec Network in various scenarios. -->
 
 ## Private State
+
+<!-- Mike -->
 
 <!-- An overview of the private state model for the Aztec Network. This will include a description of how private data is stored, accessed, and updated. -->
 
 ## Public State
 
+<!-- Sean -->
+
 <!-- An overview of the public state model for the Aztec Network. This will include a description of how public data is stored, accessed, and updated. -->
 
 ## AVM
+
+<!-- Sean -->
 
 <!-- An overview of the Aztec Virtual Machine (AVM). This will include a description of the architecture, the instruction set, and the tools for monitoring and reporting on the performance of the AVM. -->
 
@@ -288,17 +324,25 @@ No guidance is given to proposers on this, but it is an area of active research 
 
 ## Client Proving System
 
+<!-- Mitch (proxy Cody) -->
+
 <!-- An overview of the client proving system for the Aztec Network, touching on UltraHonk, Protogalaxy, and Goblin and providing rough hardware requirements for running the client proving system. -->
 
 ## Public Kernel Proving System
+
+<!-- Mitch (proxy Cody) -->
 
 <!-- An overview of how public kernel circuits are proven. -->
 
 ## Rollup Proving System
 
+<!-- Mitch (proxy Cody) -->
+
 <!-- An overview of how rollup circuits are proven. -->
 
 ## Performance
+
+<!-- Phil -->
 
 <!-- An overview of the expected performance of TestNet. This will include the throughput, latency, and scalability of the network. -->
 
