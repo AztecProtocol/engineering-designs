@@ -74,6 +74,8 @@ There are two deployments as part of TestNet:
 
 <!-- An overview of the upgrade process for a deployment of the Aztec Network. This will include the mechanisms for proposing and implementing changes to the network, and how users interact with different versions of the network. -->
 
+## The Aztec Token
+
 ## Compliance
 
 <!-- An overview of the compliance model for the Aztec Network. This will include the mechanisms for enforcing compliance with regulations, the tools for monitoring and reporting on transactions. -->
@@ -158,9 +160,33 @@ Nodes serving the pending chain:
 
 ## The Proven Chain
 
+The purpose of the proven chain is to verify the correctness of the transactions in the pending chain.
+
+It is a prefix of the pending chain.
+
+The first block in an epoch must contain a commitment on behalf of the proposer to proving the current epoch.
+
+This is done by placing a large "prover commitment bond" in the block.
+
+The proof of epoch `i` must be submitted within a certain number of L1 blocks after the end of epoch `i`.
+
+If this does not happen, there is an "open challenge period" where anyone can submit a proof of the epoch, and claim part of the prover commitment bond.
+
+If no proof is submitted, the proposer loses the bond, and the epoch is considered invalid.
+
+There is a protocol set "fee per constraint". When a proof for an epoch is submitted, it is verified, and if it is valid the submitter receives a reward equal to:
+
+```
+fee_per_constraint * num_constraints
+```
+
+Where `num_constraints` is the number of constraints in the proof.
+
 ## The Finalized Chain
 
+The purpose of the finalized chain is to provide a final, immutable (up to Casper FFG) record of the state of the Aztec Network.
 
+It is a prefix of the proven chain, and blocks naturally move from the proven chain to the finalized chain as proofs become finalized in the eyes of L1.
 
 ## Proposers
 
@@ -178,29 +204,57 @@ Nodes serving the pending chain:
 
 <!-- An overview of how proposers/validators are selected in the Aztec Network. -->
 
+## Fees
+
+<!-- An overview of the fee model for the Aztec Network. This will include the mechanisms for calculating and collecting fees. -->
+
+Every transaction in the Aztec Network has a fee associated with it. The fee is payed in AZT which has been bridged to L2, i.e. "L2-AZT".
+
+Transactions consume gas. There are two types of gas:
+- L2 gas: the cost of computation
+- DA gas: the cost of data availability
+
+When a user specifies a transaction, they provide values:
+- maxFeePerL2Gas: the maximum fee they are willing to pay in L2-AZT per unit L2 gas
+- maxFeePerDAGas: the maximum fee they are willing to pay in L2-AZT per unit DA gas
+- l2GasLimit: the maximum amount of L2 gas they are willing to consume
+- daGasLimit: the maximum amount of DA gas they are willing to consume
+
+Thus, the maximum fee they are willing to pay is:
+- maxFee = maxFeePerL2Gas * l2GasLimit + maxFeePerDAGas * daGasLimit
+
+Support complex flow such as fee abstraction, there is an addition pair of parameters:
+- l2TeardownGasLimit: the maximum amount of L2 gas they are willing to consume for the teardown of the transaction
+- daTeardownGasLimit: the maximum amount of DA gas they are willing to consume for the teardown of the transaction
+
+Both of these values are used to "pre-pay" for the public teardown phase of the transaction.
+
+Each L2 block has a fixed L2 gas limit and a DA gas limit, each with a respective "target". 
+
+Each L2 block dynamically sets its fee per L2/DA gas based on the deviation of the previous block's gas usage from the target.
+
+The fees of all transactions are summed, and paid out to the L1 Rewards contract, which in turn distributes them to the proposer and validators of the block.
+
+## Block Rewards
+
+Block rewards are paid out from the Rewards Contract to proposers to compensate them for the cost of publishing rollup blocks and proofs to L1.
+
+**question** how do we know the exchange rate between AZT and Eth?
+
 ## Prover Selection
 
-<!-- An overview of how provers are selected in the Aztec Network, touching on the prover marketplace. -->
+Proposers are responsible for selecting provers to create proofs for transactions.
 
-
+No guidance is given to proposers on this, but it is an area of active research to provide a competitive market for provers.
 
 ## Prover Coordination
 
 <!-- An overview of how proposers and provers coordinate in the Aztec Network. -->
 
 
-
 ## Transaction Lifecycle
 
 <!-- An overview of the lifecycle of a transaction in the Aztec Network. This will include the steps involved in creating, submitting, validating, and finalizing a transaction, as well as the mechanisms for monitoring and reporting on the status of a transaction. -->
-
-## Fees
-
-<!-- An overview of the fee model for the Aztec Network. This will include the mechanisms for calculating and collecting fees. -->
-
-## Incentives
-
-<!-- An overview of the incentive model for the Aztec Network. This will include the mechanisms for rewarding proposers, validators, and provers. -->
 
 ## Data Availability
 
