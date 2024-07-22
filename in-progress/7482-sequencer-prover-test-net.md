@@ -258,6 +258,17 @@ interface IValidatorRegistry {
   // Return the currently active sequencer
   function getCurrentSequencer() view external;
 
+  // Add a prover (who has previously staked) to the staking set.
+  // @dev only admin
+  function addProver(bytes32 pubkey) external;
+
+  // Remove a currently active prover from the staking set.
+  // @dev only admin
+  function removeProver(bytes32 pubkey) external;
+
+  // Return the currently active prover
+  function getCurrentProver() view external;
+
 }
 ```
 
