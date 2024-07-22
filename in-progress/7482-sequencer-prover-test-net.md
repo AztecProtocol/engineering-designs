@@ -361,7 +361,15 @@ The core cases we want to cover in our end-to-end tests are:
 - The network can tolerate a prover going offline
 - The network can tolerate a sequencer submitting an invalid block
 
-## Deployment Plan
+Additional attack scenarios we will test are:
+- A sequencer submitting a block with an invalid signature
+- A prover submitting a proof with an invalid signature
+- A prover submitting a proof with an invalid proof
+- A coalition of dishonest sequencers submitting a block with an invalid state transition
+- DoS attacks on specific nodes, e.g.:
+  - sending a large number of requests to a node with in/valid data
+  - trying to trick the network into making a large number of requests to a node
+
 
 ### The SPRTN Deployment
 
