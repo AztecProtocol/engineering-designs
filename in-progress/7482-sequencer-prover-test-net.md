@@ -98,27 +98,24 @@ In SPRTN v1.0.0 the committee will solely be responsible for building the Pendin
 
 ### SPRTN v1.0.0 Sequencer Selection
 
-At the beginning of each epoch, the committee will be selected by shuffling the validator set, and round-robining over them.
-
 The validator set will be selected by the multisig.
 
-Each validator will be assigned a slot in the epoch, and will be responsible for proposing a block in that slot.
+At the beginning of each epoch, we will assign proposers from the the validator set to slots.
 
-The exact number of sequencers will be determined via stress tests, modeling, and feedback from the community.
+The exact number of validators will be determined via stress tests, modeling, and feedback from the community.
 
-Part of the deliverable for this milestone will be an analysis of network performance based on the sequencer set size.
+Part of the deliverable for this milestone will be an analysis of network performance based on the validator set size.
 
 ### SPRTN v1.0.0 Prover Selection
 
-At the beginning of each epoch, a single prover will be selected to generate proofs for the blocks in the epoch.
-
 The list of available provers will be determined by the multisig.
+
+At the beginning of each epoch, a single prover will be selected to generate proofs for the epoch.
 
 ### SPRTN v1.0.0 Incentives
 
 For SPRTN v1.0.0, we will create a simple incentives contract within the deployment:
 - Whenever a block is added to the Pending Chain, the proposer will receive a reward.
-- Whenever a block is added to the Proven Chain, the proposer will receive a reward.
 
 ### The SPRTN v1.0.0 Pending Chain
 
@@ -142,14 +139,13 @@ sequenceDiagram
     MP->>P: Broadcast TxObjects+Proofs
     MP->>V: Broadcast TxObjects+Proofs
     P->>P: Execute TxObjects, construct L2 block header
-    P->>MP: Propose TxHashes and L2 block header for a slot 
+    P->>MP: Propose TxObjects and L2 block header for a slot 
     MP->>V: Broadcast proposal
     V->>V: Execute corresponding TxObjects, construct/compare header
     V->>MP: Signed proposal (if correct)
     MP->>P: Aggregate signatures
-    P->>L1R: Submit L2 block header to L1 DA Oracle
     P->>L1R: Submit TxEffects to L1 DA Oracle
-    P->>L1R: Add L2 block to Pending Chain
+    P->>L1R: Add L2 block to Pending Chain, supplying L2 Header and Signatures as call data
     L1R->>L1R: Check signatures, verify correct proposer, verify header/TxEffects available
     L1R->>L1R: Add L2 block to Pending Chain, emit L2PendingBlockProcessed
 ```
@@ -177,6 +173,8 @@ After this, the block is confirmed in the Pending Chain.
 
 It is the responsibility of the prover selected at the beginning of an epoch to submit the proof of the epoch.
 
+The proof of epoch i must land in epoch i+1.
+
 ```mermaid
 sequenceDiagram
     participant P as L2 Proposer
@@ -185,7 +183,7 @@ sequenceDiagram
     participant L1R as L1 Rollup Contracts
 
     PN->>PN: startEpoch
-    P->>MP: Propose TxHashes and L2 block header for a slot 
+    P->>MP: Propose TxObjects and L2 block header for a slot 
     MP->>PN: Broadcast proposal
     PN->>PN: Execute corresponding TxObjects, cache ProofRequests
     PN->>L1R: Watches for new L2PendingBlockProcessed events
@@ -241,39 +239,35 @@ A simple validator registry owned by Teocalli. The addition and removal of valid
 
 ```sol
 interface IValidatorRegistry {
-  // Allow validators to stake, in which they will enter a pending queue.
-  function stake(bytes32 pubkey) external;
-
-  // Allow validators to exit state, they will exit after a grace period (x epoch).
-  function exitStake(bytes32 pubkey) external;
 
   // Add a validator (who has previously staked) to the staking set.
   // @dev only admin
-  function addValidator(bytes32 pubkey) external;
+  function addValidator(address validator) external;
 
   // Remove a currently active validator from the staking set.
   // @dev only admin
-  function removeValidator(bytes32 pubkey) external;
+  function removeValidator(address validator) external;
 
   // Return the currently active sequencer
-  function getCurrentSequencer() view external;
+  function getCurrentSequencer() view external returns (address);
 
   // Add a prover (who has previously staked) to the staking set.
   // @dev only admin
-  function addProver(bytes32 pubkey) external;
+  function addProver(address prover) external;
 
   // Remove a currently active prover from the staking set.
   // @dev only admin
-  function removeProver(bytes32 pubkey) external;
+  function removeProver(address prover) external;
 
   // Return the currently active prover
-  function getCurrentProver() view external;
+  function getCurrentProver() view external returns (address);
 
 }
 ```
 
 ### Rollup Contract
-Much of the current rollup contract will remain unchanged, although sequencer / validator management will be moved to the registry.
+
+Much of the current rollup contract will remain unchanged.
 
 ```sol
 interface IRollup {
@@ -281,7 +275,7 @@ interface IRollup {
   function processPendingBlock(bytes calldata header, bytes32 archive, bytes calldata signatures) external;
 
   // Prove a block in the pending chain
-  function processProvenBlock(bytes calldata header, bytes32 archive, bytes calldata proof);
+  function processProvenBlock(bytes calldata header, bytes32 archive, bytes calldata proof) external;
 
   function currentSlot() view external;
 
@@ -289,21 +283,6 @@ interface IRollup {
 }
 ```
 
-### Rewards Contract
-The rewards contract is controlled by Teocalli and drips rewards to the rollup instance.
-```sol
-interface IRewardsContract {
-  // The rollup will pull rewards from the rewards contract if granted to do so by Teocalli in the function below.
-  function pullRewards() external;
-
-  // @dev only admin
-  function allocateRewards(address recipient, uint256 amount) external;
-}
-```
-
-### Prover Marketplace
-
-At first, there will be no marketplace. Sequencers will be configured to communicate with a single Prover Client.
 
 ### Prover Coordination
 
@@ -371,6 +350,8 @@ The core cases we want to cover in our end-to-end tests are:
 - The network can tolerate a sequencer going offline
 - The network can tolerate a prover going offline
 - The network can tolerate a sequencer submitting an invalid block
+- The network can tolerate sequencers/validators with slow connections
+- An L2 block that takes up more than 1 L1 block
 
 Additional attack scenarios we will test are:
 - A sequencer submitting a block with an invalid signature
