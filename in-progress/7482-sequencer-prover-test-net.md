@@ -175,7 +175,7 @@ After this, the block is confirmed in the Pending Chain.
 
 #### Overview
 
-It is the responsibility of the final proposer in an epoch to submit the proof of the epoch.
+It is the responsibility of the prover selected at the beginning of an epoch to submit the proof of the epoch.
 
 ```mermaid
 sequenceDiagram
