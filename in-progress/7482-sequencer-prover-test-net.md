@@ -115,7 +115,7 @@ At the beginning of each epoch, a single prover will be selected to generate pro
 ### SPRTN v1.0.0 Incentives
 
 For SPRTN v1.0.0, we will create a simple incentives contract within the deployment:
-- Whenever a block is added to the Pending Chain, the proposer will receive a reward.
+- Whenever a block is added to the Proven Chain, rewards will be distributed to the participating proposer and prover.
 
 ### The SPRTN v1.0.0 Pending Chain
 
@@ -163,7 +163,6 @@ The rollup contract will verify that:
 - B is submitted by the correct proposer for the slot.
 - B contains proof it has signatures from 2/3 + 1 of the committee members attesting to the block.
 - B's header has been made available on L1
-- B's constituent TxEffects have been made available on L1
 
 After this, the block is confirmed in the Pending Chain.
 
@@ -187,7 +186,7 @@ sequenceDiagram
     MP->>PN: Broadcast proposal
     PN->>PN: Execute corresponding TxObjects, cache ProofRequests
     PN->>L1R: Watches for new L2PendingBlockProcessed events
-    PN->>L1R: Download TxEffects
+    PN->>L1R: Download block header
     PN->>PN: Submit corresponding ProofRequests for pending block
     Note over PN: Cache root rollup proof for block
     Note over PN: After epoch
@@ -205,6 +204,7 @@ The rollup contract will verify that:
 
 - The transaction is submitted by the correct proposer.
 - The specified blocks are in the Pending Chain
+- The TxEffects of all constituent transactions have been published
 - A proof of the block's correctness has been verified on L1.
 
 After this, all blocks in the epoch are confirmed in the Proven Chain.
@@ -234,11 +234,30 @@ interface ITeocalli {
 }
 ```
 
-#### Validator Registry
-A simple validator registry owned by Teocalli. The addition and removal of validators / sequencers will be permissioned, governed by Teocalli. 
+
+#### Rollup Contract
+
+Much of the current rollup contract will remain unchanged.
+
+It will maintain a simple validator registry owned by Teocalli. The addition and removal of validators / sequencers will be permissioned, governed by Teocalli. 
+
 
 ```sol
-interface IValidatorRegistry {
+interface IRollup {
+  // Append a block to the pending chain
+  function processPendingBlock(bytes calldata header, bytes32 archive, bytes calldata signatures) external;
+
+  // Prove the blocks in the pending chain
+  function processProvenEpoch(bytes calldata header, bytes calldata proof) external;
+
+  function getCurrentSlot() view external returns(uint256);
+
+  function getCurrentEpoch() view external returns(uint256);
+
+
+  ////////////////////////
+  // Validator registry //
+  ////////////////////////
 
   // Add a validator (who has previously staked) to the staking set.
   // @dev only admin
@@ -262,24 +281,6 @@ interface IValidatorRegistry {
   // Return the currently active prover
   function getCurrentProver() view external returns (address);
 
-}
-```
-
-### Rollup Contract
-
-Much of the current rollup contract will remain unchanged.
-
-```sol
-interface IRollup {
-  // Append a block to the pending chain
-  function processPendingBlock(bytes calldata header, bytes32 archive, bytes calldata signatures) external;
-
-  // Prove a block in the pending chain
-  function processProvenBlock(bytes calldata header, bytes32 archive, bytes calldata proof) external;
-
-  function currentSlot() view external;
-
-  function currentEpoch() view external;
 }
 ```
 
@@ -320,8 +321,9 @@ New e2e tests will be added which create an ephemeral, local network of nodes an
 We will have a set of parameters that can be passed to a deployment script to configure the network.
 
 The parameters will be:
-- Number of sequencers
+- Number of validators
 - Number of provers
+- Number of nodes
 - Number of PXEs
 - Slot time
 - Epoch length
@@ -331,14 +333,17 @@ The parameters will be:
 - Fees enabled
 - Cluster type (local, sprtn, devnet, etc.)
 
-### Byzantine Faults
+### Faults or Misbehaviors
 
-We will need to configure components to be able to simulate Byzantine faults.
+We will need to configure components to be able to simulate different faults or misbehaviors.
 
 We will need to be able to simulate:
-- Sequencers going offline
+- Nodes going offline
+- Validators going offline
 - Provers going offline
-- Sequencers submitting invalid blocks
+- Proposers going offline
+- Proposers submitting invalid blocks
+- L1 proposer misbehaving (e.g. censoring, or down)
 
 ### E2E Tests
 
@@ -351,16 +356,11 @@ The core cases we want to cover in our end-to-end tests are:
 - The network can tolerate a prover going offline
 - The network can tolerate a sequencer submitting an invalid block
 - The network can tolerate sequencers/validators with slow connections
-- An L2 block that takes up more than 1 L1 block
 
 Additional attack scenarios we will test are:
-- A sequencer submitting a block with an invalid signature
-- A prover submitting a proof with an invalid signature
+- A block proposed without a signature from the current proposer should fail
 - A prover submitting a proof with an invalid proof
 - A coalition of dishonest sequencers submitting a block with an invalid state transition
-- DoS attacks on specific nodes, e.g.:
-  - sending a large number of requests to a node with in/valid data
-  - trying to trick the network into making a large number of requests to a node
 
 
 ### The SPRTN Deployment
@@ -373,22 +373,42 @@ This will be the cluster that we run stress tests on, which will be triggered wh
 
 **This will be a public deployment that external companies providing proving infrastructure can use.**
 
+
 ### Stress Tests
 
 We will have a series of scenarios that we will run on the network to test its performance.
 
 **It remains to be seen if we will run these tests on the public deployment or a separate deployment.**
 
-We will run these scenarios across a range of parameters (number of sequencers, number of provers, slot duration) to assess the network's performance profile.
+We will run these scenarios across a range of parameters (number of nodes, validators, provers, slot duration, epoch duration) to assess the network's performance profile.
 
-Scenarios will include:
+#### Basic Scenarios
+
+We will want to determine the network's performance with various configurations under normal conditions:
+
 - Sustained high TPS
 - Burst TPS
-- Sustained load with a sequencer offline
-- Sustained load with a prover offline
-- Sustained load with a sequencer submitting invalid blocks
 
-Some key metrics will be:
+#### Adverse Scenarios
+
+We will also simulate conditions such as:
+
+- Nodes, Validators, Proposers, Provers:
+  - Going offline
+  - Throttle compute / io / network
+  - Ignore some requests (censorship)
+    - Nodes not dispersing transactions
+    - Validators ignoring some attestation requests
+    - Proposers ignore some user transactions
+    - Provers ignoring some proof requests
+
+- DoS attacks on specific nodes, e.g.:
+  - sending a large number of requests to a node with in/valid data
+  - trying to trick the network into making a large number of requests to a node
+
+#### Metrics
+
+Some key metrics across all scenarios will be:
 - Time for the proposer to advance their world state based on the Pending Chain
 - Time for the proposer to prepare a block
 - Time for the proposer to collect signatures
@@ -399,6 +419,7 @@ Some key metrics will be:
 - TPS of the Pending Chain
 - TPS of the Proven Chain
 - TPS of a new node syncing
+- TPS of a node following the chain
 
 ## Documentation Plan
 
