@@ -7,7 +7,7 @@
 | Target Approval Date | 2024-08-06 |
 
 
-This document is a system design overview of what we want to deliver as our MainNet release.
+This document is a system design overview of what we want to deliver as our MainNet release, focusing on networks, L1 interactions, governance, and economics.
 
 We will deliver a fully functional network by Dec 16, 2024. This network will be a publicly available, but with no guarantees of security or stability.
 
@@ -29,6 +29,8 @@ The objective of this document is to enable:
 - the community to understand the design and provide feedback
 
 This document **briefly outlines** key features of TestNet/MainNet. More detailed, technical designs on the individual components are forthcoming.
+
+Some sections have open questions that need to be resolved before even the high-level design can be finalized.
 
 ## Overview 
 
@@ -73,30 +75,21 @@ There are two deployments as part of TestNet:
 
 ## The Aztec Token
 
-<!-- An overview of the Aztec Token (AZT). This will include the tokenomics of AZT, the mechanisms for staking and voting with AZT, utility, bridging, and restrictions on AZT. -->
+The Aztec Token (AZT) is an ERC20 token that is used to pay for transaction fees on the Aztec Network.
+
+It is also used on L1 as part of the validator selection process.
+
+Protocol incentives are paid out in AZT.
+
+AZT is bridged from L1 to L2 using a trusted bridge.
+
+Once on L2, AZT is exclusively to used to pay transaction fees; it cannot be transferred back to L1 or transferred to other users.
 
 ## Compliance
 
-<!-- An overview of the compliance model for the Aztec Network. This will include the mechanisms for enforcing compliance with regulations, the tools for monitoring and reporting on transactions. -->
+### Open Questions
+- What are the compliance requirements for the Aztec Network?
 
-## Bridging and Messaging
-
-
-<!-- An overview of the bridging model for the Aztec Network. Describes how assets and messages are passed between L1 and L2. -->
-
-## Enshrined L2 Contracts
-
-
-<!-- An overview of the enshrined L2 contracts for the Aztec Network. This will include the roles of the various contracts, and the mechanisms for interacting with them. -->
-
-## Contract Classes and Instances
-
-<!-- An overview of the contract classes and instances in the Aztec Network. This will include the mechanisms for deploying and interacting with contracts. -->
-
-
-## Contract Interaction
-
-<!-- An overview of how users deploy and interact with contracts on the Aztec Network. -->
 
 ## Aztec Labs Node
 
@@ -109,24 +102,7 @@ It will have two primary modes of operation:
 The node will have a web interface for monitoring key metrics.
 
 
-## Private Execution Environment (PXE)
-
-Users interact with the Aztec Network via a trusted, Private Execution Environment (PXE), which can be run in a laptop browser.
-
-This is a "trusted" environment in the sense that the PXE can see the user's private inputs to transactions, and manages keys.
-
-When a user interacts with the network they submit a "Transaction Execution Request" to the PXE.
-
-The PXE executes the private portion of the transaction locally, and generates a proof of correct execution.
-
-The PXE submits to the network:
-- A proof of correct private execution (the "private proof")
-- The "transaction object"
-  - The resulting "state diff" after private execution (transaction ID, new note hashes, nullifiers, etc.)
-  - Execution logs
-  - Enqueued public function calls (if any)
-
-## Chains
+## Chains, slots, and epochs
 
 There are two chains in the Aztec Network:
 - The Pending Chain
@@ -134,6 +110,18 @@ There are two chains in the Aztec Network:
 - The Finalized Chain
 
 All three chains are effectively managed by the Aztec Node and the L1 contracts, and have different guarantees.
+
+Time is divided into slots, which are grouped into epochs.
+
+Each slot has a proposer, who is responsible for proposing a block of transactions.
+
+Each epoch has a set of validators, who are responsible for validating the blocks proposed by the proposers.
+
+### Open Questions
+- Would a "pure L2" chain help us achieve our goals?
+- How long should a slot be?
+- How long should an epoch be?
+
 
 ## The Pending Chain
 
@@ -152,7 +140,12 @@ They then build an L2 block by executing the transaction objects, and sign the r
 
 Once the proposer has seen enough signatures, they can submit the L2 block to L1.
 
-They first submit the TxObjects to DA, and then the block header calldata to a function on the rollup contract dedicated to advancing the pending chain.
+The proposer submits the block header as calldata to a function on the rollup contract dedicated to advancing the pending chain.
+
+### Open Questions
+- How many signatures are required?
+- Does the need to execute the transaction objects create too much of a burden on validators?
+- If we cannot execute the transaction objects, how does the rest of the system work?
 
 ## The Proven Chain
 
@@ -168,11 +161,19 @@ The proof of epoch `i` must be submitted within a certain number of L1 blocks af
 
 If this does not happen, there is an "open challenge period" where anyone can submit a proof of the epoch, and claim part of the prover commitment bond.
 
-If no proof is submitted, the proposer loses the bond, and the epoch is considered invalid.
+If no proof is submitted, the proposer loses the bond, and the epoch is considered invalid; the pending chain is rolled back to the last proven epoch.
 
 The proposer who posts the prover commitment bond must to coordinate payment and proving out of protocol.
 
 Some users may coordinate with prover marketplaces, but the Aztec Node will come with the ability to "self-prove" an epoch.
+
+### Open Questions
+- How large should the prover commitment bond be?
+- How do proving marketplaces integrate?
+- What is the timeliness requirement for the proof submission?
+- What is the open challenge period?
+- Under what conditions can the pending chain be rolled back?
+- Is "steal your funds" ever possible?
 
 ## The Finalized Chain
 
@@ -180,30 +181,66 @@ The purpose of the finalized chain is to provide a final, immutable (up to Caspe
 
 It is a prefix of the proven chain, and blocks naturally move from the proven chain to the finalized chain as proofs become finalized in the eyes of L1.
 
-## Proposers
+## Full Nodes
 
-<!-- An overview of the role proposers play in the Aztec Network, as well as their high-level architecture. Includes a description of the tools for monitoring sequencer performance. -->
+Full nodes sit on the P2P network and are responsible for:
+- Propagating transactions
+- Propagating proposals
+- Propagating attestations
 
-## Validators
+They can validate proposed L2 blocks they see, and verify proofs.
+
+### Open Questions
+- What kind of "watcher" role can full nodes play?
 
 
-<!-- An overview of the role sequencer/proposers play in the Aztec Network, as well as their high-level architecture. Includes a description of the tools for monitoring sequencer performance. -->
+## Prover Nodes
 
+Prover nodes will receive information from proposers and will be responsible for creating proofs, and posting them to L1.
+
+### Open Questions
+- What is the interface that proposers will use to communicate with prover nodes?
 
 ## Proposer/Validator Selection
 
+There will be a mechanism for selecting proposers and validators.
 
-<!-- An overview of how proposers/validators are selected in the Aztec Network. -->
+We are actively determining the best way to do this.
+
+Key considerations include:
+- Decentralization
+- Security
+- Economics
+
+We will be working closely with the community and external researchers to design a system that is fair and secure.
+
+### Open Questions
+
+- How large should the validator set be?
+- How many validators should be selected per epoch?
+
+If we choose a system where a validator set is selected randomly and trustlessly based on staked AZT:
+- How can we distribute rewards?
+- How do we keep l1 costs low?
+- How do we enumerate all possible slashing conditions?
+
+If we choose a system where a validator set is voted on by AZT holders:
+- Can this be sufficiently decentralized?
+- How resistant is this to censorship?
+
+In either scenario:
+- How costly is it for users to participate?
+- What are the economic incentives for validators?
+- What is our security model?
+- How much malicious AZT can we tolerate before we lose safety/liveness?
 
 ## Fees
 
-<!-- An overview of the fee model for the Aztec Network. This will include the mechanisms for calculating and collecting fees. -->
-
-Every transaction in the Aztec Network has a fee associated with it. The fee is payed in AZT which has been bridged to L2, i.e. "L2-AZT".
+Every transaction in the Aztec Network has a fee associated with it. The fee is payed in AZT which has been bridged to L2.
 
 Transactions consume gas. There are two types of gas:
-- L2 gas: the cost of computation
-- DA gas: the cost of data availability
+- L2 gas: the cost of computation on L2
+- DA gas: the cost of data availability on L2
 
 When a user specifies a transaction, they provide values:
 - maxFeePerL2Gas: the maximum fee they are willing to pay in L2-AZT per unit L2 gas
@@ -224,32 +261,78 @@ Each L2 block has a fixed L2 gas limit and a DA gas limit, each with a respectiv
 
 Each L2 block dynamically sets its fee per L2/DA gas based on the deviation of the previous block's gas usage from the target.
 
-The fees of all transactions are summed, and paid out to the L1 Rewards contract, which in turn distributes them to the proposer and validators of the block.
+### Open Questions
+
+- Can we ensure that the cost of proving is covered by L2 gas?
+- How do we pass back L1 compute and DA costs back to users?
 
 ## Enshrined Price Oracles
 
 There will be an enshrined price oracle contract on L1 that protocol contracts will use to determine the exchange rate between AZT and Eth.
 
+### Open Questions
+
+- What guarantees can we provide about the price oracle?
+
 ## Pending Block Rewards
 
-When a block is added to the pending chain, rewards in AZT are paid out from the Rewards Contract to proposers and validators who participated in the block.
+We do not plan to have rewards for pending blocks, as we only want to incentivize the finalization of blocks.
 
 ## Proven Block Rewards
 
+We will have rewards for proven blocks.
+
+These will largely be funded by the transaction fees.
+
+### Open Questions
+
+- How much do we need to subsidize proven blocks?
+- How much should the protocol retain for future development?
 
 
 ## Transaction Lifecycle
 
-<!-- An overview of the lifecycle of a transaction in the Aztec Network. This will include the steps involved in creating, submitting, validating, and finalizing a transaction, as well as the mechanisms for monitoring and reporting on the status of a transaction. -->
+The executable code of a transactions follows the following lifecycle:
+
+1. Locally, in private:
+   1. Setup
+   2. App Logic
+2. On L2, in public:
+   1. Setup
+   2. App Logic
+   3. Teardown
+
+If the private portion fails, the transaction is not submitted to L2.
+
+If the public portion fails in the setup phase, the transaction is invalid, and discarded.
+
+If the public portion fails in the app logic or teardown phase the side effects from the failing stage are discarded but the transaction is still valid.
+
+### Open Questions
+- How painful is it for sequencers to whitelist public setup code?
+- If validators don't re-execute and thus sign headers, what is the engineering fallout for needing to deal with invalid transactions? How does the proposer pay for this?
 
 ## Data Availability
 
 We will use ethereum blobs to publish TxObjects and proofs.
 
+We will provide a layer of abstraction to allow for similar DA solutions (e.g. EigenDA, Celestia).
+
+### Open Questions
+- What are the throughput and latency requirements for the DA solution?
 
 ## Penalties and Slashing
 
-<!-- An overview of the penalty and slashing model for the Aztec Network. This will include a description of various attacks on the network, and the mechanisms for penalizing proposers, validators, and provers. -->
+There will be penalties for proposers and provers who do not fulfill their duties.
+
+### Open Questions
+
+- If proposers are selected randomly, do we need to enumerate all slashing conditions?
+- If proposers are voted on, can we rely on the community to enforce penalties?
+- What are the penalties for proposers and provers?
+- How do we ensure that the penalties are fair?
+- What should be burned, and what should be distributed?
+
 
 ## Censorship Resistance and Liveness
 
@@ -259,31 +342,6 @@ We will use ethereum blobs to publish TxObjects and proofs.
 
 <!-- An overview of the safety guarantees for the Aztec Network in various scenarios. -->
 
-## Private State
-
-<!-- An overview of the private state model for the Aztec Network. This will include a description of how private data is stored, accessed, and updated. -->
-
-## Public State
-
-<!-- An overview of the public state model for the Aztec Network. This will include a description of how public data is stored, accessed, and updated. -->
-
-## AVM
-
-<!-- An overview of the Aztec Virtual Machine (AVM). This will include a description of the architecture, the instruction set, and the tools for monitoring and reporting on the performance of the AVM. -->
-
-<!-- Include a description of the proving system used in the AVM. -->
-
-## Client Proving System
-
-<!-- An overview of the client proving system for the Aztec Network, touching on UltraHonk, Protogalaxy, and Goblin and providing rough hardware requirements for running the client proving system. -->
-
-## Public Kernel Proving System
-
-<!-- An overview of how public kernel circuits are proven. -->
-
-## Rollup Proving System
-
-<!-- An overview of how rollup circuits are proven. -->
 
 ## Performance
 
