@@ -23,14 +23,9 @@ By 2024-12-16, these will be consolidated into:
 - Staging: a private network for testing and development
 - TestNet: a public network with permissionless sequencers and provers
 
-The objective of this document is to enable:
-- engineering to define clear requirements and deliverables for TestNet
-- external researchers to model the behavior of the system and optimize parameters
-- the community to understand the design and provide feedback
-
-This document **briefly outlines** key features of TestNet/MainNet. More detailed, technical designs on the individual components are forthcoming.
-
-Some sections have open questions that need to be resolved before even the high-level design can be finalized.
+The objective of this document is to:
+- outline engineering's current understanding of what will be built
+- pose open questions that need to be resolved, either internally or with the community or external researchers
 
 ## Overview 
 
@@ -54,24 +49,47 @@ Holders of AZT will be able to submit proposals to the TLG, which will be voted 
 
 A deployment of the Aztec Network includes several contracts running on L1.
 
-Each deployment has:
-- A Registry, which points to the contracts that make up the deployment. It also handles governance of the deployment.
+Each Deployment has a Registry, and a Rewards contract.
+The Registry points to the current/canonical and historical "Instances" of the Deployment.
+
+An Instance of a Deployment includes:
 - A Rollup Contract, which is the main contract that handles the rollup of transactions.
 - A Data Availability Oracle, which is responsible for providing data published to our DA solution.
 - An Inbox, responsible for receiving messages from L1 and making them available L2.
 - An Outbox, responsible for receiving messages from L2 and making them available on L1.
-- A Rewards contract, which handles the distribution of rewards to proposers, validators, and provers.
 
 After the deployment is created, a proposal is submitted to the TLG, requesting funding of the Rewards contract.
+
+The Registry contract also describes how the Deployment can be governed, and will vary depending on the Deployment.
 
 There are two deployments as part of TestNet:
 - Alpha: `testnet-alpha`
 - Beta: `testnet-beta`
 
+The Alpha deployment will be governed by the Aztec Labs team.
+The Beta deployment will be governed by the TLG.
+
 ## Deployment Upgrades
 
+Deployments can issue new Instances to upgrade the network.
 
-<!-- An overview of the upgrade process for a deployment of the Aztec Network. This will include the mechanisms for proposing and implementing changes to the network, and how users interact with different versions of the network. -->
+For Alpha, the Aztec Labs team will instruct the Registry to point to the new Instance. Upgrades will occur after an execution delay of 1 hour.
+
+For Beta, a proposal will be submitted to the TLG to instruct the Registry to point to the new Instance. There will be a setup period of 1 day, a voting period of 3 days, and an execution delay of 2 days.
+
+In both cases, the new Instance will be instantiated with the state of the old Instance.
+
+### Open Questions
+- What happens to bridged assets during an upgrade? What options do users have?
+
+## Forced Inclusions
+
+Deployments will have a mechanism for forced inclusions of transactions in the canonical chain.
+
+### Open Questions
+- What are the requirements for a forced inclusion?
+- Is there any DoS risk?
+- Is this influenced by the sequencer selection process?
 
 ## The Aztec Token
 
@@ -95,9 +113,10 @@ Once on L2, AZT is exclusively to used to pay transaction fees; it cannot be tra
 
 Aztec Labs will provide a reference implementation of the Aztec Node, which will be used to run the Aztec Network.
 
-It will have two primary modes of operation:
+It will have 3 primary modes of operation:
 - Proposer/Validator: responsible for proposing new blocks and validating them
 - Prover: responsible for orchestrating the creation of various proofs
+- Full Node: follows along, responsible for propagating transactions and blocks
 
 The node will have a web interface for monitoring key metrics.
 
@@ -146,6 +165,7 @@ The proposer submits the block header as calldata to a function on the rollup co
 - How many signatures are required?
 - Does the need to execute the transaction objects create too much of a burden on validators?
 - If we cannot execute the transaction objects, how does the rest of the system work?
+- How do costs of signature verification change with the sequencer selection process?
 
 ## The Proven Chain
 
@@ -175,6 +195,13 @@ Some users may coordinate with prover marketplaces, but the Aztec Node will come
 - Under what conditions can the pending chain be rolled back?
 - Is "steal your funds" ever possible?
 
+## Based Sequencing
+
+As a safety mechanism, all deployed instances will support a "based" sequencing mode that allows blocks to be added to the pending/proven chain without the need for L2 validators.
+
+### Open Questions
+- What are the circumstances for using based sequencing?
+
 ## The Finalized Chain
 
 The purpose of the finalized chain is to provide a final, immutable (up to Casper FFG) record of the state of the Aztec Network.
@@ -203,48 +230,39 @@ Prover nodes will receive information from proposers and will be responsible for
 
 ## Proposer/Validator Selection
 
-There will be a mechanism for selecting proposers and validators.
+There will be a sybil-resistant mechanism for selecting the validators for each epoch.
 
-We are actively determining the best way to do this.
+There will be a fair mechanism for assigning individual validators to be proposers for slots.
 
-Key considerations include:
-- Decentralization
-- Security
-- Economics
+We see two broad options for selecting validators:
+- A trustless system where validators are selected based on staked AZT
+- A system where validators are voted on by AZT holders
 
-We will be working closely with the community and external researchers to design a system that is fair and secure.
+Over the coming weeks we will be working with external researchers and the community to decide which system is best.
+
 
 ### Open Questions
 
+The main questions we need to answer for each system are:
+- How resistant is this to censorship?
+- How expensive is it to run?
+- How can we distribute rewards?
+- How do we enumerate all possible slashing conditions?
+- How much malicious AZT can we tolerate before we lose safety/liveness?
 - How large should the validator set be?
 - How many validators should be selected per epoch?
-
-If we choose a system where a validator set is selected randomly and trustlessly based on staked AZT:
-- How can we distribute rewards?
-- How do we keep l1 costs low?
-- How do we enumerate all possible slashing conditions?
-
-If we choose a system where a validator set is voted on by AZT holders:
-- Can this be sufficiently decentralized?
-- How resistant is this to censorship?
-
-In either scenario:
-- How costly is it for users to participate?
-- What are the economic incentives for validators?
-- What is our security model?
-- How much malicious AZT can we tolerate before we lose safety/liveness?
 
 ## Fees
 
 Every transaction in the Aztec Network has a fee associated with it. The fee is payed in AZT which has been bridged to L2.
 
 Transactions consume gas. There are two types of gas:
-- L2 gas: the cost of computation on L2
-- DA gas: the cost of data availability on L2
+- L2 gas: the cost of computation
+- DA gas: the cost of publishing/storing data
 
 When a user specifies a transaction, they provide values:
-- maxFeePerL2Gas: the maximum fee they are willing to pay in L2-AZT per unit L2 gas
-- maxFeePerDAGas: the maximum fee they are willing to pay in L2-AZT per unit DA gas
+- maxFeePerL2Gas: the maximum fee they are willing to pay in AZT per unit L2 gas
+- maxFeePerDAGas: the maximum fee they are willing to pay in AZT per unit DA gas
 - l2GasLimit: the maximum amount of L2 gas they are willing to consume
 - daGasLimit: the maximum amount of DA gas they are willing to consume
 
@@ -257,22 +275,15 @@ There is an additional pair of parameters to support complex flow such as fee ab
 
 Both of these values are used to "pre-pay" for the public teardown phase of the transaction.
 
-Each L2 block has a fixed L2 gas limit and a DA gas limit, each with a respective "target". 
+Each L2 block has a fixed L2 gas limit and a DA gas limit.
 
-Each L2 block dynamically sets its fee per L2/DA gas based on the deviation of the previous block's gas usage from the target.
 
 ### Open Questions
 
 - Can we ensure that the cost of proving is covered by L2 gas?
 - How do we pass back L1 compute and DA costs back to users?
-
-## Enshrined Price Oracles
-
-There will be an enshrined price oracle contract on L1 that protocol contracts will use to determine the exchange rate between AZT and Eth.
-
-### Open Questions
-
-- What guarantees can we provide about the price oracle?
+   - In an elected proposer system, can proposers simply set the fee?
+   - In a trustless proposer system, how do we ensure that the fee is set based on the price of eth and the current exchange rate to AZT? Do we need an enshrined price oracle?
 
 ## Pending Block Rewards
 
@@ -288,7 +299,9 @@ These will largely be funded by the transaction fees.
 
 - How much do we need to subsidize proven blocks?
 - How much should the protocol retain for future development?
-
+- How do distribution of rewards work w.r.t. sequencer selection?
+  - In a trustless proposer system, we likely need to reward historical proposers and validators. How do we do this in a way that is not extremely costly?
+  - In an elected proposer system, can we simply evenly distribute rewards to the committee?
 
 ## Transaction Lifecycle
 
@@ -333,17 +346,4 @@ There will be penalties for proposers and provers who do not fulfill their dutie
 - How do we ensure that the penalties are fair?
 - What should be burned, and what should be distributed?
 
-
-## Censorship Resistance and Liveness
-
-<!-- An overview of the censorship resistance and liveness model for the Aztec Network. This will include a description of the mechanisms for detecting and responding to censorship attacks. -->
-
-## Safety
-
-<!-- An overview of the safety guarantees for the Aztec Network in various scenarios. -->
-
-
-## Performance
-
-<!-- An overview of the expected performance of TestNet. This will include the throughput, latency, and scalability of the network. -->
 
