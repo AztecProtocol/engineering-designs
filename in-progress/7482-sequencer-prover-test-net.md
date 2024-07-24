@@ -172,7 +172,7 @@ After this, the block is confirmed in the Pending Chain.
 
 It is the responsibility of the prover selected at the beginning of an epoch to submit the proof of the epoch.
 
-The proof of epoch i must land in epoch i+1.
+The proof of epoch i must land after the proof of epoch i-1.
 
 ```mermaid
 sequenceDiagram
