@@ -115,18 +115,21 @@ Discuss any alternative or rejected solutions.
 
 Fill in bullets for each area that will be affected by this change.
 
-- [ ] L1 Contracts
+- [ ] Cryptography
+- [ ] Noir
+- [ ] Aztec.js
+- [ ] PXE
+- [ ] Aztec.nr
 - [ ] Enshrined L2 Contracts
 - [ ] Private Kernel Circuits
+- [ ] Sequencer
+- [ ] AVM
 - [ ] Public Kernel Circuits
 - [ ] Rollup Circuits
-- [ ] Aztec.nr
-- [ ] Noir
-- [ ] AVM
-- [ ] Sequencer
-- [ ] Fees
+- [ ] L1 Contracts
+- [ ] Prover
+- [ ] Economics
 - [ ] P2P Network
-- [ ] Cryptography
 - [ ] DevOps
 
 ## Test Plan
