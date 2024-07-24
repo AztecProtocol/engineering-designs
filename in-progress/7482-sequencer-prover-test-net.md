@@ -1,15 +1,15 @@
-# SPRTN v1.0.0 Design and Implementation Plan 
+# Spartan v1 Design and Implementation Plan 
 
-|                      |                                                                                         |
-| -------------------- | --------------------------------------------------------------------------------------- |
-| Issue                | [Sequencer/Prover TestNet](https://github.com/AztecProtocol/aztec-packages/issues/7482) |
-| Owners               | @just-mitch @LHerskind @Maddiaa0                                                        |
-| Approvers            | @joeandrews @charlielye @iAmMichaelConnor @spalladino @PhilWindle                       |
-| Target Approval Date | 2024-07-24                                                                              |
+|                      |                                                                        |
+| -------------------- | ---------------------------------------------------------------------- |
+| Issue                | [Spartan](https://github.com/AztecProtocol/aztec-packages/issues/7482) |
+| Owners               | @just-mitch @LHerskind @Maddiaa0                                       |
+| Approvers            | @joeandrews @charlielye @iAmMichaelConnor @spalladino @PhilWindle      |
+| Target Approval Date | 2024-07-24                                                             |
 
 ## Executive Summary
 
-This design and implementation plan describes version 1.0.0 of a Sequencer/Prover TestNet (SPRTN, pronounced "Spartan") that will be operational on/before 2024-09-16.
+This design and implementation plan describes version 1 of "Spartan", a public network that will be operational on/before 2024-09-16.
 
 We consider delivery of this network to be an engineering milestone; it remains to be seen if/how the network will be:
 - communicated to the public
@@ -34,9 +34,9 @@ We have designed against a subset of the requirements for MainNet; those with ch
 - [ ] do not require a hard fork to take advantage of most software updates
 - [ ] integrated with the execution environment
 
-Thus, SPRTN v1.0.0 is effectively a stepping stone toward MainNet.
+Thus, Spartan v1 is effectively a stepping stone toward MainNet.
 
-In a sense, part of SPRTN v1.0.0 is a subset of [Option B-](https://hackmd.io/B1Ae2zp6QxaSDOQgdFKJkQ#Option-B-), with key differences:
+In a sense, part of Spartan v1 is a subset of [Option B-](https://hackmd.io/B1Ae2zp6QxaSDOQgdFKJkQ#Option-B-), with key differences:
 - the validator set is small and defined by an Aztec Labs multisig (no PoS)
 - all validators re-execute transactions
 - TxEffects are committed to DA as opposed to TxObjects
@@ -51,9 +51,9 @@ To that end, there is a separate issue for [outlining MainNet](https://github.co
 
 ## Introduction
 
-We now introduce the broad design of the SPRTN v1.0.0.
+We now introduce the broad design of Spartan v1.
 
-### SPRTN v1.0.0 Definitions
+### Spartan v1 Definitions
 
 **Validator**
 A node that is participating in consensus by producing blocks and attesting to blocks
@@ -80,7 +80,7 @@ Of a block, if it is included in a chain.
 Of a chain, the set of conditions that must be met for a block to be considered confirmed.
 
 
-### SPRTN v1.0.0 Chains
+### Spartan v1 Chains
 
 We will explicitly support multiple concurrent "chains":
 
@@ -94,9 +94,9 @@ Note: we do not need to "do" anything for the Finalized Chain, but it is relevan
 
 E.g., a front-end with low-value transactions may display the Pending Chain, but a DEX bridge might wait to release funds until the transaction is in the Finalized Chain.
 
-In SPRTN v1.0.0 the committee will solely be responsible for building the Pending and Proven Chains.
+In Spartan v1 the committee will solely be responsible for building the Pending and Proven Chains.
 
-### SPRTN v1.0.0 Sequencer Selection
+### Spartan v1 Sequencer Selection
 
 The validator set will be selected by the multisig.
 
@@ -106,18 +106,18 @@ The exact number of validators will be determined via stress tests, modeling, an
 
 Part of the deliverable for this milestone will be an analysis of network performance based on the validator set size.
 
-### SPRTN v1.0.0 Prover Selection
+### Spartan v1 Prover Selection
 
 The list of available provers will be determined by the multisig.
 
 At the beginning of each epoch, a single prover will be selected to generate proofs for the epoch.
 
-### SPRTN v1.0.0 Incentives
+### Spartan v1 Incentives
 
-For SPRTN v1.0.0, we will create a simple incentives contract within the deployment:
+For Spartan v1, we will create a simple incentives contract within the deployment:
 - Whenever a block is added to the Proven Chain, rewards will be distributed to the participating proposer and prover.
 
-### The SPRTN v1.0.0 Pending Chain
+### The Spartan v1 Pending Chain
 
 
 #### Overview
@@ -166,7 +166,7 @@ The rollup contract will verify that:
 
 After this, the block is confirmed in the Pending Chain.
 
-### The SPRTN v1.0.0 Proven Chain
+### The Spartan v1 Proven Chain
 
 #### Overview
 
@@ -209,9 +209,9 @@ The rollup contract will verify that:
 
 After this, all blocks in the epoch are confirmed in the Proven Chain.
 
-### SPRTN v1.0.0 Governance
+### Spartan v1 Governance
 
-The SPRTN will have its own governance contract.
+The Spartan will have its own governance contract.
 
 Version 1.0.0 will specify an L1 account owner by Aztec Labs that is able to add or remove sequencers and provers. 
 
@@ -331,7 +331,7 @@ The parameters will be:
 - P2P enabled
 - Proving enabled
 - Fees enabled
-- Cluster type (local, sprtn, devnet, etc.)
+- Cluster type (local, spartan, devnet, etc.)
 
 ### Faults or Misbehaviors
 
@@ -363,11 +363,11 @@ Additional attack scenarios we will test are:
 - A coalition of dishonest sequencers submitting a block with an invalid state transition
 
 
-### The SPRTN Deployment
+### The Spartan Deployment
 
-There will be a new cluster of nodes deployed in AWS called `sprtn`.
+There will be a new cluster of nodes deployed in AWS called `spartan`.
 
-We will create a new branch called `sprtn` that we will merge master into whenever we want to redeploy the network.
+We will create a new branch called `spartan` that we will merge master into whenever we want to redeploy the network.
 
 This will be the cluster that we run stress tests on, which will be triggered whenever the network is redeployed.
 
@@ -423,7 +423,7 @@ Some key metrics across all scenarios will be:
 
 ## Documentation Plan
 
-We will add a README with information on how provers can participate in the SPRTN.
+We will add a README with information on how provers can participate in the Spartan.
 
 We will also add a README with information on how to run the network locally.
 
