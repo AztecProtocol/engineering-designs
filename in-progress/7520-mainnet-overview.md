@@ -183,23 +183,21 @@ The purpose of the proven chain is to verify a zero-knowledge proof that attests
 
 It is a prefix of the pending chain.
 
-The first block in an epoch must contain a commitment on behalf of the proposer to proving the current epoch.
-
-This is done by placing a large "prover commitment bond" in the block.
+The proposer named in the first slot in an epoch has monopoly rights on proving the previous epoch.
 
 The proof of epoch `i` must be submitted within a certain number of L1 blocks after the end of epoch `i`.
 
-If this does not happen, there is an "open challenge period" where anyone can submit a proof of the epoch, and claim part of the prover commitment bond.
+If this does not happen, there is an "open challenge period" where anyone can submit a proof of the epoch.
 
-If no proof is submitted, the proposer loses the bond, and the epoch is considered invalid; the pending chain is rolled back to the last proven epoch.
+If no proof is submitted the epoch is considered invalid; the pending chain is rolled back to the last proven epoch.
 
-The proposer who posts the prover commitment bond must coordinate payment and proving out of protocol.
+The proposers must coordinate payment and proving out of protocol.
 
 Some users may coordinate with prover marketplaces, but the Aztec Node will come with the ability to "self-prove" an epoch.
 
 ### Open Questions
 
-- How large should the prover commitment bond be?
+- Do we need a prover commitment bond in-protocol?
 - How do proving marketplaces integrate?
 - What is the timeliness requirement for the proof submission?
 - What is the open challenge period?
@@ -373,6 +371,7 @@ We will provide a layer of abstraction to allow for similar DA solutions (e.g. E
 
 ### Open Questions
 
+- What are the security assumptions the DA solution must satisfy?
 - What are the throughput and latency requirements for the DA solution?
 
 ## Penalties and Slashing
