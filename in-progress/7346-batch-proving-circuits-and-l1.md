@@ -162,7 +162,7 @@ Note that we say that the global variables in `right` "follow" the ones in `left
 
 - `left.chain_id == right.chain_id`
 - `left.version == right.version`
-- `left.block_number == right.block_number + 1`
+- `left.block_number + 1 == right.block_number`
 - `left.timestamp < right.timestamp`
 - `coinbase`, `fee_recipient`, and `gas_fees` are not constrained (though `gas_fees` may be in a 1559-like world)
 
