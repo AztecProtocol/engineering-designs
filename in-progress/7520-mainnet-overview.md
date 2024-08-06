@@ -8,7 +8,7 @@
 
 This document is a system design overview of what we want to deliver as our MainNet release, focusing on networks, L1 interactions, governance, and economics.
 
-We will deliver a fully functional network by Dec 16, 2024. This network will be a publicly available, but with no guarantees of security or stability.
+We will deliver a fully functional network by Dec 2, 2024. This network will be a publicly available, but with no guarantees of security or stability.
 
 The deployed network will be referred to as "TestNet", but it will reflect the design of the coming "MainNet".
 
@@ -16,7 +16,7 @@ Thus, in the immediate term, Aztec Labs will be running three networks:
 
 - Staging: a private network for testing and development
 - DevNet: a public network for app developers with a centralized sequencer and prover
-- Sequencer/Prover TestNet (SPRTN): a public network for infrastructure providers with permissioned sequencers and provers
+- Spartan: a public network for infrastructure providers with permissioned sequencers and provers
 
 By 2024-12-16, these will be consolidated into:
 
@@ -28,6 +28,8 @@ The objective of this document is to:
 - outline engineering's current understanding of what will be built
 - pose open questions that need to be resolved, either internally or with the community or external researchers
 
+**Note:** Most of the components below will have their own design documents.
+
 ## Overview
 
 The Aztec Network is a privacy-focused, general-purpose Layer 2 network built on Ethereum. It uses zero-knowledge client-side proofs to enable private, programmable transactions, a VM to enable verified public computation, and a rollup architecture to scale. Aztec is designed to be permissionless and decentralized, while maintaining sound economics, governance, and compliance.
@@ -36,68 +38,12 @@ The Aztec Network is a privacy-focused, general-purpose Layer 2 network built on
 
 L1 is Ethereum Sepolia.
 
-## Top Level Governance
-
-There is a Top Level Governance (TLG) contract, and an Aztec Token (AZT) contract deployed on L1.
-
-Neither contract is tied to any specific deployment of the Aztec Network.
-
-The TLG is a minter of the Aztec Token.
-
-Holders of AZT will be able to submit proposals to the TLG, which will be voted on by AZT holders.
-
-## Network Deployments
+## Network L1 Deployments
 
 A Deployment of the Aztec Network includes several contracts running on L1.
 
-Each Deployment has a Rewards contract and a Registry.
 
-After the Deployment is created, a proposal is submitted to the TLG, requesting funding of its Rewards contract.
-
-The Deployment's Registry contract points to the current/canonical and historical "Instances" in the Deployment.
-
-The Registry contract also describes how the Deployment can be governed, and will vary depending on the Deployment.
-
-An Instance within a Deployment includes:
-
-- A Rollup Contract, which is the main contract that handles the rollup of transactions.
-- A Data Availability Oracle, which is responsible for answering if the preimage of commitments have been made available.
-- An Inbox, responsible for receiving messages from L1 and making them available L2.
-- An Outbox, responsible for receiving messages from L2 and making them available on L1.
-
-There are two deployments as part of TestNet:
-
-- Alpha: `testnet-alpha`
-- Beta: `testnet-beta`
-
-The Alpha deployment will be governed by the Aztec Labs team.
-The Beta deployment will be governed by the TLG.
-
-## Deployment Upgrades
-
-Deployments can issue new Instances to upgrade the network.
-
-For Alpha, the Aztec Labs team will instruct the Registry to point to the new Instance. Upgrades will occur after an execution delay of 1 hour.
-
-For Beta, a proposal will be submitted to the TLG to instruct the Registry to point to the new Instance. There will be a setup period of 1 day, a voting period of 3 days, and an execution delay of 2 days.
-
-In both cases, the new Instance will be instantiated with the state of the old Instance.
-
-### Open Questions
-
-- What happens to bridged assets during an upgrade? What options do users have?
-
-## Forced Inclusions
-
-Deployments will have a mechanism for forced inclusions of transactions in the canonical chain.
-
-### Open Questions
-
-- What are the requirements for a forced inclusion?
-- What are the DoS risks?
-- Is this influenced by the sequencer selection process?
-
-## The Aztec Token
+### AZT Contract
 
 The Aztec Token (AZT) is an ERC20 token that is used to pay for transaction fees on the Aztec Network.
 
@@ -109,11 +55,62 @@ A canonical bridge allow bridging AZT from L1 to L2.
 
 AZT bridged through the canonical bridge is exclusively used to pay transaction fees; it cannot be transferred to other users on L2.
 
-## Compliance
+The AZT contract is immutable.
+
+### Incentives Contract
+
+The Incentives contract is responsible for minting AZT.
+
+Only the owner of the Incentives contract can mint AZT.
+
+It has a rate limiter on minting.
+
+The Incentives contract is immutable.
+
+### Governance Contract
+
+The Governance Contract owns the Incentives contract.
+
+AZT holders can lock their AZT in the Governance Contract to vote on proposals.
+
+Proposals can only be submitted by the PendingProposals Contract.
+
+Proposals must garner X% of the total locked AZT to be ratified.
+
+There will be a time delay between ratification and execution.
+
+### Registry Contract
+
+The Registry Contract keeps track of the current/canonical and historical Instances.
+
+An Instance is comprised of:
+- A Rollup Contract, which is the main contract that handles the rollup of transactions.
+- A Data Availability Oracle, which is responsible for answering if the preimage of commitments have been made available.
+- An Inbox, responsible for receiving messages from L1 and making them available L2.
+- An Outbox, responsible for receiving messages from L2 and making them available on L1.
+
+### Rollup Contract
+
+The initial Rollup Contract will require holders of AZT to stake their tokens to become validators.
+
+The initial Rollup Contract will maintain a balance of AZT to be used for rewards.
+
+### PendingProposals Contract
+
+The Proposals Contract keeps track of governance proposals and votes.
+
+It watches for proposal signals in the Registry's canonical Instance.
+
+When M of the previous N blocks contain the same proposal, it is submitted to Governance.
+
+## Forced Inclusions
+
+Deployments will have a mechanism for forced inclusions of transactions in the canonical chain.
 
 ### Open Questions
 
-- What are the compliance requirements for the Aztec Network?
+- How does it work?
+- Can this mechanism be tied to the based sequencing mechanism?
 
 ## Aztec Labs Node
 
@@ -145,7 +142,6 @@ Each epoch has a set of validators, who add economic security to the Pending Cha
 
 ### Open Questions
 
-- Would a "pure L2" chain help us achieve our goals?
 - How long should a slot be?
 - How long should an epoch be?
 
@@ -164,18 +160,28 @@ The proposer gossips to the validators:
 - The list of transaction objects
 
 Validators check that the proposer is the current proposer.
-They then build an L2 block by executing the transaction objects, and sign the resulting L2 block header.
+They then create a signature over the list of transaction objects.
 
-Once the proposer has collected enough signatures, they can submit the L2 block header to L1.
+Once the proposer has collected enough signatures, it submits the signatures and hash of the TxObjects as calldata to a function on the rollup contract dedicated to advancing the pending chain.
 
-The proposer submits the block header as calldata to a function on the rollup contract dedicated to advancing the pending chain.
+The next proposer will watch L1 for the hash, execute the constituent transactions (possibly getting them from a peer) and produce the implied L2 header of the **previous/published** block *before* it then selects the TxObjects that will form its block.
+
+In the course of execution, the proposer may find that a transaction is invalid. 
+
+In this case, the side effects from that transaction are discarded, but the block is still valid.
+
+Further, when the epoch is proven (see below), it will need to include a "naysayer proof" that shows that the transaction was invalid (and thus had its side effects discarded)
+
+Ultimately, the proposer who included the invalid transaction will be penalized.
 
 ### Open Questions
 
+- What does the proposer need to submit to the rollup contract?
 - How many signatures are required?
-- Does the need to execute the transaction objects create too much of a burden on validators?
-- If we cannot execute the transaction objects, how does the rest of the system work?
 - How do costs of signature verification change with the sequencer selection process?
+- How are we going to do naysayer proofs?
+- What is the fallout of not having the pending L2 header on chain?
+- How are we going to charge the proposer of the invalid transaction?
 
 ## The Proven Chain
 
@@ -210,6 +216,7 @@ As a safety mechanism, all deployed instances will support a "based" sequencing 
 
 ### Open Questions
 
+- How does it work?
 - What are the circumstances for using based sequencing?
 
 ## The Finalized Chain
@@ -256,31 +263,27 @@ Prover nodes will receive information from proposers and will be responsible for
 ### Open Questions
 
 - What is the interface that proposers will use to communicate with prover nodes?
+  - Do they need one other than L1?
 
 ## Proposer/Validator Selection
 
-There will be a sybil-resistant mechanism for selecting the validators for each epoch.
+As noted above, the initial Rollup contract will allow holders of AZT to stake a set amount of their tokens to become validators.
 
-There will be a mechanism for assigning individual validators to be proposers for slots.
+We will mimic much of Ethereum in that one user can have multiple validators.
 
-We see two broad options for selecting validators:
+We will use randao to select a committee from the validator set for each epoch.
 
-- A system where validators are selected based on staked AZT
-- A system where validators are voted on by AZT holders
-
-Over the coming weeks we will be working with external researchers and the community to decide which system is best.
+Each slot in an epoch will be randomly assigned to a validator in the committee.
 
 ### Open Questions
-
-The main questions we need to answer for each system are:
 
 - How resistant is this to censorship?
 - How expensive is it to run?
 - How can we distribute rewards?
-- How do we enumerate all possible slashing conditions?
-- How much malicious AZT can we tolerate before we lose safety/liveness?
-- What is the marginal cost/benefit of an extra validator in the set?
-- What is the marginal cost/benefit of an extra validator in the committee?
+- What are the slashing conditions?
+- Probability/severity/cost of different attacks based on the power of attacker (1%, 5%, 10%, 20%, 33%, 50%, 67% of stake)
+- Time to detect and react to a safety breach?
+- What is the marginal cost/benefit of an extra validator in the set/committee?
 
 ## Fees
 
@@ -316,8 +319,6 @@ Each L2 block has a fixed L2 gas limit and a DA gas limit.
 - How will the user figure out a fitting value for `maxFeePerL2Gas` and `maxFeePerDAGas`
 - Can we ensure that the cost of proving is covered by L2 gas?
 - How will L1 figure out fitting values for `feePerL2Gas` and `feePerDAGas`, such that costs are correctly passed back to the users?
-  - In an elected proposer system, can proposers simply set the fee?
-  - In a trustless proposer system, how do we ensure that the fee is set based on the price of eth and the current exchange rate to AZT? Do we need an enshrined price oracle?
 
 ## Pending Block Rewards
 
@@ -333,9 +334,7 @@ These will be in addition to the transaction fees paid by users.
 
 - How much do we need to subsidize proven blocks?
 - How much should the protocol retain for future development?
-- How do distribution of rewards work w.r.t. sequencer selection?
-  - In a trustless proposer system, we likely need to reward historical proposers and validators. How do we do this in a way that is not extremely costly?
-  - In an elected proposer system, can we simply evenly distribute rewards to the committee?
+- We likely need to reward historical proposers and validators. How do we do this in a way that is not extremely costly?
 
 ## Transaction Lifecycle
 
@@ -358,10 +357,6 @@ If the public portion fails in the app logic or teardown phase the side effects 
 ### Open Questions
 
 - How painful is it for sequencers to whitelist public setup code?
-- If validators don't re-execute and thus sign headers, what is the engineering fallout for needing to deal with invalid transactions? How does the proposer pay for this?
-  - Partial answer on the engineering fallout:
-    - Add inclusion check for every failing non-inclusion check for nullifiers
-    - "Naysayer" proofs
 
 ## Data Availability
 
@@ -386,7 +381,11 @@ There will be penalties for proposers and provers who do not fulfill their dutie
   - provers
 - What is require to convince L1 that the conditions are met?
 - What is the "cost" of an enforcement action? e.g., if tiny penalty it might not be worth to enforce it.
-- If proposers are voted on, can we rely on the community to enforce penalties?
 - What are the penalties for proposers and provers?
 - How do we ensure that the penalties are fair?
 - What should be burned, and what should be distributed?
+- Expected annual return for validators (mean, median)?
+
+## Disclaimer
+
+The information set out herein is for discussion purposes only and does not represent any binding indication or commitment by Aztec Labs and its employees to take any action whatsoever, including relating to the structure and/or any potential operation of the Aztec protocol or the protocol roadmap. In particular: (i) nothing in these projects, requests, or comments is intended to create any contractual or other form of legal relationship with Aztec Labs or third parties who engage with this AztecProtocol GitHub account (including, without limitation, by responding to a conversation or submitting comments) (ii) by engaging with any conversation or request, the relevant persons are consenting to Aztec Labs’ use and publication of such engagement and related information on an open-source basis (and agree that Aztec Labs will not treat such engagement and related information as confidential), and (iii) Aztec Labs is not under any duty to consider any or all engagements, and that consideration of such engagements and any decision to award grants or other rewards for any such engagement is entirely at Aztec Labs’ sole discretion. Please do not rely on any information on this account for any purpose - the development, release, and timing of any products, features, or functionality remains subject to change and is currently entirely hypothetical. Nothing on this account should be treated as an offer to sell any security or any other asset by Aztec Labs or its affiliates, and you should not rely on any content or comments for advice of any kind, including legal, investment, financial, tax, or other professional advice.
