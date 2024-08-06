@@ -272,6 +272,7 @@ We will verify:
 - A block proposed without a signature from the current proposer should fail
 - A prover submitting a proof with an invalid proof
 - A coalition of dishonest sequencers submitting a block with an invalid state transition
+- We can tolerate "soft" L1 censorship (i.e. the anvil instance is down for a period of time)
 
 ### Existing e2e tests
 
@@ -291,3 +292,10 @@ We will write documentation on how people can join the `spartan` network.
 - [ ] 2024-09-04: Attack scenarios passing in CI.
 - [ ] 2024-09-09: `staging` network deployed
 - [ ] 2024-09-11: `spartan` network deployed
+
+## Future Work
+
+There is also [attack net](https://github.com/crytic/attacknet) that works with k8s and chaos-mesh and is purpose built for testing blockchains in adversarial conditions.
+
+This will be useful to add to the network tests, especially around L1 censorship resistance.
+
