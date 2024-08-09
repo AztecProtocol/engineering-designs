@@ -1,10 +1,10 @@
 # [TestNet Design Overview](https://github.com/AztecProtocol/aztec-packages/issues/7520)
 
-|                      |            |
-| -------------------- | ---------- |
-| Owners               |            |
-| Approvers            |            |
-| Target Approval Date | 2024-08-06 |
+|                      |                                  |
+| -------------------- | -------------------------------- |
+| Owners               | @just-mitch @LHerskind @Maddiaa0 |
+| Approvers            | @charlielye @joeandrews          |
+| Target Approval Date | 2024-08-16                       |
 
 This document is a system design overview of what is to be delivered as the TestNet, focusing on networks, L1 interactions, governance, and economics.
 
