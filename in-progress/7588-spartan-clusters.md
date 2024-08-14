@@ -129,21 +129,49 @@ There will be a deployment for anvil. It will have a single replica, and be expo
 
 **boot node**
 
-There will be a statefulset with a single replica for the boot node. As part of its init container it will deploy the enshrined L1 contracts. Other nodes in the network will be able to resolve the boot node's address via its stable DNS name, e.g. `boot-node-0.aztec-network.svc.cluster.local`.
+There will be a statefulset with a single replica for the boot node.
+
+From the aztec node perspective, it will be started as `start --node --archiver`.
+
+As part of its init container it will deploy the enshrined L1/L2 contracts. Other nodes in the network will be able to resolve the boot node's address via its stable DNS name, e.g. `boot-node-0.aztec-network.svc.cluster.local`.
 
 **full node**
 
-There will be a statefulset for the full nodes. The number of replicas will be configurable. Each full node will have a service exposing its p2p port and node port.
+There will be a statefulset for the full nodes, i.e. `start --node --archiver`
+
+The number of replicas will be configurable. Each full node will have a service exposing its p2p port and node port.
 
 As part of their init container, they will get config from the boot node, including its ENR (which will require exposing this on the `get-node-info` endpoint). 
 
-Tests will produce a validator set from the full nodes.
-
 It will be possible to address full nodes individually via their stable DNS name, e.g. `full-node-0.aztec-network.svc.cluster.local`, as well as collectively via a service, e.g. `full-node.aztec-network.svc.cluster.local`.
+
+**validator**
+
+Similar configuration as full nodes, but with a different service name, and started via `start --node --archiver --sequencer`.
+
+The number of replicas will be configurable.
+
+Tests will add/remove validators to/from the L1 validator set.
+
+**prover node**
+
+Same configuration as full nodes, but with a different service name, and started via `start --node --archiver --prover-node`.
+
+The number of replicas will be configurable.
+
+**prover agent**
+
+There will be a deployment for prover agents, and started as `start --prover`.
+
+The number of replicas will be configurable.
 
 **pxe**
 
-PXEs will be deployed as a statefulset. The number of replicas will be configurable. Each PXE will have a service exposing its port.
+PXEs will be deployed as a statefulset.
+
+It will be started as `start --pxe`.
+
+The number of replicas will be configurable. Each PXE will have a service exposing its port.
 
 PXEs will use the collective full node service as their node url by default.
 
