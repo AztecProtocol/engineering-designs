@@ -159,28 +159,22 @@ The proposer gossips to the validators:
 - A signature showing it is the current proposer
 - The list of transaction objects
 
-Validators check that the proposer is the current proposer.
+Validators check that the proposer is the current proposer, and verify the private kernel proofs of the transaction objects.
+
 They then create a signature over the list of transaction objects.
 
-Once the proposer has collected enough signatures, it submits the signatures and hash of the TxObjects as calldata to a function on the rollup contract dedicated to advancing the pending chain.
+Once the proposer has collected enough signatures, it submits the signatures and TxObjects to the rollup contract dedicated to advancing the pending chain.
 
-The next proposer will watch L1 for the hash, execute the constituent transactions (possibly getting them from a peer) and produce the implied L2 header of the **previous/published** block *before* it then selects the TxObjects that will form its block.
+The next proposer will watch L1, execute the constituent transactions (possibly getting them from a peer) and produce the implied L2 header of the **previous/published** block *before* it then selects the TxObjects that will form its block.
 
-In the course of execution, the proposer may find that a transaction is invalid. 
-
-In this case, the side effects from that transaction are discarded, but the block is still valid.
-
-Further, when the epoch is proven (see below), it will need to include a "naysayer proof" that shows that the transaction was invalid (and thus had its side effects discarded)
+In the course of execution, the proposer may find that a transaction is "invalid", i.e., the private kernel proof is cannot verify. 
 
 Ultimately, the proposer who included the invalid transaction will be penalized.
 
 ### Open Questions
 
-- What does the proposer need to submit to the rollup contract?
+- Do we need to do optimistic signature verification?
 - How many signatures are required?
-- How do costs of signature verification change with the sequencer selection process?
-- How will naysayer proofs work?
-- What is the fallout of not having the pending L2 header on chain?
 - How will the proposer of the invalid transaction be charged?
 
 ## The Proven Chain
@@ -313,6 +307,8 @@ There is an additional pair of parameters to support complex flow such as fee ab
 Both of these values are used to "pre-pay" for the public teardown phase of the transaction.
 
 Each L2 block has a fixed L2 gas limit and a DA gas limit.
+
+There will be an in-protocol mechanism for updating the `feePerL2Gas` and `feePerDAGas` values.
 
 ### Open Questions
 
