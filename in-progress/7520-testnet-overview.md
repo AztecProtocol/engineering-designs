@@ -297,7 +297,7 @@ When a user specifies a transaction, they provide values:
 
 Thus, the maximum fee they are willing to pay is:
 
-- maxFee = maxFeePerL2Gas _ l2GasLimit + maxFeePerDAGas _ daGasLimit
+- maxFee = maxFeePerL2Gas * l2GasLimit + maxFeePerDAGas * daGasLimit
 
 There is an additional pair of parameters to support complex flow such as fee abstraction:
 
