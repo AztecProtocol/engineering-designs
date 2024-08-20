@@ -14,19 +14,16 @@ The deployed network will be referred to as "TestNet".
 
 Thus, in the immediate term, Aztec Labs and/or the Aztec Foundation (once set up) will be coordinating the operation of the following networks:
 
-- Staging: a private network for testing and development
+- AlphaNet: a private network for testing and development
 - DevNet: a public network for app developers with a centralized sequencer and prover
 - Spartan: a public network for infrastructure providers with permissioned sequencers and provers
 
 By December 16, 2024, these will be consolidated into:
 
-- Staging: a private network for testing and development
+- AlphaNet: a private network for testing and development
 - TestNet: a public network with permissionless sequencers and provers
 
-The objective of this document is to:
-
-- outline engineering's current understanding of what will be built
-- pose open questions that need to be resolved, either internally or with the community or external researchers
+The objective of this document is to outline engineering's current understanding of what will be built.
 
 **Note:** Most of the components below will have their own design documents.
 
@@ -41,7 +38,6 @@ L1 is Ethereum Sepolia.
 ## Network L1 Deployments
 
 A deployment of the Aztec Network includes several contracts running on L1.
-
 
 ### TST Contract
 
@@ -103,9 +99,6 @@ It watches for proposal signals in the Registry's canonical Instance.
 
 When M of the previous N blocks contain the same proposal, it is submitted to Governance.
 
-## Forced Inclusions
-
-Deployments will have a mechanism for forced inclusions of transactions in the canonical chain.
 
 ### Open Questions
 
@@ -159,17 +152,15 @@ The proposer gossips to the validators:
 - A signature showing it is the current proposer
 - The list of transaction objects
 
-Validators check that the proposer is the current proposer, and verify the private kernel proofs of the transaction objects.
+Validators:
+- check that the proposer is the current proposer
+- verify the private kernel proofs of the transaction objects
+- create a signature over the list of transaction objects.
 
-They then create a signature over the list of transaction objects.
+Once the proposer has collected enough signatures, it submits the signatures data to a function on the rollup contract dedicated to advancing the pending chain.
 
-Once the proposer has collected enough signatures, it submits the signatures and TxObjects to the rollup contract dedicated to advancing the pending chain.
+The next proposer will watch L1 for updates to the pending chain, execute the constituent transactions (possibly getting them from a peer) and produce the implied L2 header of the **previous/published** block *before* it then selects the TxObjects that will form its block.
 
-The next proposer will watch L1, execute the constituent transactions (possibly getting them from a peer) and produce the implied L2 header of the **previous/published** block *before* it then selects the TxObjects that will form its block.
-
-In the course of execution, the proposer may find that a transaction is "invalid", i.e., the private kernel proof is cannot verify. 
-
-Ultimately, the proposer who included the invalid transaction will be penalized.
 
 ### Open Questions
 
@@ -219,37 +210,6 @@ The purpose of the finalized chain is to provide a final, immutable (up to Caspe
 
 It is a prefix of the proven chain, and blocks naturally move from the proven chain to the finalized chain as proofs become finalized in the eyes of L1.
 
-## Node Types
-
-All the nodes participate in the peer-to-peer (p2p) network but with varying capacity.
-
-1. **Light Node**:
-   - Download and validate headers from the p2p network.
-     - Sometimes an "ultra-light" node is mentioned, this is a node that don't validate the headers it receive but just accept it. These typically are connected to a third party trusted by the user to provide valid headers.
-   - Stores only the headers.
-   - Querying any state not in the header is done by requesting the data from a third party, e.g. Infura or other nodes in the p2p network. Responses are validated with the headers as a trust anchor.
-   - Storage requirements typically measured in MBs (< 1GB).
-   - Synchronization time is typically measured in minutes.
-2. **Full Node**:
-   - Receive and validate blocks (header and body) from the p2p network.
-   - Stores the complete active state of the chain
-   - Typically stores recent state history (last couple of hours is common)
-   - Typically stores all blocks since genesis (some pruning might be done)
-   - Can respond to queries of current and recent state
-   - Storage requirements typically measured in GBs (< 1TB)
-   - Synchronization time is typically measured in hours/days.
-3. **Archive Node**:
-   - Receive and validate blocks (header and body) from the p2p network
-   - Stores the full state history of the chain
-   - Stores all blocks since genesis
-   - Can respond to queries of state at any point in time
-   - Storage requirements typically measured in TBs
-   - Synchronization time is typically measured in hours/days.
-
-### Open Questions
-
-- What kind of "watcher" role can full nodes play?
-
 ## Prover Nodes
 
 Prover nodes will receive information from proposers and will be responsible for creating proofs, and posting them to L1.
@@ -263,7 +223,7 @@ Prover nodes will receive information from proposers and will be responsible for
 
 As noted above, the initial Rollup contract will allow holders of TST to stake a set amount of their tokens to become validators.
 
-Much of Ethereum will be mimicked in that one user can have multiple validators.
+One user can have multiple validators.
 
 A randao will be used to select a committee from the validator set for each epoch.
 
@@ -271,9 +231,7 @@ Each slot in an epoch will be randomly assigned to a validator in the committee.
 
 ### Open Questions
 
-- How resistant is this to censorship?
-- How expensive is it to run?
-- How can reward be distributed?
+- How should rewards be distributed?
 - What are the slashing conditions?
 - Probability/severity/cost of different attacks based on the power of attacker (1%, 5%, 10%, 20%, 33%, 50%, 67% of stake)
 - Time to detect and react to a safety breach?
@@ -316,14 +274,10 @@ There will be an in-protocol mechanism for updating the `feePerL2Gas` and `feePe
 - How can it be ensured that the cost of proving is covered by L2 gas?
 - How will L1 figure out fitting values for `feePerL2Gas` and `feePerDAGas`, such that costs are correctly passed back to the users?
 
-## Pending Block Rewards
-
-No rewards are planned for pending blocks, as only the finalization of blocks should be incentivized.
 
 ## Proven Block Rewards
 
-There will be rewards for proven blocks.
-
+The protocol may have rewards for proven blocks.
 These will be in addition to the transaction fees paid by users.
 
 ### Open Questions
@@ -357,13 +311,6 @@ If the public portion fails in the app logic or teardown phase the side effects 
 ## Data Availability
 
 Ethereum blobs will be used to publish TxObjects and proofs.
-
-A layer of abstraction will be provided to allow for similar DA solutions (e.g. EigenDA, Celestia).
-
-### Open Questions
-
-- What are the security assumptions the DA solution must satisfy?
-- What are the throughput and latency requirements for the DA solution?
 
 ## Penalties and Slashing
 
