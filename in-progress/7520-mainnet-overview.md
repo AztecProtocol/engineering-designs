@@ -1,4 +1,4 @@
-# [MainNet Design Overview](https://github.com/AztecProtocol/aztec-packages/issues/7520)
+# [TestNet Design Overview](https://github.com/AztecProtocol/aztec-packages/issues/7520)
 
 |                      |            |
 | -------------------- | ---------- |
@@ -107,11 +107,6 @@ When M of the previous N blocks contain the same proposal, it is submitted to Go
 
 Deployments will have a mechanism for forced inclusions of transactions in the canonical chain.
 
-### Open Questions
-
-- How does it work?
-- Can this mechanism be tied to the based sequencing mechanism?
-
 ## Aztec Labs Node
 
 Aztec Labs will provide a reference implementation of the Aztec Node, which will be used to run the Aztec Network.
@@ -140,7 +135,7 @@ Each slot has a proposer, who is responsible for proposing a block of transactio
 
 Each epoch has a set of validators, who add economic security to the Pending Chain by providing signatures on proposed blocks; ultimately the Pending Chain is a UX feature that allows users to see their transactions with _some guarantee_ before they are proven.
 
-### Open Questions
+### TBC Details
 
 - How long should a slot be?
 - How long should an epoch be?
@@ -174,14 +169,11 @@ Further, when the epoch is proven (see below), it will need to include a "naysay
 
 Ultimately, the proposer who included the invalid transaction will be penalized.
 
-### Open Questions
+### TBC Details
 
-- What does the proposer need to submit to the rollup contract?
-- How many signatures are required?
-- How do costs of signature verification change with the sequencer selection process?
-- How are we going to do naysayer proofs?
+- What does the proposer need to submit to the rollup contract to advance the pending chain?
 - What is the fallout of not having the pending L2 header on chain?
-- How are we going to charge the proposer of the invalid transaction?
+- What kind of early warning system should there be for safety violations?
 
 ## The Proven Chain
 
@@ -201,23 +193,15 @@ The proposers must coordinate payment and proving out of protocol.
 
 Some users may coordinate with prover marketplaces, but the Aztec Node will come with the ability to "self-prove" an epoch.
 
-### Open Questions
+### TBC Details
 
 - Do we need a prover commitment bond in-protocol?
 - How do proving marketplaces integrate?
 - What is the timeliness requirement for the proof submission?
-- What is the open challenge period?
-- Under what conditions can the pending chain be rolled back?
-- Is "steal your funds" ever possible?
 
 ## Based Sequencing
 
 As a safety mechanism, all deployed instances will support a "based" sequencing mode that allows blocks to be added to the pending/proven chain without the need for L2 validators.
-
-### Open Questions
-
-- How does it work?
-- What are the circumstances for using based sequencing?
 
 ## The Finalized Chain
 
@@ -252,18 +236,9 @@ All the nodes participate in the peer-to-peer (p2p) network but with varying cap
    - Storage requirements typically measured in TBs
    - Synchronization time is typically measured in hours/days.
 
-### Open Questions
-
-- What kind of "watcher" role can full nodes play?
-
 ## Prover Nodes
 
 Prover nodes will receive information from proposers and will be responsible for creating proofs, and posting them to L1.
-
-### Open Questions
-
-- What is the interface that proposers will use to communicate with prover nodes?
-  - Do they need one other than L1?
 
 ## Proposer/Validator Selection
 
@@ -275,14 +250,11 @@ We will use randao to select a committee from the validator set for each epoch.
 
 Each slot in an epoch will be randomly assigned to a validator in the committee.
 
-### Open Questions
+### TBC Details
 
-- How resistant is this to censorship?
-- How expensive is it to run?
 - How can we distribute rewards?
 - What are the slashing conditions?
 - Probability/severity/cost of different attacks based on the power of attacker (1%, 5%, 10%, 20%, 33%, 50%, 67% of stake)
-- Time to detect and react to a safety breach?
 - What is the marginal cost/benefit of an extra validator in the set/committee?
 
 ## Fees
@@ -314,10 +286,8 @@ Both of these values are used to "pre-pay" for the public teardown phase of the 
 
 Each L2 block has a fixed L2 gas limit and a DA gas limit.
 
-### Open Questions
+### TBC Details
 
-- How will the user figure out a fitting value for `maxFeePerL2Gas` and `maxFeePerDAGas`
-- Can we ensure that the cost of proving is covered by L2 gas?
 - How will L1 figure out fitting values for `feePerL2Gas` and `feePerDAGas`, such that costs are correctly passed back to the users?
 
 ## Pending Block Rewards
@@ -330,59 +300,28 @@ We will have rewards for proven blocks.
 
 These will be in addition to the transaction fees paid by users.
 
-### Open Questions
+### TBC Details
 
 - How much do we need to subsidize proven blocks?
 - How much should the protocol retain for future development?
-- We likely need to reward historical proposers and validators. How do we do this in a way that is not extremely costly?
-
-## Transaction Lifecycle
-
-The executable code of a transactions follows the following lifecycle:
-
-1. Locally, in private:
-   1. Setup
-   2. App Logic
-2. On L2, in public:
-   1. Setup
-   2. App Logic
-   3. Teardown
-
-If the private portion fails, the transaction is not submitted to L2.
-
-If the public portion fails in the setup phase, the transaction is invalid, and discarded.
-
-If the public portion fails in the app logic or teardown phase the side effects from the failing stage are discarded but the transaction is still valid. Users can simulate their transactions ahead of time and not submit them if they fail.
-
-### Open Questions
-
-- How painful is it for sequencers to whitelist public setup code?
 
 ## Data Availability
 
 We will use ethereum blobs to publish TxObjects and proofs.
 
-We will provide a layer of abstraction to allow for similar DA solutions (e.g. EigenDA, Celestia).
-
-### Open Questions
-
-- What are the security assumptions the DA solution must satisfy?
-- What are the throughput and latency requirements for the DA solution?
-
 ## Penalties and Slashing
 
 There will be penalties for proposers and provers who do not fulfill their duties.
 
-### Open Questions
+### TBC Details
 
 - Under what conditions should actors be slashed?
   - committee members
   - proposers
   - provers
-- What is require to convince L1 that the conditions are met?
+- What is required to convince L1 that the conditions are met?
 - What is the "cost" of an enforcement action? e.g., if tiny penalty it might not be worth to enforce it.
 - What are the penalties for proposers and provers?
-- How do we ensure that the penalties are fair?
 - What should be burned, and what should be distributed?
 - Expected annual return for validators (mean, median)?
 
