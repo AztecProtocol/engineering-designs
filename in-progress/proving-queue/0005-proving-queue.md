@@ -52,7 +52,7 @@ type Metadata = {
 
 ```
 
-Proving request data, such as input witness and recursive proofs are stored in a directory labelled with the job's id.
+Proving request data, such as input witness and recursive proofs are stored in a directory labelled with the job's id residing on an NFS share/S3 bucket or similar. This is an optimsation, as prover agents can access the data independently, without requiring the broker to transfer large amounts of data to them. If it turns out that this is not required then the proof requests will reside on a disk local to the broker and will be transferred over the network from the broker. Maybe this should be a configurable aspect of the system.
 
 ![alt text](./broker.png)
 
@@ -67,7 +67,7 @@ This gives an overall job flow that looks as follows:
 3. An agent polls for new work. A query is performed on the in-memory cache based on the capabilites of the prover and ordered to prioritise earlier epochs, discounting all jobs that are already being proven.
 4. The query returns the job #4567. 
 5. The broker stores the prover agent id and the current time against the job as `Start Time`.
-6. The broker returns the job details (read from disk) to the agent.
+6. The broker returns the job details to the agent.
 
 Later, the agent polls again:
 
@@ -85,9 +85,8 @@ The reason for the start time negotiation around agents is that we need to consi
 
 Upon restart, the broker should:
 
-1. Reconcile the job's stored in the directory structure with those in the index db.
-2. Re-build the in-memory cache from the index.
-3. Start accepting new job requests from agents.
+1. Re-build the in-memory cache from the index.
+2. Start accepting new job requests from agents.
 
 The above means that a job that is already being worked could be given to another agent after a restart. All of the data around current proving jobs is only in memory so is lost upon process termination. By negotiating based on start time, soon after restart the system will revert to how it was without too much duplicated effort. Of course, for small proofs, it is still possible that a proof could be completed twice. This seems an acceptable trade-off.
 
@@ -95,4 +94,4 @@ Finally, the broker periodically checks all current jobs to see if their `Last U
 
 The described interactions should mean that we maintain a queue of jobs, prioritised in whatever way we need, queryable by however we require whilst only using a simple LMDB store and directory structure. By doing all of this in memory we drastically reduce the amount of DB access required at the expense of some duplicated effort and negotiation upon broker restart (something we hope is a rare occurence). Even if we consider a worst case scenario of ~200,000 outstanding proof requests, this should not require more than a few 10's MB of memory to cache. One potential concern is performance. There will be a large number of prover agents querying for work and these queries will need to be very efficient, but this will be the case with any system.
 
-The last step is that the broker periodcally pushes all completed jobs back to the orchestrator, once accepted by the orchestrator, they are removed from both the directory listing and the index DB.
+The last step is that the broker pushes all completed jobs back to the orchestrator, shortly after they have been completed but asynchronously to the completion message from the agent. The job is removed from both the directory listing and the index DB. When the queue is empty, a check is performed that the proof request directory is empty. Any remaining data is deleted.
