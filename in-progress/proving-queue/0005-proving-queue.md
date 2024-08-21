@@ -56,7 +56,7 @@ Proving request data, such as input witness and recursive proofs are stored in a
 
 ![alt text](./broker.png)
 
-The entire proof request index DB is loaded into memory upon service start. Additionally, the server stores the id of the prover agent currently proving a request along with the time that the agent started the job.
+The entire proof request index DB is loaded into memory upon service start.
 
 Prover agents periodically poll the broker to either request more work or to update the broker that they are still working on a specific job. As there are a large number of clients we will need to limit the frequency of that polling to, perhaps every 10 seconds.
 
