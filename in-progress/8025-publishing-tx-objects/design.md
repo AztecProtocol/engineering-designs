@@ -357,13 +357,29 @@ How do nodes keep track of the pending archive since they are not published to L
 
 Validators need to verify the private kernels
 
-### Transaction invalidation
+### Transaction validation
 
-The rollup should _only_ fail if the private kernel is invalid.
+If a transaction is "valid" if and only if it can be included in a block (and subsequently an epoch), and the proof of that epoch can be verified on L1.
 
-Presently the rollup will fail if any of the following conditions happen:
+Nodes need to "validate" transactions: i.e. check if a transaction is valid.
 
-- Make list
+It *must* be possible to determine if a transaction is valid without executing it.
+
+Therefore, transactions *must* be valid iff it has a private kernel proof that successfully verifies.
+
+#### Changes needed
+
+There are many cases today where a transaction is invalid, and cannot be included in a block, e.g.:
+- global variable mismatches (chainId, version, etc.)
+- transactions reverting in public setup
+- the transaction was not included before its "max block"
+
+The protocol must gracefully handle these cases, and instead of having the transaction be invalid, it should allow the transaction to be included, but with a "failed" status.
+
+In the event of a "failed" transaction, the transaction will appear in the block, but with no side effects, apart from its transaction nullifier.
+
+Further, the transaction's fee will be set to zero.
+
 
 ## Interface
 
