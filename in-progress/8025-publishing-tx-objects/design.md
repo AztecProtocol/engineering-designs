@@ -373,6 +373,8 @@ There are many cases today where a transaction is invalid, and cannot be include
 - global variable mismatches (chainId, version, etc.)
 - transactions reverting in public setup
 - the transaction was not included before its "max block"
+- duplicate nullifiers
+- etc.
 
 The protocol must gracefully handle these cases, and instead of having the transaction be invalid, it should allow the transaction to be included, but with a "failed" status.
 
