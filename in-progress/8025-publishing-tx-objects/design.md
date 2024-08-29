@@ -78,43 +78,110 @@ When the data is to be submitted as part of the same transaction as the block pr
 1. Remove the data availability oracle in its whole, and simply use the versioned KZG hashes directly
 2. Save the versioned KZG hashes in the data availability oracle
 
-Solution 1 is significantly cheaper as it don't update storage. Furthermore, by requiring that the versioned KZG hashes are part of the header provided, we can show the exact KZG hashes using just the transaction and the commitment to the block hash, see `BlockLog.blockHash`.
+Solution 1 is significantly cheaper as it don't update storage. Furthermore, by requiring that the versioned KZG hashes are part of the proposal provided, we can show the exact KZG hashes using just the transaction and the commitment to the proposal.
 
 #### Rollup Contract Changes
-> There is probably some 1-off from the `count` `block_number` like values.
 
 ```python
+struct ChainTip:
+  block_number: uint256
+  slot_number: uint256
+
+
 struct State:
-  pending_proposal_count: uint64;
-  pending_slot: uint64;
-  proven_block_count: uint64;
-  proven_slot: uint64;
+  pending_tip: ChainTip
+  proven_tip: ChainTip
+
 
 struct ProposalLog:
-  proposal_hash: bytes32;
-  slot: uint256;
-  archive: bytes32;
+  hash: bytes32
+  slot_number: uint256
+  archive: bytes32
+
+
+struct GasSettings:
+  feePerDaGas: uint256
+  feePerL2Gas: uint256
+
+
+struct GlobalVariables:
+  block_number: uint256
+  slot_number: uint256
+  timestamp: uint256
+  coinbase: address
+  fee_recipient: AztecAddress # discuss
+  gas_settings: GasSettings
+
+
+struct Attestations:
+  signature: AggregateBLS
+  missing: uint256 # support up to 3*256 members in committee
+
+
+struct Proposal:
+  num_tx: uint256
+  txs_hash: bytes32
+  kzg_hashes: bytes32
+  in_hash: bytes32
+  global_variables: GlobalVariables
+  proposer_sig: ECDSA
+  attestations: Attestations
+
+
+struct FeePayment:
+  coinbase: address
+  amount: uint256
+
+
+EPOCH_LENGTH: constant(uint256) = 48 # pulled out of my ass
+
 
 proposals: public(HashMap[uint256, ProposalLog])
 state: public(State);
 
-# The old `process`
-def propose(proposal, proposer_sig, attestations):
-  '''
-  Notice that no signatures are checked, all of that is optimistic 
-  '''
-  assert hash([h for h in tx.blob_versioned_hashes]) == proposal.kzgHashes # Replaces DA oracle
-  assert proposal.gas_settings.is_sane() # To be designed
-  assert proposal.slot > state.pending_slot and proposal.slot == get_current_slot()
-  assert proposal.timestamp == get_time_at_slot(proposal.slot) and proposal.timestamp <= block.timestamp
-  assert proposal.block_number == state.pending_proposal_count
-  assert proposal.inHash == INBOX.consume(proposal.block_number)
 
-  self.proposals[proposal.block_number] = ProposalLog(sha256(proposal,  proposer_sig, attestations), proposal.slot)
-  self.state.pending_proposal_count += 1
-  self.state.pending_slot = proposal.slot
+def __init__():
+  proposals[0] = Proposal(hash = GENESIS_PROPOSAL_HASH, slot = 0, archive = GENESIS_ARCHIVE)
 
-def challenge_proposal(proposal, proposer_sig, attestations):
+
+def propose(
+    proposal: Proposal,
+    proposer_sig: ECDSA,
+    attestations: Attestations
+  ):
+  '''
+  Notice that no signatures are checked, all of that is optimistic
+  '''
+  if proposal.num_tx == 0:
+    assert len(tx.blob_versioned_hashes) == 0
+    assert proposal.kzg_hashes = empty(bytes32)
+  else
+    assert hash([h for h in tx.blob_versioned_hashes]) == proposal.kzh_hashes # Replaces DA oracle
+
+  gv = proposal.global_variables
+
+  assert gv.gas_settings.is_sane() # To be designed
+
+  assert gv.slot_number > self.state.pending_tip.slot_number
+  assert gv.slot_number == get_current_slot()
+
+  assert gv.timestamp == get_time_at_slot(gv.slot_number)
+  assert gv.timestamp <= block.timestamp
+
+  assert gv.block_number == self.state.pending_tip.block_number + 1
+  assert proposal.inHash == INBOX.consume(gv.block_number)
+
+  proposal_hash = sha256(proposal, proposer_sig, attestations)
+
+  self.proposals[gv.block_number] = ProposalLog(proposal_hash, gv.slot_number)
+  self.state.pending_tip = ChainTip(gv.block_number, gv.slot_number)
+
+
+def challenge_proposal(
+    proposal: Proposal,
+    proposer_sig: ECDSA,
+    attestations: Attestations
+  ):
   '''
   Implement challenges for:
   - Bad proposer
@@ -123,34 +190,46 @@ def challenge_proposal(proposal, proposer_sig, attestations):
   pass
 
 
-def submit_proof(proof, archive):
+def submit_next_epoch_proof(proof, archive: bytes32, fees: FeePayment[EPOCH_LENGTH]):
   '''
-  Notice that this only supports sequential proofs as we always feed `self.state.proven_archive` as start state.
+  Submits the proof for the "next unproven" epoch. Note that this mean that we only
+  support sequential proof submission. This could cause issues depending on the
+  duration of "monopoly" proving etc.
   '''
+  assert self.state.proven_tip.block_number < self.state.pending_tip.block_number
+
   proposal_hashes = []
-  block_number_start = self.state.proven_block_count
-  end_slot = get_last_slot_in_epoch(get_epoch_from_slot(self.proposals[block_number_start].slot))
+  block_number = self.state.proven_tip.block_number + 1
+  epoch_number = get_epoch_from_slot(self.proposals[block_number].slot_number)
+  end_slot = get_last_slot_in_epoch(epoch_number)
+  upper_limit = min(block_number + EPOCH_LENGTH, self.state.pending_tip.block_number)
 
-  block_number = block_number_start
+  last_slot = 0
 
-  for bn in range(block_number_start, block_number_start + EPOCH_LENGTH):
+  for bn in range(block_number, upper_limit):
     proposal_log = self.proposals[bn]
-    if proposal_log.slot <= end_slot:
-      proposal_hashes.append(proposal_log.proposal_hash)
+    if proposal_log.slot_number <= end_slot:
+      last_slot = proposal_log.slot_number
+      proposal_hashes.append(proposal_log.hash)
       block_number = bn
     else:
       break
 
   assert len(proposal_hashes) > 0, 'no proposals'
 
-  prev_archive = self.proposals[self.state.proven_block_count - 1]
-  assert proof.verify(prev_archive, proposal_hashes, archive)
+  prev_archive = self.proposals[self.state.proven_tip.block_number].archive
+  assert proof.verify(prev_archive, proposal_hashes, archive, fees)
 
-  self.payout_fees();
+  for fee in fees:
+    if fee.amount > 0 and fee.coinbase not empty(address):
+      FEE_JUICE.distributeFees(fee.coinbase, fee.amount)
 
-  self.state.proven_slot = proposal_log[-1].slot
-  self.state.proven_block_count = block_number + 1
-  self.proposals[block_number] = archive
+  self.state.proven_tip = ChainTip(block_number, last_slot)
+  self.proposals[block_number].archive = archive
+
+  # TODO: Out hashes options
+  # 1. List them and add individually
+  # 2. Make another tree 🌲
 ```
 
 - TODO:
@@ -161,17 +240,28 @@ def submit_proof(proof, archive):
 - Need to fix some notation on what is the "full" proposal etc.
 - My syntax is not really valid vyper but I just enjoy writing it that way, sorry not sorry.
 
+The idea:
+
+- We have a commitment `txs_hash` that is a l1 friendly merkle tree of the first nullifiers in a proposal.
+- To do forced inclusion, we require that a specific `nullifier` is in one of these trees at some point in time.
+  - If not, then the proof will simply fail and one will end up eventually submitting a new proposal that have it to extend the chain
+  - If the committee stalls forever, we need an option to go "based" and propose and verify the proof at the same time.
+
+We will first showcase, how you can force the committee, and then afterwards the changes needed to perform the based operation. The reason behind this is mainly that I have not outlined the based yet.
+
 ```python
 struct ForceInclusion:
   nullifier: bytes32
   include_by_slot: uint256
   included: bool
 
+
 struct ForceInclusionProof:
   proposal: Proposal
-  forced_inclusion_index: uint256, 
+  forced_inclusion_index: uint256,
   block_number: uint256
   membership_proof: bytes32[]
+
 
 forced_inclusions: public(HashMap[uint256, ForceInclusion])
 forced_inclusion_tip: public(uint256)
@@ -179,25 +269,44 @@ forced_inclusion_count: public(uint256)
 
 FORCE_INCLUSION_DEADLINE: immutable(uint256)
 
+
+def __init__(deadline: uint256):
+  self.FORCE_INCLUSION_DEADLINE = deadline
+
+
 def initiate_force_include(tx, proof, block_number_proven_against):
+  '''
+  To be used by a user if they are getting massively censored by
+  the committees.
+  '''
+
+  assert block_number_proven_against <= self.proven_tip.block_number
+
   archive = self.proposals[block_number_proven_against].archive
   assert proof.verify(archive, tx)
 
   self.forced_inclusions[self.forced_inclusion_count] = ForceInclusion(
-    nullifier = tx.nullifiers[0], 
-    include_by_slot = get_current_slot() + FORCE_INCLUSION_DEADLINE
+    nullifier = tx.nullifiers[0],
+    include_by_slot = get_current_slot() + self.FORCE_INCLUSION_DEADLINE
   )
   self.forced_inclusion_count += 1
 
-def show_included(proposal, forced_inclusion_index, block_number, membership_proof):
-  nullifier = self.forced_inclusions[forced_inclusion_index].nullifier
 
-  assert self.proposals[block_number].proposal_hash == proposal.hash()
-  assert membership_proof.verify( nullifier,proposal.txs_hash)
+def show_included(fip: ForceInclusionProof):
+  '''
+  Convince the contract that a specific forced inclusion at `forced_inclusion_index` is
+  indeed included.
+  '''
+  assert fip.forced_inclusion_index < self.forced_inclusion_count
+  nullifier = self.forced_inclusions[fip.forced_inclusion_index].nullifier
 
-  self.forced_inclusions[forced_inclusion_index].nullifier.included = True
+  assert self.proposals[fip.block_number].hash == fip.proposal.hash()
+  assert fip.membership_proof.verify(nullifier, fip.proposal.txs_hash)
 
-  self.progress_forced_inclusion_tip() 
+  self.forced_inclusions[fip.forced_inclusion_index].nullifier.included = True
+
+  self.progress_forced_inclusion_tip()
+
 
 def progress_forced_inclusion_tip():
   cache = self.forced_inclusion_tip
@@ -206,20 +315,32 @@ def progress_forced_inclusion_tip():
       return
     self.forced_inclusion_tip = cache
 
-def submit_proof(proof, archive):
-  # super.submit_proof(proof, archive)
-  
+
+@override
+def submit_next_epoch_proof(proof, archive: bytes32, fees: FeePayment[EPOCH_LENGTH]):
+  super.submit_next_epoch_proof(proof, archive, fees)
+
   forced_tip = self.forced_inclusions[self.forced_inclusions_tip]
-  assert forced_tip.included_by_slot == 0 or forced_tip.included_by_slot > proposal_hashes[-1].slot, 'force'
 
-def submit_proof_with_force(proof, archive, force_inclusion_proofs):
-  # super.submit_proof(proof, archive)
+  if forced_tip.included_by_slot != 0:
+    assert forced_tip.included_by_slot > proposal_hashes[-1].slot, 'force'
 
-  for fip in force_inclusion_proofs:
+
+def submit_proof_with_force(proof, archive, fips: ForceInclusionProof[]):
+  '''
+  To be used by the proof submitter if they are including forced inclusions.
+  If the forced inclusions are not needed for their block, but is for a later deadline
+  they can use the old, and someone else can include it later when required
+  '''
+
+  super.submit_next_epoch_proof(proof, archive, fees)
+
+  for fip in fips:
     self.show_included(fip)
 
   forced_tip = self.forced_inclusions[self.forced_inclusions_tip]
-  assert forced_tip.included_by_slot == 0 or forced_tip.included_by_slot > proposal_hashes[-1].slot, 'force'
+  if forced_tip.included_by_slot != 0:
+    assert forced_tip.included_by_slot > proposal_hashes[-1].slot, 'force'
 ```
 
 ### Blob circuits
