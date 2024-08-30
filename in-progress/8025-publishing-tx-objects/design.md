@@ -17,7 +17,6 @@ Further, we are not requiring validators participating in the pending chain to e
 
 ## Introduction
 
-We first outline the changes needed in various components to support this work.
 
 ### Committee Signature Scheme
 
@@ -381,6 +380,92 @@ The protocol must gracefully handle these cases, and instead of having the trans
 In the event of a "failed" transaction, the transaction will appear in the block, but with no side effects, apart from its transaction nullifier.
 
 Further, the transaction's fee will be set to zero.
+
+### Proving phases
+
+#### Monopoly claim phase
+
+The beginning of each epoch is the "monopoly claim phase".
+
+This phase has a duration of $MC$ slots (e.g. 2 slots).
+
+The first committee member of epoch `n` to submit a prover commitment bond has monopoly rights to submit the proof for epoch `n-1`.
+
+Suppose we are in the monopoly claim phase of epoch `n`, and I am an honest node in the committee.
+
+Suppose that I haven't seen some of the proof data for epoch `n-1`.
+
+I can ask the p2p network for the proof data, and the following can happen:
+
+1. I receive the proof data in time to verify the proofs for epoch `n-1` and submit my claim
+2. I receive the proof data in time but a proof is invalid
+3. I receive the proof data after the claim deadline, though the proofs are valid
+4. I receive the proof data after the claim deadline, and a proof is invalid
+5. I never receive the proof data
+
+##### Case 1
+
+The happy path. If I win the monopoly claim, I can prove epoch `n-1`.
+
+If I don't win the monopoly claim, and the proof doesn't land, I can submit a proof for the epoch during the proof race.
+
+##### Case 2
+
+I can assume that at least 2/3+1 of the committee for epoch `n-1` was dishonest.
+
+##### Case 3
+
+If the proof for epoch `n-1` does not land, I can submit a proof for it during the proof race phase.
+
+##### Case 4
+
+I can assume that at least 2/3+1 of the committee for epoch `n-1` was dishonest.
+
+##### Case 5
+
+I cannot say anything for certain about the previous epoch.
+
+But if 2/3+1 of the committee for epoch `n-1` were dishonest, this is the case they would choose.
+
+#### Range proofs are not worth it
+
+N.B. Case 5 could be "chosen" because the dishonest nodes could create a subcommittee that would not include the honest nodes and append to the pending chain.
+
+Range proofs are only really useful if:
+- the pending chain has a tx with an invalid private proof (i.e. a supermajority of the committee was dishonest)
+- the proof data for the previous epoch is available (i.e. the dishonest supermajority was stupid enough to leak the proof data)
+
+#### Monopoly production phase
+
+If a claim is submitted during the monopoly claim phase, the next phase is the "monopoly production phase".
+
+This phase has a duration of $MP$ slots (e.g. 14 slots).
+
+The committee member who won the monopoly claim can submit a proof for the previous epoch.
+
+Failure to submit a proof results in the bond posted with the claim being slashed.
+
+#### Proof race
+
+A proof race is entered if:
+- the monopoly claim phase ends and no claim is made
+- a claim is made but no proof lands
+
+During the proof race, anyone can submit a proof for the previous epoch.
+
+#### Reorg and slashing
+
+If the proof race ends and no proof is submitted, each proposer in that epoch is slashed and kicked from the validator set.
+
+It may be assumed in this case a supermajority of the committee was dishonest (or at least faulty).
+
+A proposer can unslash themselves by verifying the private kernel proofs for each transaction in their proposal on L1.
+
+#### Based Sequencing
+
+If a reorg occurs, the rollup enters a "based-mode" state for $BM$ epochs (e.g. 3 epochs).
+
+This gives the protocol time to recover from the reorg and malicious validators.
 
 
 ## Interface
