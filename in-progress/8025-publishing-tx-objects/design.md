@@ -27,7 +27,8 @@ The committee is sampled from a broader validator set based on a seed that gets 
 
 The committee changes every epoch.
 
-![](./setup.svg)
+<!-- Editors: you can copy/paste the png from the repository into excalidraw to make edits. -->
+![](./setup.png)
 
 ### Proposal process overview
 
@@ -399,9 +400,9 @@ Further, the transaction's fee will be set to zero.
 
 ### Proving phases
 
-<!-- Editors: you can copy/paste the svg from the repository into excalidraw to make edits. -->
+<!-- Editors: you can copy/paste the png from the repository into excalidraw to make edits. -->
 
-![Proving Phases](./proving-phases.svg)
+![Proving Phases](./proving-phases.png)
 
 #### Monopoly claim phase
 
