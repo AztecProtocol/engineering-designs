@@ -17,6 +17,22 @@ Further, we are not requiring validators participating in the pending chain to e
 
 ## Introduction
 
+### Epochs and committees
+
+We have epochs, which are divided into $E$ slots, which are measured in $S$ seconds.
+
+An epoch has a committee, which is responsible for proposing/validating blocks in the pending chain.
+
+The committee is sampled from a broader validator set based on a seed that gets set when the first proposal in the *previous* epoch is submitted.
+
+The committee changes every epoch.
+
+![](./setup.svg)
+
+### Proposal process overview
+
+TODO
+
 
 ### Committee Signature Scheme
 
@@ -383,57 +399,23 @@ Further, the transaction's fee will be set to zero.
 
 ### Proving phases
 
+<!-- Editors: you can copy/paste the svg from the repository into excalidraw to make edits. -->
+
+![Proving Phases](./proving-phases.svg)
+
 #### Monopoly claim phase
 
 The beginning of each epoch is the "monopoly claim phase".
 
 This phase has a duration of $MC$ slots (e.g. 2 slots).
 
-The first committee member of epoch `n` to submit a prover commitment bond has monopoly rights to submit the proof for epoch `n-1`.
+The committee member who could submit the first proposal in epoch `n` can submit a prover commitment bond.
 
-Suppose we are in the monopoly claim phase of epoch `n`, and I am an honest node in the committee.
+This can be a transaction separate from the submission of their proposed block.
 
-Suppose that I haven't seen some of the proof data for epoch `n-1`.
+Doing so grants monopoly rights to the rewards for submitting the proof of epoch `n-1`.
 
-I can ask the p2p network for the proof data, and the following can happen:
-
-1. I receive the proof data in time to verify the proofs for epoch `n-1` and submit my claim
-2. I receive the proof data in time but a proof is invalid
-3. I receive the proof data after the claim deadline, though the proofs are valid
-4. I receive the proof data after the claim deadline, and a proof is invalid
-5. I never receive the proof data
-
-##### Case 1
-
-The happy path. If I win the monopoly claim, I can prove epoch `n-1`.
-
-If I don't win the monopoly claim, and the proof doesn't land, I can submit a proof for the epoch during the proof race.
-
-##### Case 2
-
-I can assume that at least 2/3+1 of the committee for epoch `n-1` was dishonest.
-
-##### Case 3
-
-If the proof for epoch `n-1` does not land, I can submit a proof for it during the proof race phase.
-
-##### Case 4
-
-I can assume that at least 2/3+1 of the committee for epoch `n-1` was dishonest.
-
-##### Case 5
-
-I cannot say anything for certain about the previous epoch.
-
-But if 2/3+1 of the committee for epoch `n-1` were dishonest, this is the case they would choose.
-
-#### Range proofs are not worth it
-
-N.B. Case 5 could be "chosen" because the dishonest nodes could create a subcommittee that would not include the honest nodes and append to the pending chain.
-
-Range proofs are only really useful if:
-- the pending chain has a tx with an invalid private proof (i.e. a supermajority of the committee was dishonest)
-- the proof data for the previous epoch is available (i.e. the dishonest supermajority was stupid enough to leak the proof data)
+Out of scope: it is possible that the protocol should incentivize the submission of a proof with a bond.
 
 #### Monopoly production phase
 
@@ -441,9 +423,9 @@ If a claim is submitted during the monopoly claim phase, the next phase is the "
 
 This phase has a duration of $MP$ slots (e.g. 14 slots).
 
-The committee member who won the monopoly claim can submit a proof for the previous epoch.
-
 Failure to submit a proof results in the bond posted with the claim being slashed.
+
+The duration of `mp + mc` should be more than the time it takes to submit a proof (e.g. 10 minutes).
 
 #### Proof race
 
@@ -451,22 +433,13 @@ A proof race is entered if:
 - the monopoly claim phase ends and no claim is made
 - a claim is made but no proof lands
 
+The duration of a proof race is $PR$ slots (e.g. 32 slots).
+
 During the proof race, anyone can submit a proof for the previous epoch.
 
-#### Reorg and slashing
+#### Pending chain prune 
 
-If the proof race ends and no proof is submitted, each proposer in that epoch is slashed and kicked from the validator set.
-
-It may be assumed in this case a supermajority of the committee was dishonest (or at least faulty).
-
-A proposer can unslash themselves by verifying the private kernel proofs for each transaction in their proposal on L1.
-
-#### Based Sequencing
-
-If a reorg occurs, the rollup enters a "based-mode" state for $BM$ epochs (e.g. 3 epochs).
-
-This gives the protocol time to recover from the reorg and malicious validators.
-
+If the proof race ends and no proof is submitted, the pending chain is pruned to the last proven block.
 
 ## Interface
 
