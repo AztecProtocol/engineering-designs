@@ -404,43 +404,33 @@ Further, the transaction's fee will be set to zero.
 
 ![Proving Phases](./proving-phases.png)
 
-#### Monopoly claim phase
+#### Proof claim phase
 
-The beginning of each epoch is the "monopoly claim phase".
+The beginning of each epoch is the "proof claim phase".
 
-This phase has a duration of $MC$ slots (e.g. 2 slots).
+This phase has a duration of $C$ slots (e.g. 16 slots).
 
-The committee member who could submit the first proposal in epoch `n` can submit a prover commitment bond.
+During this time, the proposer for a slot can submit a claim to be the prover for the previous epoch.
 
 This can be a transaction separate from the submission of their proposed block.
 
 Doing so grants monopoly rights to the rewards for submitting the proof of epoch `n-1`.
 
-Out of scope: it is possible that the protocol should incentivize the submission of a proof with a bond.
+If no claim is submitted, the pending chain is pruned to the tip of the proven chain.
 
-#### Monopoly production phase
+#### Proof production phase
 
-If a claim is submitted during the monopoly claim phase, the next phase is the "monopoly production phase".
+If a claim is submitted during the proof claim phase, the next phase is the "proof production phase".
 
-This phase has a duration of $MP$ slots (e.g. 14 slots).
+This phase has a duration of $P$ slots (e.g. 16 slots).
 
 Failure to submit a proof results in the bond posted with the claim being slashed.
 
-The duration of `mp + mc` should be more than the time it takes to submit a proof (e.g. 10 minutes).
+Further, the pending chain is pruned to the tip of the proven chain.
 
-#### Proof race
+The wall time duration of $P$ slots must be greater than the time required to produce a proof.
 
-A proof race is entered if:
-- the monopoly claim phase ends and no claim is made
-- a claim is made but no proof lands
-
-The duration of a proof race is $PR$ slots (e.g. 32 slots).
-
-During the proof race, anyone can submit a proof for the previous epoch.
-
-#### Pending chain prune 
-
-If the proof race ends and no proof is submitted, the pending chain is pruned to the last proven block.
+For simplicity, $P + C <= E$: this means we will never be producing a proof for more than one epoch at a time.
 
 ## Interface
 
