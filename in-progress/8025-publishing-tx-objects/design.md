@@ -398,6 +398,104 @@ In the event of a "failed" transaction, the transaction will appear in the block
 
 Further, the transaction's fee will be set to zero.
 
+
+### P2P Layer Description
+
+The above protocol states that the validators are expected to validate all private transaction proofs before signing an attestation to a block proposal. A block proposal will contain (at LEAST) a list of all of the transaction hashes that are to be included within the block. At an extension, and provided the p2p layer can handle large message payloads, the entire transaction payload - not just the transaction hash - may be included within the block proposal.
+
+The happy path for the p2p layer is that gossiped transactions are broadcast to all peers, and then further propagated throughout the network. If only the transaction hashes are included in the block proposal, there is a possibility that a node may not have the full transaction payload for a proposed block. In the case that a node does not have the full transaction payload for a proposed block, the node should request the full transaction payload from a peer. This will be performed by a request response protocol between nodes.
+
+### The Request Response Protocol
+
+#### Protocol Identification 
+Each request response interaction is identified by a protocolID (a.k.a. SubProtocol). 
+This protocol will take a form similar to the `gossipSub` protocol topic, the form is expected to be as follows. 
+
+```
+/aztec/req/{subprotocol}/{version}
+```
+
+Where subprotocol details the type of request being made, and version details the version of the protocol being used, the exact form of version is yet to be determined. It may represent a semantic version (such as a hardfork), or it may represent a specific protocol implementation version (semver identifier). 
+
+Whatever version standard is used will match that used by the `gossipSub` protocol topics.
+
+#### Request / Response Interactions
+When a validator requires a payload from a peer, they will dial their peer's, opening up ONE stream per interaction. This stream will be closed when this interaction is complete, regardless of whether the interaction was successful or not.
+
+#### Request / Response Interfaces
+
+Each request response interaction is explicitly defined by the protocolID (a.k.a. SubProtocol). This protocolID can be used to determine the expected message request types, and the expected data response types.
+
+*Request / Response Mapping*
+
+```ts
+/**
+ * The Request Response Pair interface defines the methods that each
+ * request response pair must implement
+ */
+interface RequestResponsePair<Req, Res> {
+  request: new (...args: any[]) => Req;
+  /**
+   * The response must implement the static fromBuffer method (generic serialisation)
+   */
+  response: {
+    new (...args: any[]): Res;
+    fromBuffer(buffer: Buffer): Res;
+  };
+}
+```
+
+For an example transaction request protocol, the serialized request and response types are defined as follows:
+- The request will send a TransactionHash, which means the responder should expect strict serialization of the TransactionHash type.
+- The response will send a Transaction, which means the responder should expect strict serialization of the Transaction type.
+
+```ts
+  '/aztec/req/tx/0.1.0': {
+    request: TxHash,
+    response: Tx,
+  },
+```
+
+#### Making a request 
+When opening a stream with a peer, a specific protocolID (a.k.a. SubProtocol) will be used to determine what data the peer requires. For example, a SubProtocol with id `/aztec/req/tx/0.1.0` represents a stream that will be used to request a transaction payload from a peer.
+
+If the requesting node does not receive a response from the peer, it will wait for a maximum `REQUEST_TIMEOUT` before the stream is closed and the node attempts to open a new stream with a different peer.
+
+When a peer makes a request via the stream, their side of the stream will be closed upon sending the request, and no further messages will be send to the peer. 
+
+The requester will read from the stream until:
+1. An error is returned.
+2. The stream is closed by the responding peer.
+3. Any error is processed when interpreting the response.
+4. A maximum number of chunks are read (e.g. the expected size of the payload to be received).
+5. A timeout is reached.
+
+The response to the message should be processed fully before the stream is closed.
+
+#### Making a response
+Both the requester and responder will negotiate a protocolID (a.k.a. SubProtocol) to be used for the stream.
+
+Based on the negotiated protocolID, the responder will know the message length to expect from the requester. 
+It should fail if, the message received is not of the expected size.
+The message cannot be deserialized into the expected type.
+
+The responder will read from the stream until:
+1. An error is returned.
+2. The stream is closed by the requesting peer.
+3. Any error is processed when interpreting the request.
+4. A maximum number of chunks are read (e.g. the expected size of the payload to be received).
+5. A timeout is reached.
+
+At the time of writing, erroneous responses are represented by an empty response type. In the future, it may be beneficial to include additional information about the error, such as an error code and/or message.
+
+> We do not include any information below the libp2p level in the protocol, messaging protocol etc are not defined here.
+
+
+#### An overview of p2p layer flows.
+
+![When the request response protocol is used](./p2p-layer-overview.png)
+
+
 ### Proving phases
 
 <!-- Editors: you can copy/paste the png from the repository into excalidraw to make edits. -->
