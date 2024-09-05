@@ -254,15 +254,21 @@ def submit_next_epoch_proof(proof, archive: bytes32, fees: FeePayment[EPOCH_LENG
 
 ### Changes to circuits
 
-#### Blob circuits
-
-We need some blob circuits that allow us to prove that things were in blobs such that we can convince the contracts that i) the data was published and ii) that the data published is what have been applied to the state. Think this is likely already described somewhere else 🤷.
-
 #### Rollup circuits
 
-The circuit changes is mainly related to transaction validation as elaborated [later](#transaction-validation), but beyond those, we will mainly need to deal with work related to creating the `txs_hash`.
+Circuit changes for the rollup circuits have a few points of interest:
+- [The transaction validity conditions](#transaction-validation)
+- The introduction of `txs_hash`
+- Posting the objects instead of effects as the body
 
-Doing this will require us to alter the Merge rollup to compute the a "partial" `txs_hash` from the first nullifiers of its two children, and then continuing this up the whole tree. Exactly like we have been computing the `out_hash` and `txs_effects_hash` previously.
+We will ignore the validity conditions here since that is described later.
+
+For the `txs_hash` the idea is relatively simple - build a merkle root (SHA256) of the `tx_hash` for every transaction in the proposal.
+As briefly mentioned earlier, this is to more easily support forced inclusion, and prove that a tx was included in a specific block.
+The practical implementation would be very much like the `out_hash` or `txs_effects_hash`.
+
+For the objects, we can keep the private state diff as is, but need to have the private kernel insert the enqueued public calls as well. 
+No state changes from the AVM should make their way into this, so the public kernel should be altered to not push things around. 
 
 ### Changes to the node
 
@@ -290,122 +296,6 @@ The PXE also need to have an idea around if things have been forked out, since w
 One way to deal with this, could be that the PXE will check that its "new" notes and nullifiers are indeed in the `archive` whenever a proof lands on L1.
 
 ### Prover interactions
-
-### Forced inclusion of transactions
-
-We want to support a method to **force** the inclusion of a transaction.
-Note that this is done using the L1 contracts, and not directly by altering the circuits.
-
-We want this ability to handle the really nasty cases of censorship, for example trying to upgrade without allowing you to escape 🏴‍☠️.
-
-The idea of the scheme is relatively simple:
-
-- We have a commitment `txs_hash` that is a l1 friendly merkle tree of the first nullifiers in a proposal.
-- To do forced inclusion, we require that a specific `nullifier` is in one of these trees at some point in time.
-  - If not, then the proof will simply fail and one will end up eventually submitting a new proposal that have it to extend the chain
-  - If the committee stalls forever, we need an option to go "based" and propose and verify the proof at the same time.
-
-Beware that we only really address the forced inclusion needs when the proof is proposed.
-It can be based on the time of the proposal, just note that you can propose something that does not include it, and people might believe it to be the pending chain if they are not checking if it satisfy the force inclusion.
-
-We will first showcase, how you can force the committee, and then afterwards the changes needed to perform the based operation.
-The reason behind this is mainly that I have not outlined the based yet.
-
-```python
-struct ForceInclusion:
-  nullifier: bytes32
-  include_by_slot: uint256
-  included: bool
-
-
-struct ForceInclusionProof:
-  proposal: ProposalHeader
-  attestations: Attestations
-  forced_inclusion_index: uint256,
-  block_number: uint256
-  membership_proof: bytes32[]
-
-
-forced_inclusions: public(HashMap[uint256, ForceInclusion])
-forced_inclusion_tip: public(uint256)
-forced_inclusion_count: public(uint256)
-
-
-FORCE_INCLUSION_DEADLINE: immutable(uint256)
-
-
-def __init__(deadline: uint256):
-  self.FORCE_INCLUSION_DEADLINE = deadline
-
-
-def initiate_force_include(tx: TxObject, proof: , block_number_proven_against):
-  '''
-  To be used by a user if they are getting massively censored by
-  the committees.
-  '''
-
-  assert block_number_proven_against <= self.proven_tip.block_number
-
-  archive = self.proposals[block_number_proven_against].archive
-  assert proof.verify(archive, tx)
-
-  self.forced_inclusions[self.forced_inclusion_count] = ForceInclusion(
-    nullifier = tx.nullifiers[0],
-    include_by_slot = get_current_slot() + self.FORCE_INCLUSION_DEADLINE
-  )
-  self.forced_inclusion_count += 1
-
-
-def show_included(fip: ForceInclusionProof):
-  '''
-  Convince the contract that a specific forced inclusion at `forced_inclusion_index` is
-  indeed included.
-  '''
-  assert fip.forced_inclusion_index < self.forced_inclusion_count
-  nullifier = self.forced_inclusions[fip.forced_inclusion_index].nullifier
-
-  assert self.proposals[fip.block_number].hash == hash(fip.proposal, fip.attestations)
-  assert fip.membership_proof.verify(nullifier, fip.proposal.txs_hash)
-
-  self.forced_inclusions[fip.forced_inclusion_index].nullifier.included = True
-
-  self.progress_forced_inclusion_tip()
-
-
-def progress_forced_inclusion_tip():
-  cache = self.forced_inclusion_tip
-  for i in range(cache, self.forced_inclusion_count):
-    if not self.forced_inclusions[i].included:
-      return
-    self.forced_inclusion_tip = cache
-
-
-@override
-def submit_next_epoch_proof(proof, archive: bytes32, fees: FeePayment[EPOCH_LENGTH]):
-  super.submit_next_epoch_proof(proof, archive, fees)
-
-  forced_tip = self.forced_inclusions[self.forced_inclusions_tip]
-
-  if forced_tip.included_by_slot != 0:
-    assert forced_tip.included_by_slot > proposal_hashes[-1].slot, 'force'
-
-
-def submit_proof_with_force(proof, archive, fips: ForceInclusionProof[]):
-  '''
-  To be used by the proof submitter if they are including forced inclusions.
-  If the forced inclusions are not needed for their block, but is for a later deadline
-  they can use the old, and someone else can include it later when required
-  '''
-
-  super.submit_next_epoch_proof(proof, archive, fees)
-
-  for fip in fips:
-    self.show_included(fip)
-
-  forced_tip = self.forced_inclusions[self.forced_inclusions_tip]
-  if forced_tip.included_by_slot != 0:
-    assert forced_tip.included_by_slot > proposal_hashes[-1].slot, 'force'
-```
 
 ### Private kernel verification
 
