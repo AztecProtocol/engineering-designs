@@ -20,23 +20,13 @@ A strict proof timeliness requirement affords guarantees to users that their tra
 
 This design focuses on how those timelines are defined and enforced by the rollup contract; it does not cover how nodes will handle the ensuing reorg with respect to their local state.
 
-## Interface
-
-Who are your users, and how do they interact with this? What is the top-level interface?
-
-## Implementation
-
-Delve into the specifics of the design. Include diagrams, code snippets, API descriptions, and database schema changes as necessary. Highlight any significant changes to the existing architecture or interfaces.
-
-Discuss any alternative or rejected solutions.
-
-### Proving phases
+## Proving phases
 
 <!-- Editors: you can copy/paste the png from the repository into excalidraw to make edits. -->
 
 ![Proving Phases](./proving-phases.png)
 
-#### Proof claim phase
+### Proof claim phase
 
 The beginning of each epoch is the "proof claim phase".
 
@@ -50,7 +40,7 @@ Doing so grants monopoly rights to the rewards for submitting the proof of epoch
 
 If no claim is submitted, the pending chain is pruned to the tip of the proven chain.
 
-#### Proof production phase
+### Proof production phase
 
 If a claim is submitted during the proof claim phase, the next phase is the "proof production phase".
 
@@ -63,6 +53,199 @@ Further, the pending chain is pruned to the tip of the proven chain.
 The wall time duration of $P$ slots must be greater than the time required to produce a proof.
 
 For simplicity, $P + C <= E$: this means we will never be producing a proof for more than one epoch at a time.
+
+## Implementation
+
+```solidity
+struct ChainTip {
+    uint256 blockNumber;
+    uint256 slotNumber;
+}
+
+struct State {
+    ChainTip pendingTip;
+    ChainTip provenTip;
+}
+
+struct ProposalLog {
+    bytes32 hash;
+    uint256 slotNumber;
+    bytes32 archive;
+}
+
+struct ProofBond {
+    address bondProvider;
+    address rewardRecipient;
+    uint256 slotOfClaim;
+}
+
+struct Fee {
+    address recipient;
+    uint256 amount;
+}
+
+struct EpochHeader {
+    uint256 finalBlockNumber;
+    Fee[32] fees;
+}
+
+// State variables
+State public state;
+mapping(uint256 => ProposalLog) public proposalLogs;
+ProofBond public proofBond;
+IERC20 public testToken;
+
+// Constants
+uint256 public constant CLAIM_DURATION = 16;
+uint256 public constant PROOF_DURATION = 16;
+uint256 public constant EPOCH_DURATION = 32;
+uint256 public constant PROOF_COMMITMENT_BOND_AMOUNT = 100;
+
+
+function claimProofRight(
+  // the proposer may have a deal with a prover marketplace, who will pay the bond
+  address _bondProvider,
+
+) external {
+  uint256 currentSlot = getCurrentSlot();
+  address currentProposer = getCurrentProposer();
+
+  if (currentProposer != address(0) && currentProposer != msg.sender) {
+    revert Errors.Rollup__NonProposerCannotClaimProofRight();
+  }
+
+  if (proofBond.rewardRecipient != address(0)) {
+    revert Errors.Rollup__ProofRightAlreadyClaimed();
+  }
+
+  if (currentSlot % EPOCH_DURATION >= CLAIM_DURATION) {
+    revert Errors.Rollup__NotInClaimPhase();
+  }
+
+  // transfer the bond from the bond provider to the rollup contract
+  testToken.transferFrom(_bondProvider, address(this), PROOF_COMMITMENT_BOND_AMOUNT);
+
+  proofBond.rewardRecipient = msg.sender;
+  proofBond.bondProvider = _bondProvider;
+  proofBond.slotOfClaim = currentSlot;
+
+  // we don't need to store the epoch number, as it can be inferred from the current slot
+  claimedEpoch = getCurrentEpoch() - 1;
+
+  emit ProofRightClaimed(msg.sender, claimedEpoch, currentSlot);
+}
+
+
+function _prune() internal {
+  uint256 currentSlot = getCurrentSlot();
+  uint256 currentEpoch = getCurrentEpoch();
+  if (
+    // if the proof claim phase has ended
+    // and no one has claimed
+    currentProofClaimer == address(0) && 
+    currentSlot >= state.provenTip.slotNumber + EPOCH_DURATION + CLAIM_DURATION
+  ) {
+    // prune the pending chain to the tip of the proven chain
+    state.pendingTip = state.provenTip;
+    emit PendingChainPruned(state.pendingTip.blockNumber, state.pendingTip.slotNumber);
+  } else if (
+    // if the proof production phase has ended
+    // and no proof has been submitted
+    currentProofClaimer != address(0) &&
+    currentSlot >= proofBond.slotOfClaim + PROOF_DURATION
+  ) {
+    // prune the pending chain to the tip of the proven chain
+    state.pendingTip = state.provenTip;
+    _slashBond(); 
+    emit PendingChainPruned(state.pendingTip.blockNumber, state.pendingTip.slotNumber);
+  }
+}
+
+function _slashBond() internal {
+  // do nothing at the moment
+  // i.e. the rollup contract will keep the bond
+  proofBond.rewardRecipient = address(0);
+  proofBond.bondProvider = address(0);
+
+  emit BondSlashed();
+}
+
+function _returnBond() internal {
+  // return the bond to the bond provider
+  testToken.transfer(proofBond.bondProvider, PROOF_COMMITMENT_BOND_AMOUNT);
+  proofBond.rewardRecipient = address(0);
+  proofBond.bondProvider = address(0);
+
+  emit BondReturned();
+}
+
+function proposeBlock() {
+  // call _prune before proposing a block
+  _prune();
+  // ...
+}
+
+function submitProofOfEpoch(
+  // ...other args
+  bytes calldata _epochHeader
+) {
+  EpochHeader memory epochHeader = decodeHeader(_epochHeader);
+  uint256 finalBlockNumber = epochHeader.finalBlockNumber;
+  Fee[32] memory fees = epochHeader.fees;
+
+  ProposalLog memory proposalLog = proposalLogs[finalBlockNumber];
+  if (proposalLog.hash == 0) {
+    revert Errors.Rollup__NoProposalLog();
+  }
+
+  // check that the proven block is from the previous epoch
+  if (
+    getEpochAt(proposalLog.slotNumber) != getCurrentEpoch() - 1
+  ) {
+    revert Errors.Rollup__NotPreviousEpoch();
+  }
+
+  // check that the proven block is the last one in the epoch
+  ProposalLog memory nextProposalLog = proposalLogs[finalBlockNumber + 1];
+  if (
+    // if there is a next proposal log
+    nextProposalLog.hash != 0 &&
+    // and it is in the same epoch
+    getEpochAt(nextProposalLog.slotNumber) == getCurrentEpoch() - 1
+  ) {
+    revert Errors.Rollup__NotLastBlockInEpoch();
+  }
+
+  // check that the proof is submitted within the proof production phase
+  uint256 currentSlot = getCurrentSlot();
+  if (
+    currentSlot >= proofBond.slotOfClaim + PROOF_DURATION
+  ) {
+    revert Errors.Rollup__ProofProductionPhaseEnded();
+  }
+
+  // ... go on and verify the proof
+
+  // if the proof is valid
+  // update the proven tip
+  state.provenTip = ChainTip(provenBlockNumber, proposalLog.slotNumber);
+
+  // for each fee
+  for (uint256 i = 0; i < fees.length; i++) {
+    if (fees[i].recipient == address(0)) {
+      continue;
+    }
+    FEE_JUICE_PORTAL.distributeFees(
+      proofBond.rewardRecipient, // the prover gets some fees
+      fees[i].recipient, // as does the proposer
+      fees[i].amount
+    );
+  }
+
+  _returnBond();
+}
+
+```
 
 ## Change Set
 
