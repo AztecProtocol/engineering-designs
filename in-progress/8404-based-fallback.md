@@ -56,10 +56,10 @@ Because of this, we really do not want to enter the fallback too often, but we n
 For applications that are dependent on users acting based on external data or oracle data, a low bar to enter based mode can be desirable since it will mean that they would be able to keep running more easily.
 Lending and trading falls into these catagories as they usually depend on external data sources, e.g., prices of CEX'es influence how people use a trading platform and lending platforms mostly use oracles to get prices.
 
-We suggest defining the time where Based fallback can be entered to be $T_{\textsf{fallback\_enter}}$ after the last proven block. 
-The minimum acceptable value for $T_{\textsf{fallback\_enter}}$ should therefore be if a committee fails to performs its proving duties as specified as a full epoch $E$ in https://github.com/AztecProtocol/engineering-designs/pull/22 * 2.
+We suggest defining the time where Based fallback can be entered to be $T_{\textsf{fallback}, \textsf{enter}}$ after the last proven block. 
+The minimum acceptable value for $T_{\textsf{fallback}, \textsf{enter}}$ should therefore be if a committee fails to performs its proving duties as specified as a full epoch $E$ in https://github.com/AztecProtocol/engineering-designs/pull/22 * 2.
 
-The reason we want $T_{\textsf{fallback\_enter}} > 2 E$ is fairly simple, but more easily seen with a drawing.
+The reason we want $T_{\textsf{fallback}, \textsf{enter}} > 2 E$ is fairly simple, but more easily seen with a drawing.
 In the figure, we mark a proven block with a gray background.
 We don't have skipped slot in the below diagram as I don't need that kind of complexity right now.
 We will be using an epoch length of $32$ slots, e.g., $E = 32$.
@@ -67,9 +67,9 @@ We will be using an epoch length of $32$ slots, e.g., $E = 32$.
 ![alt text](images/8404/image_1.png)
 
 As you see from the image above, while the last proven block might be block 31, the time it gets proven could be in slot 63, e.g., 1 epoch later.
-If $T_{\textsf{fallback\_enter}} > E$, then the minimum $T_{\textsf{fallback\_enter}}$ would mean that we could enter based fallback at slot 64, without there even being an option for a missed proof.
+If $T_{\textsf{fallback}, \textsf{enter}} > E$, then the minimum $T_{\textsf{fallback}, \textsf{enter}}$ would mean that we could enter based fallback at slot 64, without there even being an option for a missed proof.
 
-Lets say that we use $T_{\textsf{fallback\_enter}} = 2E + 1$, and that no more proofs come in - then we will enter the based fallback at slot 96.
+Lets say that we use $T_{\textsf{fallback}, \textsf{enter}} = 2E + 1$, and that no more proofs come in - then we will enter the based fallback at slot 96.
 
 ![alt text](images/8404/image_2.png)
 
@@ -116,8 +116,8 @@ Furthermore, if they need to build an epoch proof without there being blocks on 
 
 A separate direction that I would like to entertain, is that we have two ways to "get out" of the based fallback, both based on time, similarly to how we ended up in here. 
 
-1. If the last proven block is older than $T_{\textsf{fallback\_exit\_activity}}$ we allow exiting the based fallback.
-2. After $T_{\textsf{fallback\_exit}}$ we allow exiting the fallback regardless of when the last proven block were.
+1. If the last proven block is older than $T_{\textsf{fallback}, \textsf{exit}, \textsf{activity}}$ we allow exiting the based fallback.
+2. After $T_{\textsf{fallback}, \textsf{exit}}$ we allow exiting the fallback regardless of when the last proven block were.
 
 Option 1, ensures that we can quickly leave the based fallback if there is no activity, allowing a good experience for the happy path.
 Option 2, ensures that we will not be stuck forever in based fallback even if there is a malicious entity pushing blocks once in a while.
@@ -129,9 +129,9 @@ As a bonus, they are simple rules so my 🥜🧠 can deal with them.
 As mentioned, one of the cases where we enter the based fallback is if the validator set is massively censoring.
 If the L1 contract enforce that there is a minimum block size, the committees only option to try and censor will be to entirely stall the rollup.
 
-After $T_{\textsf{fallback\_enter}}$ time that would push us into the based fallback.
+After $T_{\textsf{fallback}, \textsf{enter}}$ time that would push us into the based fallback.
 At this point, anyone can push the blocks with the censored transactions.
-Even if the committee is trying to limit the throughput by only pushing the minimum blocks, $T_{\textsf{fallback\_exit}}$ can then be picked such that a minimum throughput could be supported over the duration.
+Even if the committee is trying to limit the throughput by only pushing the minimum blocks, $T_{\textsf{fallback}, \textsf{exit}}$ can then be picked such that a minimum throughput could be supported over the duration.
 The minimum throughput here under the assumption that either they will need to push minimum blocks as fast as they can, or someone else might push a bigger block exiting even more.
 
 ### Changes to existing architecture
