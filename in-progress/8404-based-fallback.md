@@ -5,37 +5,33 @@
 | Issue                | [title](github.com/link/to/issue) |
 | Owners               | @LHerskind                        |
 | Approvers            | @just-mitch @aminsammara          |
-| Target Approval Date | YYYY-MM-DD                        |
-
+| Target Approval Date | 2024-11-13                        |
 
 ## Executive Summary
 
-Provide the executive summary on your major proposed changes.
-
-We propose a method which ensure that the chain can be progressed even if the committee is non cooperative.
+We propose a method which ensure Ledger Growth, even if the committee is non cooperative.
+Based fallback provide us with these guarantees, assuming that the base-layer is accessible.
 
 ## Introduction
 
-Briefly describe the problem the work solves, and for whom. Include any relevant background information and the goals (and non-goals) of this implementation.
-
---- 
-
 The Aztec network is a Rollup on Ethereum L1, that have its own consensus layer to support build-ahead.
-Since the consensus layer is only there for the ability to have fast state updates, e.g., block times that are smaller than proving times, it should not be required for the state of the chain to be progressed, we therefore need a fallback if they fail to perform their duties.
+Since the consensus layer is only there for the ability to have fast ledger growth, e.g., block times that are smaller than proving times, it should not be strictly required for the state of the chain to be progressed.
+Therefore, we provide a fallback mechanism to handle the case where the committee fail to perform their duties - allowing anyone to grow the ledger.
 
 The nature in which they could fail to perform their duties varies widely.
 It could be an attack to try and censor the network, or it might be that a majority of the network is running a node that corrupts its state the 13 of August every year as an homage to the Aztec empire.
 
 Nevertheless, we need a mechanism to ensure the liveness of the chain, even if slower, in these events.
 
-> Note:   
+> Note:  
 > While this is not directly dependent on forced inclusions, forced inclusions being ignored are one way that we might enter this fallback.
 > Thereby the fallback is practically what will ensure that forced inclusions can be included.
 
 For the fallback, we will define the following:
-- How will we enter the based fallback 
+
+- How will we enter the based fallback
 - How are blocks proposed when in this mode
-    - They need proofs along with the proposal
+  - They need proofs along with the proposal
 - How do we exit
 
 ## Interface
@@ -44,7 +40,6 @@ The primary users of the fall back mode will be actors similar to the sequencers
 They are block builders that wish to push a block when the chain is otherwise dead, or censored.
 
 Nevertheless, they interact with the system differently, as they have much more limited setup in which they can produce blocks, my expectation is that it is closer to an on-demand node than the usual validator setup.
-
 
 ## Implementation
 
@@ -77,7 +72,7 @@ Note that this will prune the pending chain!
 
 ### Proposing blocks in based mode
 
-When the based fallback have been activated, a new set of rules starts applying for what is seen as a valid block proposal. 
+When the based fallback have been activated, a new set of rules starts applying for what is seen as a valid block proposal.
 Namely, because there are no committee to assure availability or correctness of the transactions, we rely on the proposer's claims until the proof arrives.
 For this our solution is simple - we require that he provides the proof along with the proposal.
 
@@ -86,6 +81,7 @@ Note as shown in the diagram below, that the pending (unproven) blocks are prune
 ![alt text](images/8404/image_3.png)
 
 Beyond the proof being provided at the same time we need to also:
+
 - Allow skipping the sequencer selection - allow anyone to propose.
 - Relax the constraint that the slot of the block must be exactly the current slot.
 
@@ -105,6 +101,7 @@ Since the based fallback as mentioned earlier (likely) provide a worse experienc
 However, this is where we start potentially having some issues.
 
 Say we stopped being in the based fallback when a pending block is proposed:
+
 - In the honest case, the consensus layer is online again, and can start performing their duties
 - In the dishonest case, the consensus layer wish to censor the chain, and could propose unprovable blocks, but still exiting the fallback mode.
 
@@ -112,9 +109,9 @@ Another approach might be that we allow a committee to exit the fallback mode if
 
 However, this essentially make the committee a participant in the race to propose a block in the based fallback, and as they have the overhead of consensus they would be at a disadvantage.
 
-Furthermore, if they need to build an epoch proof without there being blocks on L1 to point against, we would need to support an extra flow in the node for them. 
+Furthermore, if they need to build an epoch proof without there being blocks on L1 to point against, we would need to support an extra flow in the node for them.
 
-A separate direction that I would like to entertain, is that we have two ways to "get out" of the based fallback, both based on time, similarly to how we ended up in here. 
+A separate direction that I would like to entertain, is that we have two ways to "get out" of the based fallback, both based on time, similarly to how we ended up in here.
 
 1. If the last proven block is older than $T_{\textsf{fallback}, \textsf{exit}, \textsf{activity}}$ we allow exiting the based fallback.
 2. After $T_{\textsf{fallback}, \textsf{exit}}$ we allow exiting the fallback regardless of when the last proven block were.
@@ -126,6 +123,7 @@ As a bonus, they are simple rules so my 🥜🧠 can deal with them.
 ![alt text](images/8404/image_4.png)
 
 ### Relation to forced inclusion
+
 As mentioned, one of the cases where we enter the based fallback is if the validator set is massively censoring.
 If the L1 contract enforce that there is a minimum block size, the committees only option to try and censor will be to entirely stall the rollup.
 
@@ -140,10 +138,9 @@ The changes should mostly be on the L1 contract and the sequencer client, with a
 
 - The L1 contract need to deal with the flows as above.
 - The sequencer client need to know when fallback is activated such that it does not try to act as it normally would.
-    - I believe simply doing nothing is best here, as the fallbacks can be seen as a fully separate type of sequencer then.
+  - I believe simply doing nothing is best here, as the fallbacks can be seen as a fully separate type of sequencer then.
 - Add a new "fallback" sequencer, which skips a lot of the checks of the current sequencer but mainly build and prove blocks.
 - Tee L1 contract/rollup circuit mix needs to support individual block proofs for this specific mode.
-
 
 ## Change Set
 
@@ -168,7 +165,7 @@ Fill in bullets for each area that will be affected by this change.
 
 ## Test Plan
 
-- A majority of the tests will be related to the L1 contracts specifically, 
+- A majority of the tests will be related to the L1 contracts specifically, and the full flow can be tested without requiring an additional node.
 - A separate E2E test running the fallback node should be tried
 - A network test entering and exiting fallback gracefully.
 
@@ -176,7 +173,6 @@ Fill in bullets for each area that will be affected by this change.
 
 - The user documentation needs to be extended on how to run this special type of sequencer
 - Protocol spec needs to be extended around block building to outline these edge cases
-
 
 ## Rejection Reason
 
