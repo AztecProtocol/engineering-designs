@@ -5,7 +5,7 @@
 | Issue                | https://github.com/AztecProtocol/aztec-packages/issues/8401 |
 | Owners               | @just-mitch                                                 |
 | Approvers            | @LHerskind                                                  |
-| Target Approval Date | YYYY-MM-DD                                                  |
+| Target Approval Date | 2024-09-13                                                  |
 
 
 ## Executive Summary
@@ -128,11 +128,16 @@ contract Rollup {
         feeJuicePortal = IFeeJuicePortal(_feeJuicePortal);
     }
 
-    function claimProofRight(address _bondProvider) external {
+    // Will be called by the provider of the bond.
+    // The current proposer must have signed 
+    function claimProofRight(bytes32 signature) external {
         uint256 currentSlot = getCurrentSlot();
         address currentProposer = getCurrentProposer();
+        // recover the proposer from the signature
+        // confirm that msg.sender can call this function on behalf of the proposer
+        address proposer = verifyProposerConsent(signature, msg.sender);
 
-        if (currentProposer != address(0) && currentProposer != msg.sender) {
+        if (currentProposer != address(0) && currentProposer != proposer) {
             revert Rollup__NonProposerCannotClaimProofRight();
         }
 
@@ -144,16 +149,15 @@ contract Rollup {
             revert Rollup__NotInClaimPhase();
         }
 
-        // Bond provider must have approved the contract to transfer the bond amount
-        testToken.transferFrom(_bondProvider, address(this), PROOF_COMMITMENT_BOND_AMOUNT);
+        testToken.transfer(address(this), PROOF_COMMITMENT_BOND_AMOUNT);
 
         proofClaim = ProofClaim({
-            rewardRecipient: msg.sender,
+            rewardRecipient: proposer,
             bondProvider: _bondProvider,
             claimedEpoch: getCurrentEpoch() - 1
         });
 
-        emit ProofRightClaimed(msg.sender, proofClaim.claimedEpoch, currentSlot);
+        emit ProofRightClaimed(proposer, proofClaim.claimedEpoch, currentSlot);
     }
 
     function _prune() internal {
@@ -161,13 +165,18 @@ contract Rollup {
         uint256 currentEpoch = getCurrentEpoch();
         uint256 currentEpochStartSlot = currentEpoch * EPOCH_DURATION;
 
+        // If no proof claim is made, prune the pending chain
         if (proofClaim.rewardRecipient == address(0) &&
             currentSlot >= currentEpochStartSlot + CLAIM_DURATION) {
             state.pendingTip = state.provenTip;
             emit PendingChainPruned(state.pendingTip.blockNumber, state.pendingTip.slotNumber);
-        } else if (proofClaim.rewardRecipient != address(0) &&
+        }
+        // If a proof claim is made but no proof is submitted, prune the pending chain
+        else if (proofClaim.rewardRecipient != address(0) &&
                    currentSlot >= currentEpochStartSlot + EPOCH_DURATION) {
             state.pendingTip = state.provenTip;
+            // Note: we may not need to actually "do anything" here in the final implementation:
+            // we just need to ensure the bond is not recoverable. 
             _slashBond();
             emit PendingChainPruned(state.pendingTip.blockNumber, state.pendingTip.slotNumber);
         }
@@ -244,24 +253,36 @@ Fill in bullets for each area that will be affected by this change.
 
 ## Test Plan
 
-Outline what unit and e2e tests will be written. Describe the logic they cover and any mock objects used.
+### Unit tests (solidity)
+
+Claiming proof rights:
+- Signature generation
+  - can claim iff the proposer in the current slot has signed
+- Successful claim by a bond provider
+  - In the first/middle/last slot of the claim phase
+- Preventing double claims
+- Preventing claims outside the claim phase
+
+Chain pruning:
+- Pruning when no proof claim is made
+  - Pending chain should reset to the proven tip with the current committee
+- Pruning when a claim is made but no proof is submitted
+
+Submitting proof of epoch:
+- Successful submission of a proof
+
+Testing all the above when:
+  - the previous epoch was empty
+  - the previous epoch has empty slots
+  - this is the first epoch
+
+### E2E tests
+
+All existing E2E tests should pass. Additional E2E will be written after the sequencer has been updated to handle reorgs.
 
 ## Documentation Plan
 
-Identify changes or additions to the user documentation or protocol spec.
-
-
-## Rejection Reason
-
-If the design is rejected, include a brief explanation of why.
-
-## Abandonment Reason
-
-If the design is abandoned mid-implementation, include a brief explanation of why.
-
-## Implementation Deviations
-
-If the design is implemented, include a brief explanation of deviations to the original design.
+TBD
 
 ## Disclaimer
 
