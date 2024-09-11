@@ -30,7 +30,7 @@ This design focuses on how those timelines are defined and enforced by the rollu
 
 The beginning of each epoch is the "proof claim phase".
 
-This phase has a duration of $C$ slots (e.g. 13 slots).
+This phase has a duration of $C$ slots (e.g. 13 slots. See notebook for modeling).
 
 During this time, the proposer for a slot can submit a claim to be the prover for the previous epoch.
 
