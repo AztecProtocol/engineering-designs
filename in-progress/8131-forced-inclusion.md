@@ -16,7 +16,6 @@ After some delay, the following blocks are complied to include transactions from
 
 The length of the delay should take into account the expected delays of shared mutable, as it could be impossible to force a transaction that uses shared mutable if the queue delay is too large.
 
-
 ## Introduction
 
 While the [based fallback mechanism](8404-based-fallback.md) provide a mechanism to which we could provide ledger growth, to properly satisfy our liveness requirements, we need to improve the censorship resistance guarantees of the system.
@@ -203,26 +202,25 @@ def progress_forced_inclusion_tip() -> bool:
 
 def force_until(epoch: uint256, tx_count: uint256) -> uint256:
   '''
-  Given the number of transactions in the blocks of the epoch, return index we should have progressed to
-  in the forced inclusion queue
+  Given the number of transactions in the blocks of the epoch, return index we should have progressed to in the forced inclusion queue
   '''
-  force_until = self.forced_inclusion_tip
-
   if tx_count == 0:
-    return force_until
+    return self.forced_inclusion_tip
 
   inclusions = 0;
+  force_until = self.forced_inclusion_tip
 
-  for force_until in range(self.self.forced_inclusion_tip, self.forced_inclusion_count):
+  for i in range(self.self.forced_inclusion_tip, self.forced_inclusion_count):
     fi = self.forced_inclusions[i]
     if fi.included:
+      # This was included in the past
       continue
 
-    # If we are to include it by epoch 2, and this is epoch 1 we still have to include it!
     if fi.include_by_epoch > epoch + 1:
       break
 
     inclusions += 1
+    force_until = i
 
     if inclusions == tx_count:
       break
@@ -276,10 +274,10 @@ In the event of a "failed" transaction, the transaction will appear in the block
 This require some changes to the transaction decoder and base rollups.
 Also, it means that these transactions could be "replayed", potentially at a point in time where they would not be invalid, e.g., say the public setup no-longer fails.
 
-For issues due to other assertions than invalid sibling paths we would need not perform the assertion, but instead "throw away" the side effects. 
+For issues due to other assertions than invalid sibling paths we would need not perform the assertion, but instead "throw away" the side effects.
 
 ```noir
-// Old 
+// Old
 assert(
     self.kernel_data.public_inputs.constants.tx_context.version == self.constants.global_variables.version,
     "kernel version does not match the rollup version"
@@ -292,7 +290,7 @@ self.purge_side_effects_unless(
 );
 ```
 
-**Invalid sibling paths**: 
+**Invalid sibling paths**:
 As the sequencer is the one providing membership paths for the base rollup, it must not be possible for him to deliberately provide bad paths, thereby making the tx "invalid" and make it have no effect. To address this, we can add another check to each of our membership or non memberships, to ensure that the paths provided were not utter nonsense. Remember that failure to prove inclusion is not equal non-inclusion. This check is fairly simple, if it is a membership check where an index was provided, and it fails, the sequencer must show what the "real" value was, and that it differs. If it is a membership without a provided index, and it fails, a non-membership must be made. If it is a non-membership we must prove that it was in there. Essentially the sequencer is to do an xor operation, with membership and non-membership - one of them must be valid if he is not lying.
 
 ### PXE
