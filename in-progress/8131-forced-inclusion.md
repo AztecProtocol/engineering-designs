@@ -59,10 +59,6 @@ Again, [The Hand-off Problem](https://blog.init4.technology/p/the-hand-off-probl
 Consider that you have forced a transactions that is to use a trading pair or lending market, the sequencer could include your transaction right after it have emptied the market or pushed it just enough for your tx to fail to then undo the move right after.
 ![The sequencer or builder can manipulate the state at the hand-off.](https://substackcdn.com/image/fetch/f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F9b449e22-66d0-4fe1-bc25-28aea3329e72_2799x1428.png)
 
-To minimize this effect, we can apply extra constraints to **where** within a block the forced inclusion must happen, for example, by requiring that they happen at the start of the block.
-This essentially pushes the above example into a case of "multi-block censorship attack", which can be risky if the entity censoring is not producing both blocks.
-If the entity is producing both blocks, it can be seen fairly close to the same block with the caveat of some TWAP logic etc behaving differently.
-
 As this attack relies on contentious state being accessed, it is especially prone to happen for transactions operating in the public domain.
 For a private transaction, they might occur if the same user sent multiple transactions using the same notes (a double-spend) which should rightfully be stopped.
 Nevertheless, even a private transaction that is not double-spending might run into issues if its "lifetime" `max_block_number` have a smaller value than the time of forced inclusion.
@@ -71,10 +67,23 @@ If the proposers can delay the transaction sufficiently it would end up revertin
 A different attack could be to make the fees spike such that your forced transaction might have insufficient funds and end up reverting as an effect.
 This can be avoided by not requiring forced transactions to pay the fee, as long as the transaction have a bounded amount of gas.
 A reason that this could be acceptable is that the cost to go to L1 SHOULD be far greater than going to the L1, so you cannot use it as a mechanism to dos as it is still much more expensive than sending the same transaction and paying L2 gas for it.
+
 However, it opens a annoying problem for us, the circuits would need to know that it is a forced transaction to give us that "special" treatment.
-To do so, it seems like we would need to have an non-inclusion proof for non-forced transactions, are cannot rely on the sequencer telling us correctly if something is indeed forced.
-A more reliable solution is likely to still require the fee payment, and then the user might instead rely on performing 2 forced transactions instead of 1.
-The first for funding a fee balance and the second for doing what it really wanted to do.
+
+And how will we let it learn this fact?
+We essentially have a list of to be forced transactions at the contract, and we need to know if the block includes any of these.
+The naive way would be to loop through the transactions hashes, but then you perform a `sload` for every transaction (bye bye cheap transactions).
+Alternatively you could have the proposer provide hints - he can tell which of the transactions are forced!
+But what if he lies?
+In the case where he lies, the circuit would believe it was a normal transaction, and he gotta pay up.
+At the contract level, it would not check any value as it do not believe anything is in the forced inclusion, and if included before the deadline, the deadline will not make the proof submission fail either.
+
+For those reasons, we will take the simple way out.
+Let him pay, he might need to send 2 forced transactions, one to fund a balance and the second to perform his actual transaction, but that is part of the deal - take it or leave it.
+
+To minimize the proposers ability to make the transaction fail it can be beneficial to force the hand-off to happen at the start of a block.
+This essentially pushes the above example into a case of "multi-block censorship attack", which can be risky if the entity censoring is not producing both blocks.
+If the entity is producing both blocks, it can be seen fairly close to the same block with the caveat of some TWAP logic etc behaving differently.
 
 ---
 
@@ -135,6 +144,7 @@ struct ForceInclusionProof:
   attestations: Attestations
   forced_inclusion_index: uint256,
   block_number: uint256
+  index_in_block: uint256
   membership_proof: bytes32[]
 
 
@@ -200,9 +210,14 @@ def progress_forced_inclusion_tip() -> bool:
   return self.forced_inclusion_tip != before
 
 
+@view
 def force_until(epoch: uint256, tx_count: uint256) -> uint256:
   '''
-  Given the number of transactions in the blocks of the epoch, return index we should have progressed to in the forced inclusion queue
+  Given the total number of transactions in the blocks of the epoch, return the index
+  we should have progressed to in the forced inclusion queue
+
+  I think this one maybe still have some issues with inclusion. Think we have to do the "progress" check.
+  Which could get really strange with the epoch.
   '''
   if tx_count == 0:
     return self.forced_inclusion_tip
@@ -239,13 +254,156 @@ def submit_proof_with_force(proof, tx_count: uint256, archive, fips: ForceInclus
   epoch = self.get_epoch_at(self.get_timestamp_for_slot(self.blocks[self.provenBlockCount].slot_number))
   super.submit_next_epoch_proof(proof, tx_count, archive, fees)
   forced_until = self.force_until(epoch, tx_count)
+
+  fip_block = 0
+  fip_index = 0
   for fip in fips:
-    self.show_included(fip)
+    assert fip.block_number > last_block_number_in_prior_epoch
+    assert fip.block_number <= last_block_number_in_current_epoch
+
+    if fip.block_number != fip_block:
+      fip_block = fip.block_number
+      fip_index = 0
+
+    assert fip.index_in_block == fip_index, 'incorrect ordering'
+    assert self.show_included(fip), 'did not progress the queue, incorrect ordering'
+
+    fip_index += 1
+
   assert forced_until <= self.forced_inclusion_tip, 'missing force inclusions'
 ```
 
-If someone have included a forced transaction earlier than it was required, one can use the `show_included` to mark it as included and progress the state of the delayed queue.
-Note that the code above is made with an expectation about being "up to date" with the tips, e.g., your block might be rejected as not having enough forced inclusions otherwise.
+The reason we have the constraints on the block being in the epoch is fairly simple.
+If we did not have this check, it would be possible to provide a proof for a transactions that was included in a previous epoch.
+This could happen for example if you also had a block in the prior epoch.
+Lets say that there are 2 transactions that have passed their "deadline" so they must be included.
+You provide a block with 2 transactions, the first is from the forced queue, but the second is not.
+The `force_until` would return that you need to progress by 2.
+You then provide it the proof for the prior tx, it progress by 1, and then the proof for your new, the second.
+At this point, you progressed by 2, but only one of them was actually new.
+
+If someone have included a forced transaction earlier than it was required, anyone can use the `show_included` to mark it as included and progress the state of the delayed queue.
+
+Notice that the forced inclusions outlined does **not** strictly require insertion into the beginning of the epoch.
+But only that it is within the start of blocks within the epoch.
+
+Also, observe, that a failure to include the forced transactions will be caught at the time of proof verification, not at the time of proposal!
+
+#### Stricter inclusion constraints
+
+By being stricter with our constraints, and more loose with our gas expenditure 😎 we can change the system such that it:
+- Enforces the ordering earlier in the life-cycle;
+- Force the delayed queue to be included as the first transactions, e.g., from the very start of the epoch, limiting the proposers power.
+
+By extending the checks of the proposal, we can cause an early failure, such that we don't have to wait until the block have been proven to catch them meddling with the force inclusion ordering.
+
+It requires a bit more accounting, and will likely be slightly more expensive, however, the improved properties seems to make up for that.
+
+Could I not have written this in the first go?
+Well, yes, but it might get confusing with both the pending and non pending functions so I'm going to keep them separate for now.
+
+
+```python
+active_pending: uint256
+forced_pending_tip: HashMap[uint256, uint256]
+included_pending: HashMap[uint256, HashMap[uint256, bool]]
+
+def propose(header: Header, fips: ForceInclusionProof[]):
+  super.propose(header)
+
+  epoch = self.get_epoch_at(header.global_variables.timestamp)
+  force_until = force_until_pending(epoch, header.tx_count)
+
+  for i, fip in enumerate(fips):
+    assert fip.block_number == header.global_variables.block_number, 'incorrect block'
+    assert fip.index_in_block == i, 'incorrect ordering'
+    assert self.show_included_pending(fip), 'did not progress the queue, incorrect ordering'
+
+  assert forced_until <= self.forced_pending_tip[self.active_pending], 'missing force inclusions'
+
+
+def prune():
+  super.prune()
+  self.active_pending += 1
+  self.forced_pending_tip[self.active_pending] = self.forced_inclusion_tip
+
+
+@view
+def force_until_pending(epoch: uint256, tx_count: uint256) -> uint256:
+  '''
+  Very similar to `force_until` with the caveat that we also skip if it have been
+  included previously in the pending chain.
+  '''
+
+  # Similar to the force_until
+  if tx_count == 0:
+    return self.forced_pending_tip[self.active_pending]
+
+  inclusions = 0;
+  force_until = self.forced_pending_tip[self.active_pending]
+
+  for i in range(self.forced_pending_tip[self.active_pending] , self.forced_inclusion_count):
+    fi = self.forced_inclusions[i]
+
+    if fi.included or self.included_pending[self.active_pending][i]: # The diff is down here!
+      # This was included in the past
+      continue
+
+    if fi.include_by_epoch > epoch + 1:
+      break
+
+    inclusions += 1
+    force_until = i
+
+    if inclusions == tx_count:
+      break
+
+  return force_until
+
+
+def show_included_pending(fip: ForceInclusionProof) -> bool:
+  '''
+  Convince the contract that a specific forced inclusion at `forced_inclusion_index` was
+  indeed included in a block.
+  '''
+  if self.forced_inclusions[fip.forced_inclusion_index].included:
+    return False
+
+  assert fip.forced_inclusion_index < self.forced_inclusion_count
+  tx_hash = self.forced_inclusions[fip.forced_inclusion_index].nullifier
+
+  assert self.proposals[fip.block_number].hash == hash(fip.proposal, fip.attestations)
+  assert fip.membership_proof.verify(tx_hash, fip.proposal.txs_hash)
+
+  self.included_pending[self.active_pending][fip.forced_inclusion_index] = True
+
+  return self.progress_forced_inclusion_tip_pending()
+
+
+def progress_forced_inclusion_tip_pending() -> bool:
+  before = self.forced_pending_tip[self.active_pending]
+  for i in range(self.forced_pending_tip[self.active_pending], self.forced_inclusion_count):
+    if not (self.forced_inclusions[i].included OR self.included_pending[self.active_pending][i]) :
+      return
+    self.forced_pending_tip[self.active_pending] = i
+  return self.forced_pending_tip[self.active_pending] != before
+
+
+@override
+def submit_proof(proof, tx_count: uint256, archive):
+  epoch = self.get_epoch_at(self.get_timestamp_for_slot(self.blocks[self.provenBlockCount].slot_number))
+  super.submit_next_epoch_proof(proof, tx_count, archive, fees)
+  forced_until = self.force_until(epoch, tx_count)
+
+  # Notice that this is very similar to `progress_forced_inclusion_tip_pending`
+  before = self.forced_inclusion_tip
+  for i in range(self.forced_inclusion_tip, self.forced_inclusion_count):
+    if not (self.forced_inclusions[i].included OR self.included_pending[self.active_pending][i]):
+      break
+    self.forced_inclusion_tip = i
+  
+  assert forced_until <= self.forced_inclusion_tip, 'missing force inclusions'
+```
 
 ### Block Validation
 
@@ -268,7 +426,7 @@ For this reason, we need to alter the circuits[^1], such that they will **not** 
 - Have invalid sibling pairs
 - Have insufficient fee
 
-The protocol must gracefully handle these cases, and instead of having the transaction be invalid, it should allow the transaction to be included, but with a "failed" status and no side effects.
+The protocol must gracefully handle these cases, and instead of having the transaction be invalid, it should allow the transaction to be included, but with a "failed" status and **absolutely no** side effects.
 
 In the event of a "failed" transaction, the transaction will appear in the block with its `tx_hash`, but not much else.
 This require some changes to the transaction decoder and base rollups.
@@ -291,7 +449,23 @@ self.purge_side_effects_unless(
 ```
 
 **Invalid sibling paths**:
-As the sequencer is the one providing membership paths for the base rollup, it must not be possible for him to deliberately provide bad paths, thereby making the tx "invalid" and make it have no effect. To address this, we can add another check to each of our membership or non memberships, to ensure that the paths provided were not utter nonsense. Remember that failure to prove inclusion is not equal non-inclusion. This check is fairly simple, if it is a membership check where an index was provided, and it fails, the sequencer must show what the "real" value was, and that it differs. If it is a membership without a provided index, and it fails, a non-membership must be made. If it is a non-membership we must prove that it was in there. Essentially the sequencer is to do an xor operation, with membership and non-membership - one of them must be valid if he is not lying.
+As the sequencer is the one providing membership paths for the base rollup, it must not be possible for him to deliberately provide bad paths, thereby making the tx "invalid" and make it have no effect.
+To address this, we can add another check to each of our membership or non memberships, to ensure that the paths provided were not utter nonsense.
+Remember that failure to prove inclusion is not equal non-inclusion.
+This check is fairly simple, if it is a membership check where an index was provided, and it fails, the sequencer must show what the "real" value was, and that it differs.
+If it is a membership without a provided index, and it fails, a non-membership must be made.
+If it is a non-membership we must prove that it was in there.
+Essentially the sequencer is to do an xor operation, with membership and non-membership - one of them must be valid if he is not lying.
+
+**No side effects**:
+While there have previously been ideas to include the `tx_hash` (first nullifier) in the case that these checks fail, I don't think that these are fully compatible with forced inclusion.
+Consider the fact, that the `tx_hash` is emitted as the nullifier equal to the hash of the `tx_request` from `address(0)`.
+If I can create a `tx_request` such that the nullifier emitted from `address(0)` collides with any of the nullifiers that are not `tx_hash`es requiring it to be inserted would require two of the same nullifiers to be included in the nullifier tree.
+For a normal transaction, the transaction could not be included, and I would need to create a new one. 
+But with a forced transaction, it might be impossible for me to include the transactions while I at the same time is forced to do it.
+
+**Why not only do this for forced transactions?**
+Look back at the introduction where we talked about this.
 
 ### PXE
 
