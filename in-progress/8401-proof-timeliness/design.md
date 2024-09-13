@@ -12,6 +12,12 @@
 
 The rollup contract will require that the pending chain be pruned to the proven chain if a proof for an epoch does not get verified on L1 in a fixed amount of time.
 
+Proposers will be able to submit quotes signed by provers that indicate a percentage of the rewards they will receive if a proof is submitted in time.
+
+An escrow contract will be provided for provers to stake a bond.
+
+This design enshrines the Quote, and the escrow contract.
+
 ## Introduction
 
 There is functionality in the rollup contract to prune the pending chain, but this is not currently used.
@@ -67,10 +73,10 @@ sequenceDiagram
     EscrowContract->>TokenContract: transferFrom(prover, escrow, amount)
     
     Note over Prover: Prover creates and signs a message off-chain
-    Prover-->>Proposer: Communicate signed message (amount, fee, rollupContract, validUntil, signature)
+    Prover-->>Proposer: Communicate signed message (quote)
     
-    Proposer->>RollupContract: claimProofRight(prover, amount, fee, validUntil, signature)
-    RollupContract->>EscrowContract: stakeBond(prover, amount, epoch, fee, rollupContract, validUntil, signature)
+    Proposer->>RollupContract: claimProofRight(quote)
+    RollupContract->>EscrowContract: stakeBond(quote)
 
     Proposer->>RollupContract: proposeBlock(blockHash, archive)
     RollupContract->>RollupContract: _pruneIfNeeded()
@@ -102,9 +108,19 @@ this means that the committee will have any blocks in its first $C$ slots reorge
 
 interface IEscrowContract {
     function deposit(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external;
-    function stakeBond(address bondProvider, uint256 amount, uint256 epoch, uint32 fee, address rollupContract, uint256 validUntil, bytes memory signature) external;
+    function stakeBond(Quote calldata quote) external returns (address); // returns the bond provider
     function unstakeBond(address bondProvider, uint256 amount) external;
     function withdraw(uint256 amount) external;
+}
+
+struct Quote {
+    address rollup;
+    address feeRecipient;
+    uint256 epochToProve;
+    uint32 basisPointFee;
+    uint256 validUntilSlot;
+    uint256 bondAmount;
+    Signature signature;
 }
 
 
@@ -126,10 +142,11 @@ contract Rollup {
     }
 
     struct ProofClaim {
+        address feeRecipient;
         address bondProvider;
-        address rewardRecipient;
-        uint256 claimedEpoch;
+        uint256 epochToProve;
         uint256 basisPointFee;
+        uint256 bondAmount;
     }
 
     struct Fee {
@@ -174,25 +191,23 @@ contract Rollup {
         feeJuicePortal = IFeeJuicePortal(_feeJuicePortal);
     }
 
-    // Will be called by the proposer.
-    // Must have a permit from the provider of the bond.
     function claimProofRight(
-        address _bondProvider,
-        uint256 _bondAmount,
-        uint32 _basisPointFee,
-        uint256 _validUntil,
-        bytes32 calldata _signature
+        Quote calldata _quote
     ) external {
         uint256 currentSlot = getCurrentSlot();
-        uint256 currentEpoch = getCurrentEpoch();
         address currentProposer = getCurrentProposer();
+        uint256 epochToProve = getEpochToProve();
 
         if (currentProposer != address(0) && currentProposer != msg.sender) {
             revert Rollup__NonProposerCannotClaimProofRight();
         }
 
+        if (_quote.epochToProve != epochToProve) {
+            revert Rollup__NotClaimingCorrectEpoch();
+        }
+
         // Overwrite stale proof claims
-        if (proofClaim.claimedEpoch == currentEpoch - 1) {
+        if (proofClaim.claimedEpoch == epochToProve) {
             revert Rollup__ProofRightAlreadyClaimed();
         }
 
@@ -200,57 +215,57 @@ contract Rollup {
             revert Rollup__NotInClaimPhase();
         }
 
-        if (_bondAmount < PROOF_COMMITMENT_BOND_AMOUNT) {
+        if (_quote.bondAmount < PROOF_COMMITMENT_BOND_AMOUNT) {
             revert Rollup__InsufficientBondAmount();
         }
 
-        // reverts if the signature is invalid
-        // or bid is no longer valid
-        // or the bond provider has insufficient balance
-        escrow.stakeBond(_bondProvider, _bondAmount, currentEpoch, _basisPointFee, address(this), _validUntil, _signature);
+        if (_quote.validUntilSlot > currentSlot) {
+            revert Rollup__QuoteExpired();
+        }
 
+        // The bond will be provided by the signer of the quote...
+        address bondProvider = escrow.stakeBond(_quote);
 
         proofClaim = ProofClaim({
-            rewardRecipient: currentProposer,
-            bondProvider: _bondProvider,
-            claimedEpoch: currentEpoch - 1,
-            basisPointFee: _basisPointFee
+            // ...but rewards may be sent elsewhere
+            feeRecipient: _quote.feeRecipient,
+            bondProvider: bondProvider,
+            claimedEpoch: epochToProve,
+            basisPointFee: _quote.basisPointFee,
+            bondAmount: _quote.bondAmount
+
         });
 
-        emit ProofRightClaimed(proposer, proofClaim.claimedEpoch, currentSlot);
+        emit ProofRightClaimed(proposer, epochToProve, currentSlot);
     }
 
+
     function _pruneIfNeeded() internal {
-        uint256 currentSlot = getCurrentSlot();
-        uint256 mostRecentProvenSlot = getMostRecentProvenSlot();
-        if (currentSlot <= mostRecentProvenSlot + EPOCH_DURATION) {
-            // we are in epoch `n`, and the proof for epoch `n-1` has been submitted
+        if (state.pendingTip.blockNumber == state.provenTip.blockNumber) {
             return;
-        } else if (currentSlot > mostRecentProvenSlot + 2 * EPOCH_DURATION) {
-            // If we are more than 2 epochs ahead, prune immediately.
-            // This will render the bond
-            _prune();
-            return;
-        } else {
-            // We are in epoch `n`, awaiting the proof for epoch `n-1`
-
-            uint256 currentEpoch = getCurrentEpoch();
-            uint256 currentEpochStartSlot = currentEpoch * EPOCH_DURATION;
-
-            if (currentSlot < currentEpochStartSlot + CLAIM_DURATION) {
-                // If we are in the claim phase, do not prune
-                return;
-            } else if (proofClaim.claimedEpoch != currentEpoch - 1) {
-                // If no proof claim is made, prune the pending chain
-                _prune();
-                return;
-            }
         }
+
+        uint256 oldestPendingEpoch = getEpochAt(proposalLogs[state.provenTip.blockNumber + 1].slotNumber);
+        uint256 startSlotOfPendingEpoch = oldestPendingEpoch * EPOCH_DURATION;
+
+        if (currentSlot < startSlotOfPendingEpoch + EPOCH_DURATION + CLAIM_DURATION) {
+            // If we are in the claim phase, do not prune
+            return;
+        } else if (
+            currentSlot < startSlotOfPendingEpoch + 2 * EPOCH_DURATION 
+            && proofClaim.claimedEpoch == oldestPendingEpoch
+        ) {
+            // We have left the claim phase, but a claim has been made
+            return;
+        }
+
+        // Either a claim didn't land in time, or no proof was submitted
+        _prune();
     }
 
     function _prune() internal {
         state.pendingTip = state.provenTip;
-        emit PendingChainPruned(state.pendingTip.blockNumber, state.pendingTip.slotNumber);
+        emit PendingChainPruned(state.pendingTip.blockNumber);
     }
 
 
@@ -287,16 +302,23 @@ contract Rollup {
 
         state.provenTip = ChainTip(finalBlockNumber, proposalLog.slotNumber);
 
+        address proverRewardsAddress = address(0);
+        uint256 provenEpoch = getEpochAt(proposalLog.slotNumber)
+        uint256 proverFee = 0;
+        if (proofClaim.claimedEpoch == provenEpoch) {
+            escrow.unstakeBond(proofClaim.bondProvider, proofClaim.bondAmount);
+            proverRewardsAddress = proofClaim.feeRecipient;
+            proverFee = proofClaim.basisPointFee;
+        }
+
         for (uint256 i = 0; i < epochHeader.fees.length; i++) {
             Fee memory fee = epochHeader.fees[i];
             if (fee.recipient != address(0)) {
-                feeJuicePortal.distributeFees(proofClaim.rewardRecipient, fee.recipient, fee.amount);
+                feeJuicePortal.distributeFees(proverRewardsAddress, proverFee, fee.recipient, fee.amount);
             }
         }
 
-        // escrow will check that the amount has actually been staked to this rollup.
-        escrow.unstakeBond(proofClaim.bondProvider, proofClaim.bondAmount);
-        emit ProofSubmitted(proofClaim.claimedEpoch, finalBlockNumber);
+        emit ProofSubmitted(provenEpoch, finalBlockNumber);
     }
 
 }
@@ -326,6 +348,12 @@ Fill in bullets for each area that will be affected by this change.
 ## Test Plan
 
 ### Unit tests (solidity)
+
+Escrow contract:
+- Depositing funds
+- Staking a bond
+- Unstaking a bond
+- Withdrawing funds is delayed
 
 Claiming proof rights:
 - Signature generation
