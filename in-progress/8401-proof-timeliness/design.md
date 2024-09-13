@@ -52,16 +52,61 @@ Further, the pending chain is pruned to the tip of the proven chain.
 
 Given that an epoch is $E$ slots, the wall time duration of $E-C$ slots must be greater than the time required to produce a proof.
 
+## The overall flow
+
+```mermaid
+sequenceDiagram
+    participant Prover
+    participant Proposer
+    participant EscrowContract
+    participant RollupContract
+    participant TokenContract
+
+    Prover->>EscrowContract: deposit(amount, deadline, v, r, s)
+    EscrowContract->>TokenContract: permit(prover, escrow, amount, deadline, v, r, s)
+    EscrowContract->>TokenContract: transferFrom(prover, escrow, amount)
+    
+    Note over Prover: Prover creates and signs a message off-chain
+    Prover-->>Proposer: Communicate signed message (amount, fee, rollupContract, validUntil, signature)
+    
+    Proposer->>RollupContract: claimProofRight(prover, amount, fee, validUntil, signature)
+    RollupContract->>EscrowContract: stakeBond(prover, amount, epoch, fee, rollupContract, validUntil, signature)
+
+    Proposer->>RollupContract: proposeBlock(blockHash, archive)
+    RollupContract->>RollupContract: _pruneIfNeeded()
+    
+    Note over Prover: Generates the proof of the epoch
+    Prover->>RollupContract: submitProofOfEpoch(epochHeader)
+    
+    RollupContract->>EscrowContract: unstakeBond(prover, amount)
+    
+```
+
+More details on the contents of the message signed and how it is communicated can be found in [the prover coordination design](https://github.com/AztecProtocol/engineering-designs/pull/25).
+
+We use an external escrow contract to handle the bond to gain:
+- a very specific/targeted permitting mechanism for the bond to be used, protecting the prover
+- a delayed withdrawal mechanism for the bond, ensuring that proposers can be confident the bond will be available when they `claimProofRight`
+
+
 ## Rough Implementation
 
 This is a rough, illustrative implementation of the proof timeliness requirement to guide intuition.  
-For example, it is highly unlikely that the rollup contract will hold the bond.
 
-The key "trick" is that we prune the pending chain as part of a proposer's block submission.
+The key "trick" is that we prune the pending chain as part of a proposer's block submission if needed.
 
-An observation is that in the current design, the committee does not change in the event that no proof claim is posted for the previous epoch.
+An observation is that in the current design, the committee does not change in the event that no proof claim is posted for the previous epoch;
+this means that the committee will have any blocks in its first $C$ slots reorged, but the subsequent blocks can start a new pending chain.
 
 ```solidity
+
+interface IEscrowContract {
+    function deposit(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external;
+    function stakeBond(address bondProvider, uint256 amount, uint256 epoch, uint32 fee, address rollupContract, uint256 validUntil, bytes memory signature) external;
+    function unstakeBond(address bondProvider, uint256 amount) external;
+    function withdraw(uint256 amount) external;
+}
+
 
 contract Rollup {
     struct ChainTip {
@@ -84,6 +129,7 @@ contract Rollup {
         address bondProvider;
         address rewardRecipient;
         uint256 claimedEpoch;
+        uint256 basisPointFee;
     }
 
     struct Fee {
@@ -100,7 +146,7 @@ contract Rollup {
     State public state;
     mapping(uint256 => ProposalLog) public proposalLogs;
     ProofClaim public proofClaim;
-    IERC20 public testToken;
+    IProverBondEscrow public proverBondEscrow;
     IFeeJuicePortal public feeJuicePortal;
 
     // Constants
@@ -123,25 +169,30 @@ contract Rollup {
     error Rollup__ProofProductionPhaseEnded();
     error Rollup__UnauthorizedProofSubmitter();
 
-    constructor(address _testToken, address _feeJuicePortal) {
-        testToken = IERC20(_testToken);
+    constructor(address _proverBondEscrow, address _feeJuicePortal) {
+        proverBondEscrow = IProverBondEscrow(_proverBondEscrow);
         feeJuicePortal = IFeeJuicePortal(_feeJuicePortal);
     }
 
-    // Will be called by the provider of the bond.
-    // The current proposer must have signed 
-    function claimProofRight(bytes32 signature) external {
+    // Will be called by the proposer.
+    // Must have a permit from the provider of the bond.
+    function claimProofRight(
+        address _bondProvider,
+        uint256 _bondAmount,
+        uint32 _basisPointFee,
+        uint256 _validUntil,
+        bytes32 calldata _signature
+    ) external {
         uint256 currentSlot = getCurrentSlot();
+        uint256 currentEpoch = getCurrentEpoch();
         address currentProposer = getCurrentProposer();
-        // recover the proposer from the signature
-        // confirm that msg.sender can call this function on behalf of the proposer
-        address proposer = verifyProposerConsent(signature, msg.sender);
 
-        if (currentProposer != address(0) && currentProposer != proposer) {
+        if (currentProposer != address(0) && currentProposer != msg.sender) {
             revert Rollup__NonProposerCannotClaimProofRight();
         }
 
-        if (proofClaim.rewardRecipient != address(0)) {
+        // Overwrite stale proof claims
+        if (proofClaim.claimedEpoch == currentEpoch - 1) {
             revert Rollup__ProofRightAlreadyClaimed();
         }
 
@@ -149,42 +200,62 @@ contract Rollup {
             revert Rollup__NotInClaimPhase();
         }
 
-        testToken.transfer(address(this), PROOF_COMMITMENT_BOND_AMOUNT);
+        if (_bondAmount < PROOF_COMMITMENT_BOND_AMOUNT) {
+            revert Rollup__InsufficientBondAmount();
+        }
+
+        // reverts if the signature is invalid
+        // or bid is no longer valid
+        // or the bond provider has insufficient balance
+        escrow.stakeBond(_bondProvider, _bondAmount, currentEpoch, _basisPointFee, address(this), _validUntil, _signature);
+
 
         proofClaim = ProofClaim({
-            rewardRecipient: proposer,
+            rewardRecipient: currentProposer,
             bondProvider: _bondProvider,
-            claimedEpoch: getCurrentEpoch() - 1
+            claimedEpoch: currentEpoch - 1,
+            basisPointFee: _basisPointFee
         });
 
         emit ProofRightClaimed(proposer, proofClaim.claimedEpoch, currentSlot);
     }
 
-    function _prune() internal {
+    function _pruneIfNeeded() internal {
         uint256 currentSlot = getCurrentSlot();
-        uint256 currentEpoch = getCurrentEpoch();
-        uint256 currentEpochStartSlot = currentEpoch * EPOCH_DURATION;
+        uint256 mostRecentProvenSlot = getMostRecentProvenSlot();
+        if (currentSlot <= mostRecentProvenSlot + EPOCH_DURATION) {
+            // we are in epoch `n`, and the proof for epoch `n-1` has been submitted
+            return;
+        } else if (currentSlot > mostRecentProvenSlot + 2 * EPOCH_DURATION) {
+            // If we are more than 2 epochs ahead, prune immediately.
+            // This will render the bond
+            _prune();
+            return;
+        } else {
+            // We are in epoch `n`, awaiting the proof for epoch `n-1`
 
-        // If no proof claim is made, prune the pending chain
-        if (proofClaim.rewardRecipient == address(0) &&
-            currentSlot >= currentEpochStartSlot + CLAIM_DURATION) {
-            state.pendingTip = state.provenTip;
-            emit PendingChainPruned(state.pendingTip.blockNumber, state.pendingTip.slotNumber);
+            uint256 currentEpoch = getCurrentEpoch();
+            uint256 currentEpochStartSlot = currentEpoch * EPOCH_DURATION;
+
+            if (currentSlot < currentEpochStartSlot + CLAIM_DURATION) {
+                // If we are in the claim phase, do not prune
+                return;
+            } else if (proofClaim.claimedEpoch != currentEpoch - 1) {
+                // If no proof claim is made, prune the pending chain
+                _prune();
+                return;
+            }
         }
-        // If a proof claim is made but no proof is submitted, prune the pending chain
-        else if (proofClaim.rewardRecipient != address(0) &&
-                   currentSlot >= currentEpochStartSlot + EPOCH_DURATION) {
-            state.pendingTip = state.provenTip;
-            // Note: we may not need to actually "do anything" here in the final implementation:
-            // we just need to ensure the bond is not recoverable. 
-            _slashBond();
-            emit PendingChainPruned(state.pendingTip.blockNumber, state.pendingTip.slotNumber);
-        }
+    }
+
+    function _prune() internal {
+        state.pendingTip = state.provenTip;
+        emit PendingChainPruned(state.pendingTip.blockNumber, state.pendingTip.slotNumber);
     }
 
 
     function proposeBlock(bytes32 _blockHash, bytes32 _archive) external {
-        _prune();
+        _pruneIfNeeded();
         // Additional block proposal logic here
         // ...
     }
@@ -223,7 +294,8 @@ contract Rollup {
             }
         }
 
-        _returnBond();
+        // escrow will check that the amount has actually been staked to this rollup.
+        escrow.unstakeBond(proofClaim.bondProvider, proofClaim.bondAmount);
         emit ProofSubmitted(proofClaim.claimedEpoch, finalBlockNumber);
     }
 
@@ -273,7 +345,7 @@ Submitting proof of epoch:
 
 Testing all the above when:
   - the previous epoch was empty
-  - the previous epoch has empty slots
+  - the previous epoch has empty slots (particularly at the beginning/end of an epoch)
   - this is the first epoch
 
 ### E2E tests
