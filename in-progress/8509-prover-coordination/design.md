@@ -50,15 +50,17 @@ Under the hood, the node will submit the following message to `/aztec/proof-quot
 
 ```solidity
 struct Quote {
-  address prover;
-  uint256 epoch;
-  uint32 basisPointFee;
-  uint256 validUntilSlot;
-  Signature signature;
+    address rollup;
+    address feeRecipient;
+    uint256 epochToProve;
+    uint32 basisPointFee;
+    uint256 validUntilSlot;
+    uint256 bondAmount;
+    Signature signature;
 }
 ```
 
-The `signature` will be produced using the L1 private key defined in the environment variable `PROVER_PUBLISHER_PRIVATE_KEY` to sign the message `keccak256(abi.encode(prover, epoch, basisPointFee, validUntilSlot))`.,
+The `signature` will be produced using the L1 private key defined in the environment variable `PROVER_PUBLISHER_PRIVATE_KEY` to sign the message `keccak256(abi.encode(rollup, feeRecipient, epochToProve, basisPointFee, validUntilSlot, bondAmount))`.
 
 The Proposer will be able to submit this Quote to `claimProofRight` on the rollup contract. See [the design for proof timeliness](https://github.com/AztecProtocol/engineering-designs/pull/22) for more info.
 
