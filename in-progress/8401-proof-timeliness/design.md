@@ -113,6 +113,12 @@ interface IEscrowContract {
     function withdraw(uint256 amount) external;
 }
 
+// not super relevant to the design, but included for context/correctness
+// see https://hackmd.io/@aztec-network/By9LwP1qA?type=view#Syssitia
+interface ISyssitia {
+    function distributeBlockRewards(address proverRewardsAddress, address proposerAddress, uint256 proverFeeBasisPoints) external;
+}
+
 struct Quote {
     address rollup;
     address feeRecipient;
@@ -142,11 +148,12 @@ contract Rollup {
     }
 
     struct ProofClaim {
-        address feeRecipient;
-        address bondProvider;
-        uint256 epochToProve;
-        uint256 basisPointFee;
-        uint256 bondAmount;
+        address bondProvider; // the address that has deposited funds in the escrow contract
+        address feeRecipient; // the address that will receive the prover's block rewards for proving
+        address proposer; // the address that submitted the claim
+        uint256 epochToProve; // the epoch that the prover is claiming to prove
+        uint256 basisPointFee; // the fee that the prover will receive as a percentage of the block rewards
+        uint256 bondAmount; // the amount of escrowed funds that the prover will stake
     }
 
     struct Fee {
@@ -165,6 +172,7 @@ contract Rollup {
     ProofClaim public proofClaim;
     IProverBondEscrow public proverBondEscrow;
     IFeeJuicePortal public feeJuicePortal;
+    ISyssitia public syssitia;
 
     // Constants
     uint256 public constant CLAIM_DURATION = 13;
@@ -186,9 +194,10 @@ contract Rollup {
     error Rollup__ProofProductionPhaseEnded();
     error Rollup__UnauthorizedProofSubmitter();
 
-    constructor(address _proverBondEscrow, address _feeJuicePortal) {
+    constructor(address _proverBondEscrow, address _feeJuicePortal, address _syssitia) {
         proverBondEscrow = IProverBondEscrow(_proverBondEscrow);
         feeJuicePortal = IFeeJuicePortal(_feeJuicePortal);
+        syssitia = ISyssitia(_syssitia);
     }
 
     function claimProofRight(
@@ -229,6 +238,7 @@ contract Rollup {
         proofClaim = ProofClaim({
             // ...but rewards may be sent elsewhere
             feeRecipient: _quote.feeRecipient,
+            proposer: msg.sender,
             bondProvider: bondProvider,
             claimedEpoch: epochToProve,
             basisPointFee: _quote.basisPointFee,
@@ -297,24 +307,27 @@ contract Rollup {
         }
 
         bytes32 previousProvenArchive = proposalLogs[state.provenTip.blockNumber].archive;
-        // Proof verification logic here, using the previous proven archive
-        // which ensure's we aren't omitting an epoch
+        // Verify the proof using the previous proven archive
+        // which ensures we aren't omitting an epoch
+
+        /////// Verification logic here ///////
+
+        // Okay we have a valid proof
 
         state.provenTip = ChainTip(finalBlockNumber, proposalLog.slotNumber);
 
-        address proverRewardsAddress = address(0);
-        uint256 provenEpoch = getEpochAt(proposalLog.slotNumber)
-        uint256 proverFee = 0;
-        if (proofClaim.claimedEpoch == provenEpoch) {
+        if (proofClaim.claimedEpoch == getEpochAt(proposalLog.slotNumber)) {
             escrow.unstakeBond(proofClaim.bondProvider, proofClaim.bondAmount);
-            proverRewardsAddress = proofClaim.feeRecipient;
-            proverFee = proofClaim.basisPointFee;
+            // block rewards are distributed to the prover and proposer who submitted the claim
+            syssitia.distributeBlockRewards(proofClaim.feeRecipient, proofClaim.proposer, proofClaim.basisPointFee);
         }
 
+        // distribute the transaction fees to the proposers of the blocks in the epoch
+        // irrelevant to the design at hand, but included for completeness
         for (uint256 i = 0; i < epochHeader.fees.length; i++) {
             Fee memory fee = epochHeader.fees[i];
             if (fee.recipient != address(0)) {
-                feeJuicePortal.distributeFees(proverRewardsAddress, proverFee, fee.recipient, fee.amount);
+                feeJuicePortal.distributeFees(fee.recipient, fee.amount);
             }
         }
 
