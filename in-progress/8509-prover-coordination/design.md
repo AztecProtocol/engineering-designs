@@ -10,20 +10,28 @@
 
 ## Executive Summary
 
-The aztec node will provide an interface for proving marketplaces to submit quotes for proving an epoch.
-
-A proposer will be able to respond to a quote with a signed message, which a prover can submit to L1, along with a prover commitment bond. The prover can subsequently submit the proof to L1, releasing the bond.
-
-This coordination will take place "out of protocol", via an optional p2p topic, with the slight exception/leak that the rollup contract will permit the prover to submit bonds/proofs in a proposer's stead.
-
-## Introduction
-
 Presently, there is no coordination between proposers or provers. A coordination mechanism is necessary to ensure that:
 
 1. Proposers are able to obtain proofs for epochs, considering they will likely not have proving infrastructure.
 2. Provers are not obliged to "race" each other to submit proofs, as this would be a waste of resources.
 
 The protocol only "cares" about the proofs being submitted, but in practice, the node will need to coordinate the submission of proofs in a timely, efficient manner.
+
+The aztec node will provide an interface for proving marketplaces to submit quotes for proving an epoch.
+
+The pricing on the quotes will be specified in basis points, which reflect the percentage of the total TST rewards contained in the epoch that the prover will receive if a proof of the epoch is submitted in time. See [the design for proof timeliness for additional details on the L1 interface](https://github.com/AztecProtocol/engineering-designs/pull/22).
+
+The quotes will be _binding_: proposers will be able to submit a quote to the rollup contract which will stake a bond which the prover had previously deposited in escrow without additional coordination with the prover.
+
+Provers will be able to submit their proofs of an epoch to the rollup contract without additional coordination with the proposer.
+
+The _structure_ of the quote is enshrined.
+
+The _coordination_ of how a quote is obtained by a proposer is not enshrined.
+
+We propose an optional topic p2p network will be used for this coordination.
+
+We expect the community to develop alternatives for proposers to obtain quotes from provers, e.g. private relays, and proposers will be free to find quotes from any source.
 
 ## Interface
 
@@ -37,7 +45,7 @@ interface ProverCoordination {
 
 This will be exposed via the cli as `aztec prover-coordination submit-epoch-proof-bid --epoch 123 --basis-point-fee 1000`.
 
-Under the hood, the node will submit the following message to `/aztec/proof-quotes/make/0.1.0` 
+Under the hood, the node will submit the following message to `/aztec/proof-quotes/0.1.0` 
 
 
 ```solidity
@@ -45,25 +53,37 @@ struct Quote {
   address prover;
   uint256 epoch;
   uint32 basisPointFee;
+  uint256 validUntilSlot;
   Signature signature;
 }
 ```
 
-The `signature` will be produced using the L1 private key defined in the environment variable `PROVER_PUBLISHER_PRIVATE_KEY` to sign the message `keccak256(abi.encode(prover, epoch, basisPointFee))`.,
+The `signature` will be produced using the L1 private key defined in the environment variable `PROVER_PUBLISHER_PRIVATE_KEY` to sign the message `keccak256(abi.encode(prover, epoch, basisPointFee, validUntilSlot))`.,
 
-Proposers will counter-sign the quote by submitting a message to `/aztec/proof-quotes/take/0.1.0` with the following same `Quote` struct, but with the `signature` produced using the L1 private key defined in the environment variable `VALIDATOR_PRIVATE_KEY`.
+The Proposer will be able to submit this Quote to `claimProofRight` on the rollup contract. See [the design for proof timeliness](https://github.com/AztecProtocol/engineering-designs/pull/22) for more info.
 
-The prover will be able to submit this Quote to `claimProofRight` on the rollup contract. The rollup contract will verify that:
-- The epoch is in the proof claim phase
+As an overview, L1 contracts will verify:
+- The current epoch is in the proof claim phase
 - There is not already a claim/proof for this epoch
-- The quote has been signed by the proposer for the current slot
-- The `prover` matches `msg.sender`
-- The epoch matches the previous epoch (i.e. the one to be proven)
-- The prover successfully transmits the bond (in TST) to the rollup contract
+- The quote has been signed by a prover with an available bond
+- The current proposer (from the perspective of the rollup) matches `msg.sender`
+- The epoch on the quote is the one the rollup contract is expecting (i.e. the oldest unproven epoch)
 
 If all conditions are met, the rollup contract stores the quote, and the address of the proposer.
 
-When the prover submits the proof, the rollup contract will pay out TST rewards to the proposer after paying the prover the basis point fee contained in the quote. It will also release the bond to the prover.
+When the prover submits the proof, the rollup contract will pay out TST rewards to the proposer after paying the prover the basis point fee contained in the quote. It will also unstake the bond within the escrow contract.
+
+### Concerns and Mitigations
+
+#### Public quotes
+
+Provers may not be comfortable submitting their quotes on the public p2p network, as this is effectively a first price auction, which is not ideal for the prover as it may drive down the price of their quotes. This is mitigated by the fact that this coordination mechanism is optional; a prover can stand up their own API and provide quotes to proposers directly.
+
+Performing a second price, or sealed bid auction is not deemed necessary at this time.
+
+#### Quotes without bonds
+
+A prover might submit a quote but not actually have the funds to post a bond. This is mitigated by using a custom escrow that requires the prover to deposit the bond before submitting a quote. The escrow will have a delayed withdrawal process, so a proposer can query the escrow contract, then be confident that the funds will be there when they `claimProofRight`.
 
 ## Implementation
 
