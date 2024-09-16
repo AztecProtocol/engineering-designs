@@ -29,7 +29,7 @@ The objective of this document is to outline engineering's current understanding
 
 ## Overview
 
-The Aztec Network is a privacy-focused, general-purpose Layer 2 network built on Ethereum. It will use zero-knowledge client-side proofs to enable private, programmable transactions, a VM to enable verified public computation, and a rollup architecture to scale. Aztec will be designed to be permissionless and decentralized, while maintaining sound economics, governance, as well as turing complete functionality for application developers to build in any applicable compliance requirements.
+The Aztec Network is a privacy-focused, general-purpose Layer 2 network built on Ethereum. It will use zero-knowledge client-side proofs to enable private, programmable transactions, a VM to enable verified public computation, and a rollup architecture to scale. Aztec will be designed to be permissionless and decentralized, while maintaining sound economics, governance, as well as ensuring complete functionality for application developers to build in any applicable compliance requirements.
 
 ## L1
 
