@@ -66,7 +66,7 @@ If the proposers can delay the transaction sufficiently it would end up revertin
 
 A different attack could be to make the fees spike such that your forced transaction might have insufficient funds and end up reverting as an effect.
 This can be avoided by not requiring forced transactions to pay the fee, as long as the transaction have a bounded amount of gas.
-A reason that this could be acceptable is that the cost to go to L1 SHOULD be far greater than going to the L1, so you cannot use it as a mechanism to dos as it is still much more expensive than sending the same transaction and paying L2 gas for it.
+A reason that this could be acceptable is that the cost to go to L1 SHOULD be far greater than going to the L2, so you cannot use it as a mechanism to dos as it is still much more expensive than sending the same transaction and paying L2 gas for it.
 
 However, it opens a annoying problem for us, the circuits would need to know that it is a forced transaction to give us that "special" treatment.
 
@@ -250,7 +250,7 @@ def submit_next_epoch_proof(proof, tx_count: uint256, archive: bytes32, fees: Fe
   assert self.force_until(epoch, tx_count) <= self.forced_inclusion_tip, 'missing force inclusions'
 
 
-def submit_proof_with_force(proof, tx_count: uint256, archive, fips: ForceInclusionProof[]):
+def submit_proof_with_force(proof, tx_count: uint256, archive, fees: FeePayment[EPOCH_LENGTH], fips: ForceInclusionProof[]):
   epoch = self.get_epoch_at(self.get_timestamp_for_slot(self.blocks[self.provenBlockCount].slot_number))
   super.submit_next_epoch_proof(proof, tx_count, archive, fees)
   forced_until = self.force_until(epoch, tx_count)
@@ -304,8 +304,11 @@ Well, yes, but it might get confusing with both the pending and non pending func
 
 
 ```python
+# Tracks the current active "reality"
 active_pending: uint256
+# For all the potential realities, tracks where the tip is
 forced_pending_tip: HashMap[uint256, uint256]
+# For all the potential realities, tracks what have been included
 included_pending: HashMap[uint256, HashMap[uint256, bool]]
 
 def propose(header: Header, fips: ForceInclusionProof[]):
