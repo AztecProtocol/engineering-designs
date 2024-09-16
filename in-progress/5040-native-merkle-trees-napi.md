@@ -21,7 +21,7 @@ This approach would simplify deployment and maintenance (no new binaries need to
 
 A new module would be written in C++ that would adapt the existing Native Merkle Trees database to Node-API semantics. This module could sit alongside the stream-based message passing implementation detailed in the [original spec](https://github.com/AztecProtocol/engineering-designs/blob/f9d1a897303c1481c790cecc4616961e1c183622/in-progress/0003-native-merkle-trees.md#interface)
 
-This module would be build with CMake normally as the rest of the C++ code, with the exception that its build artifact would be a shared library (with a custom extension `.node` instead of `.so`). The TypeScript project would use [`bindings`](https://www.npmjs.com/package/bindings) to load the native module and re-export the functions and classes from C++.
+This module would be built with CMake normally as the rest of the C++ code, with the exception that its build artifact would be a shared library (with a custom extension `.node` instead of `.so`). The TypeScript project would use [`bindings`](https://www.npmjs.com/package/bindings) to load the native module and re-export the functions and classes from C++.
 
 > [!NOTE]
 > TypeScript definitions would have to be written from the C++ code. Ideally these would be generated from existing code, but if that doesn't work then they would have to be written and maintained manually.
