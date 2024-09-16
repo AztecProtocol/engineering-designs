@@ -227,7 +227,7 @@ Today the `process` method does the following:
 7. Insert L2-to-L1 messages into the Outbox using the `out_hash` and block number
 8. Pay out `total_fees` to `coinbase` in the L1 gas token
 
-The first four items can keep being carried out by the `process` method for each new block that gets submitted. Proof verification, L2-to-L1 messages, and fee payment messages are moved to `submitProof`. Data availability needs more clarity based the interaction between the blob circuits and the point evaluation precompile, but it may be moved entirely to `submitProof`.
+The first four items can keep being carried out by the `process` method for each new block that gets submitted. Proof verification, L2-to-L1 messages, and fee payment messages are moved to `submitProof`. Data availability needs more clarity based on the interaction between the blob circuits and the point evaluation precompile, but it may be moved entirely to `submitProof`.
 
 As for consuming L1-to-L2 messages, note that these cannot be fully deleted from the Inbox, since we need to be able to rollback unproven blocks in the event of a missing proof, which requires being able to consume those messages again on the new chain.
 
@@ -258,6 +258,6 @@ Assuming we implement a proving coordination mechanism where the block ranges pr
 
 In the model above, fee payments are executed in-batch at the time the proof is submitted. Assuming the L1 payment token includes a `transferBatch` method, the cost of 32 payments can be brought down to about 160k gas (5000 x 32), which is manageable. However, it imposes a max size on the number of blocks it can be proven on a single batch, and 160k is still a significant number.
 
-Alternatively, we could keep fee payments as part of the `Rollup.process` method, so that a sequencer is payed the moment they submit a block, even if it doesn't get proven. Depending on how we implement unhappy paths in block building, we could optimistically pay fees on submission, and recoup them as part of a slashing mechanism. This would also simplify the block rollup circuits, as we would not need to construct an array of payments. Either way, it could be a good idea to start with this approach initially as it requires the least engineering effort.
+Alternatively, we could keep fee payments as part of the `Rollup.process` method, so that a sequencer is paid the moment they submit a block, even if it doesn't get proven. Depending on how we implement unhappy paths in block building, we could optimistically pay fees on submission, and recoup them as part of a slashing mechanism. This would also simplify the block rollup circuits, as we would not need to construct an array of payments. Either way, it could be a good idea to start with this approach initially as it requires the least engineering effort.
 
 Another option is to implement pull payments via merkle proofs, where each proof submits not the explicit list of payments but a merkle root of them, which gets stored in the contract. Sequencers then need to submit a merkle membership proof to claim their corresponding fees. This gives us the flexibility of being able to cram as many blocks in a proof as we want to, but adds significant complexity and gas cost to sequencers.
