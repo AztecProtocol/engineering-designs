@@ -100,7 +100,7 @@ In Spartan v1 the committee will solely be responsible for building the Pending 
 
 The validator set will be selected by the multisig.
 
-At the beginning of each epoch, we will assign proposers from the the validator set to slots.
+At the beginning of each epoch, we will assign proposers from the validator set to slots.
 
 The exact number of validators will be determined via stress tests, modeling, and feedback from the community.
 
