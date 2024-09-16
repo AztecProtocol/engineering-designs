@@ -140,7 +140,8 @@ The changes should mostly be on the L1 contract and the sequencer client, with a
 - The sequencer client need to know when fallback is activated such that it does not try to act as it normally would.
   - I believe simply doing nothing is best here, as the fallbacks can be seen as a fully separate type of sequencer then.
 - Add a new "fallback" sequencer, which skips a lot of the checks of the current sequencer but mainly build and prove blocks.
-- Tee L1 contract/rollup circuit mix needs to support individual block proofs for this specific mode.
+- The L1 contract/rollup circuit mix needs to support individual block proofs for this specific mode.
+  - This could be taking a single BlockRoot rollup and publishing it.
 
 ## Change Set
 
