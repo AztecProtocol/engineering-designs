@@ -68,23 +68,29 @@ sequenceDiagram
     participant RollupContract
     participant TokenContract
 
-    Prover->>EscrowContract: deposit(amount, deadline, v, r, s)
-    EscrowContract->>TokenContract: permit(prover, escrow, amount, deadline, v, r, s)
-    EscrowContract->>TokenContract: transferFrom(prover, escrow, amount)
-    
-    Note over Prover: Prover creates and signs a message off-chain
-    Prover-->>Proposer: Communicate signed message (quote)
-    
-    Proposer->>RollupContract: claimProofRight(quote)
-    RollupContract->>EscrowContract: stakeBond(quote)
+    Note over Prover,TokenContract: Prover deposits bond in escrow once
 
-    Proposer->>RollupContract: proposeBlock(blockHash, archive)
-    RollupContract->>RollupContract: _pruneIfNeeded()
+    activate Prover
+    Prover->>EscrowContract: deposit(amount, deadline)
+    EscrowContract->>TokenContract: transferFrom(prover, escrow, amount)
+    deactivate Prover
     
-    Note over Prover: Generates the proof of the epoch
-    Prover->>RollupContract: submitProofOfEpoch(epochHeader)
+    loop Per Epoch
+        loop Per Slot
+            Note over Prover: Prover creates and signs a message off-chain
+            Prover-->>Proposer: Communicate signed message (quote)
     
-    RollupContract->>EscrowContract: unstakeBond(prover, amount)
+            Proposer->>RollupContract: claimProofRight(quote)
+            RollupContract->>EscrowContract: stakeBond(quote)
+
+            Proposer->>RollupContract: proposeBlock(blockHash, archive)
+            RollupContract->>RollupContract: _pruneIfNeeded()
+        end
+    
+        Note over Prover: Generates the proof of the epoch
+        Prover->>RollupContract: submitProofOfEpoch(epochHeader)
+        RollupContract->>EscrowContract: unstakeBond(prover, amount)
+    end
     
 ```
 
@@ -107,7 +113,7 @@ this means that the committee will have any blocks in its first $C$ slots reorge
 ```solidity
 
 interface IEscrowContract {
-    function deposit(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external;
+    function deposit(uint256 amount, uint256 deadline) external;
     function stakeBond(Quote calldata quote) external returns (address); // returns the bond provider
     function unstakeBond(address bondProvider, uint256 amount) external;
     function withdraw(uint256 amount) external;
@@ -115,89 +121,84 @@ interface IEscrowContract {
 
 // not super relevant to the design, but included for context/correctness
 // see https://hackmd.io/@aztec-network/By9LwP1qA?type=view#Syssitia
-interface ISyssitia {
+interface IBlockRewards {
     function distributeBlockRewards(address proverRewardsAddress, address proposerAddress, uint256 proverFeeBasisPoints) external;
 }
 
 struct Quote {
-    address rollup;
-    address feeRecipient;
+    Signature signature;
     uint256 epochToProve;
-    uint32 basisPointFee;
     uint256 validUntilSlot;
     uint256 bondAmount;
-    Signature signature;
+    address rollup;
+    uint32 basisPointFee;
 }
 
 
 contract Rollup {
-    struct ChainTip {
-        uint256 blockNumber;
-        uint256 slotNumber;
-    }
+    struct ChainTips {
+        uint256 pendingBlockNumber;
+        uint256 provenBlockNumber;
+   }
 
-    struct State {
-        ChainTip pendingTip;
-        ChainTip provenTip;
-    }
-
-    struct ProposalLog {
-        bytes32 hash;
-        uint256 slotNumber;
+    struct BlockLog {
         bytes32 archive;
+        bytes32 blockHash;
+        uint128 slotNumber;
     }
 
     struct ProofClaim {
+        uint256 epochToProve; // the epoch that the bond provider is claiming to prove
+        uint256 basisPointFee; // the fee that the bond provider will receive as a percentage of the block rewards
+        uint256 bondAmount; // the amount of escrowed funds that the bond provider will stake. Must be at least PROOF_COMMITMENT_BOND_AMOUNT
         address bondProvider; // the address that has deposited funds in the escrow contract
-        address feeRecipient; // the address that will receive the prover's block rewards for proving
-        address proposer; // the address that submitted the claim
-        uint256 epochToProve; // the epoch that the prover is claiming to prove
-        uint256 basisPointFee; // the fee that the prover will receive as a percentage of the block rewards
-        uint256 bondAmount; // the amount of escrowed funds that the prover will stake
+        address proposerClaimant; // the address of the proposer that submitted the claim
     }
 
-    struct Fee {
-        address recipient;
+    struct TransactionFee {
         uint256 amount;
+        address recipient;
     }
 
     struct EpochHeader {
+        TransactionFee[] fees;
         uint256 finalBlockNumber;
-        Fee[] fees;
     }
 
-    // State variables
-    State public state;
-    mapping(uint256 => ProposalLog) public proposalLogs;
-    ProofClaim public proofClaim;
-    IProverBondEscrow public proverBondEscrow;
-    IFeeJuicePortal public feeJuicePortal;
-    ISyssitia public syssitia;
-
-    // Constants
-    uint256 public constant CLAIM_DURATION = 13;
-    uint256 public constant EPOCH_DURATION = 32;
-    uint256 public constant PROOF_COMMITMENT_BOND_AMOUNT = 100;
 
     // Events
     event ProofRightClaimed(address indexed claimer, uint256 indexed epoch);
-    event PendingChainPruned(uint256 blockNumber, uint256 slotNumber);
+    event PendingChainPruned(uint256 newBlockNumber, uint256 oldBlockNumber);
     event ProofSubmitted(uint256 indexed epoch, uint256 finalBlockNumber);
 
     // Errors
     error Rollup__NonProposerCannotClaimProofRight();
     error Rollup__ProofRightAlreadyClaimed();
     error Rollup__NotInClaimPhase();
-    error Rollup__NoProposalLog();
+    error Rollup__NoBlockLog();
     error Rollup__NotPreviousEpoch();
     error Rollup__NotLastBlockInEpoch();
     error Rollup__ProofProductionPhaseEnded();
     error Rollup__UnauthorizedProofSubmitter();
 
-    constructor(address _proverBondEscrow, address _feeJuicePortal, address _syssitia) {
+    // Constants
+    uint256 public constant CLAIM_DURATION = 13;
+    uint256 public constant EPOCH_DURATION = 32;
+    uint256 public constant PROOF_COMMITMENT_BOND_AMOUNT = 100;
+
+    // State variables
+    IProverBondEscrow public immutable proverBondEscrow;
+    IFeeJuicePortal public immutable feeJuicePortal;
+    IBlockRewards public immutable blockRewards;
+
+    ChainTips public tips;
+    mapping(uint256 => BlockLog) public blockLogs;
+    ProofClaim public proofClaim;
+
+    constructor(address _proverBondEscrow, address _feeJuicePortal, address _blockRewards) {
         proverBondEscrow = IProverBondEscrow(_proverBondEscrow);
         feeJuicePortal = IFeeJuicePortal(_feeJuicePortal);
-        syssitia = ISyssitia(_syssitia);
+        blockRewards = IBlockRewards(_blockRewards);
     }
 
     function claimProofRight(
@@ -215,8 +216,11 @@ contract Rollup {
             revert Rollup__NotClaimingCorrectEpoch();
         }
 
-        // Overwrite stale proof claims
-        if (proofClaim.claimedEpoch == epochToProve) {
+        // Overwrite stale proof claims:
+        // if the epoch to prove is not the one that has been claimed,
+        // then whatever is in the proofClaim is stale,
+        // and we overwrite below
+        if (proofClaim.epochToProve == epochToProve) {
             revert Rollup__ProofRightAlreadyClaimed();
         }
 
@@ -232,18 +236,14 @@ contract Rollup {
             revert Rollup__QuoteExpired();
         }
 
-        // The bond will be provided by the signer of the quote...
         address bondProvider = escrow.stakeBond(_quote);
 
         proofClaim = ProofClaim({
-            // ...but rewards may be sent elsewhere
-            feeRecipient: _quote.feeRecipient,
-            proposer: msg.sender,
-            bondProvider: bondProvider,
-            claimedEpoch: epochToProve,
+            epochToProve: epochToProve,
             basisPointFee: _quote.basisPointFee,
             bondAmount: _quote.bondAmount
-
+            bondProvider: bondProvider,
+            proposerClaimant: msg.sender,
         });
 
         emit ProofRightClaimed(proposer, epochToProve, currentSlot);
@@ -251,11 +251,11 @@ contract Rollup {
 
 
     function _pruneIfNeeded() internal {
-        if (state.pendingTip.blockNumber == state.provenTip.blockNumber) {
+        if (tips.pendingBlockNum == tips.provenBlockNum) {
             return;
         }
 
-        uint256 oldestPendingEpoch = getEpochAt(proposalLogs[state.provenTip.blockNumber + 1].slotNumber);
+        uint256 oldestPendingEpoch = getEpochAt(blockLogs[tips.provenBlockNum + 1].slotNumber);
         uint256 startSlotOfPendingEpoch = oldestPendingEpoch * EPOCH_DURATION;
 
         if (currentSlot < startSlotOfPendingEpoch + EPOCH_DURATION + CLAIM_DURATION) {
@@ -263,7 +263,7 @@ contract Rollup {
             return;
         } else if (
             currentSlot < startSlotOfPendingEpoch + 2 * EPOCH_DURATION 
-            && proofClaim.claimedEpoch == oldestPendingEpoch
+            && proofClaim.epochToProve == oldestPendingEpoch
         ) {
             // We have left the claim phase, but a claim has been made
             return;
@@ -274,8 +274,8 @@ contract Rollup {
     }
 
     function _prune() internal {
-        state.pendingTip = state.provenTip;
-        emit PendingChainPruned(state.pendingTip.blockNumber);
+        emit PendingChainPruned(tips.provenBlockNum, tips.pendingBlockNum);
+        tips.provenBlockNum = tips.pendingBlockNum;
     }
 
 
@@ -292,21 +292,21 @@ contract Rollup {
         uint256 currentEpoch = getCurrentEpoch();
 
         // We cannot use chain tip and length because the final block in the epoch may not be in the final slot
-        ProposalLog memory proposalLog = proposalLogs[finalBlockNumber];
-        if (proposalLog.hash == 0) {
-            revert Rollup__NoProposalLog();
+        BlockLog memory finalProvenBlockLog = blockLogs[finalBlockNumber];
+        if (finalProvenBlockLog.hash == 0) {
+            revert Rollup__NoBlockLog();
         }
 
-        ProposalLog memory nextProposalLog = proposalLogs[finalBlockNumber + 1];
+        BlockLog memory firstUnprovenBlockLog = blockLogs[finalBlockNumber + 1];
         // This serves two checks:
         // 1. The proof is submitted in the correct epoch
         // 2. The proof does not truncate the blocks in the epoch it is proving
-        if (nextProposalLog.hash != 0 &&
-            getEpochAt(nextProposalLog.slotNumber) != currentEpoch) {
+        if (firstUnprovenBlockLog.hash != 0 &&
+            getEpochAt(firstUnprovenBlockLog.slotNumber) != currentEpoch) {
             revert Rollup__NotLastBlockInEpoch();
         }
 
-        bytes32 previousProvenArchive = proposalLogs[state.provenTip.blockNumber].archive;
+        bytes32 previousProvenArchive = blockLogs[tips.provenBlockNumber].archive;
         // Verify the proof using the previous proven archive
         // which ensures we aren't omitting an epoch
 
@@ -314,18 +314,18 @@ contract Rollup {
 
         // Okay we have a valid proof
 
-        state.provenTip = ChainTip(finalBlockNumber, proposalLog.slotNumber);
+        tips.provenBlockNumber = finalBlockNumber;
 
-        if (proofClaim.claimedEpoch == getEpochAt(proposalLog.slotNumber)) {
+        if (proofClaim.epochToProve == getEpochAt(finalProvenBlockLog.slotNumber)) {
             escrow.unstakeBond(proofClaim.bondProvider, proofClaim.bondAmount);
             // block rewards are distributed to the prover and proposer who submitted the claim
-            syssitia.distributeBlockRewards(proofClaim.feeRecipient, proofClaim.proposer, proofClaim.basisPointFee);
+            blockRewards.distributeBlockRewards(proofClaim.bondProvider, proofClaim.proposerClaimant, proofClaim.basisPointFee);
         }
 
         // distribute the transaction fees to the proposers of the blocks in the epoch
         // irrelevant to the design at hand, but included for completeness
         for (uint256 i = 0; i < epochHeader.fees.length; i++) {
-            Fee memory fee = epochHeader.fees[i];
+            TransactionFee memory fee = epochHeader.fees[i];
             if (fee.recipient != address(0)) {
                 feeJuicePortal.distributeFees(fee.recipient, fee.amount);
             }
