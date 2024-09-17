@@ -304,7 +304,8 @@ Well, yes, but it might get confusing with both the pending and non pending func
 
 
 ```python
-# Tracks the current active "reality"
+# Tracks the current active "reality":
+# Effectively a count on the number of pending chain reorgs.
 active_pending: uint256
 # For all the potential realities, tracks where the tip is
 forced_pending_tip: HashMap[uint256, uint256]
@@ -322,7 +323,7 @@ def propose(header: Header, fips: ForceInclusionProof[]):
     assert fip.index_in_block == i, 'incorrect ordering'
     assert self.show_included_pending(fip), 'did not progress the queue, incorrect ordering'
 
-  assert forced_until <= self.forced_pending_tip[self.active_pending], 'missing force inclusions'
+  assert force_until <= self.forced_pending_tip[self.active_pending], 'missing force inclusions'
 
 
 def prune():
@@ -373,7 +374,7 @@ def show_included_pending(fip: ForceInclusionProof) -> bool:
     return False
 
   assert fip.forced_inclusion_index < self.forced_inclusion_count
-  tx_hash = self.forced_inclusions[fip.forced_inclusion_index].nullifier
+  tx_hash = self.forced_inclusions[fip.forced_inclusion_index].tx_hash
 
   assert self.proposals[fip.block_number].hash == hash(fip.proposal, fip.attestations)
   assert fip.membership_proof.verify(tx_hash, fip.proposal.txs_hash)
@@ -386,8 +387,8 @@ def show_included_pending(fip: ForceInclusionProof) -> bool:
 def progress_forced_inclusion_tip_pending() -> bool:
   before = self.forced_pending_tip[self.active_pending]
   for i in range(self.forced_pending_tip[self.active_pending], self.forced_inclusion_count):
-    if not (self.forced_inclusions[i].included OR self.included_pending[self.active_pending][i]) :
-      return
+    if not (self.forced_inclusions[i].included OR self.included_pending[self.active_pending][i]):
+      break
     self.forced_pending_tip[self.active_pending] = i
   return self.forced_pending_tip[self.active_pending] != before
 
@@ -463,9 +464,11 @@ Essentially the sequencer is to do an xor operation, with membership and non-mem
 **No side effects**:
 While there have previously been ideas to include the `tx_hash` (first nullifier) in the case that these checks fail, I don't think that these are fully compatible with forced inclusion.
 Consider the fact, that the `tx_hash` is emitted as the nullifier equal to the hash of the `tx_request` from `address(0)`.
-If I can create a `tx_request` such that the nullifier emitted from `address(0)` collides with any of the nullifiers that are not `tx_hash`es requiring it to be inserted would require two of the same nullifiers to be included in the nullifier tree.
+If I can create a `tx_request` such that the nullifier emitted from `address(0)` collides with any existing nullifiers that are not `tx_hash`es, requiring it to be inserted would require two of the same nullifiers to be included in the nullifier tree.
 For a normal transaction, the transaction could not be included, and I would need to create a new one. 
-But with a forced transaction, it might be impossible for me to include the transactions while I at the same time is forced to do it.
+But with a forced transaction, it might be impossible for me to include the transaction due to the circuits, but at the same time I am forced to include it by the rollup contract; this would halt the chain.
+
+As a result, if any transaction fails, it will only appear in the `txs_hash` merkle tree root of the block header.
 
 **Why not only do this for forced transactions?**
 Look back at the introduction where we talked about this.
