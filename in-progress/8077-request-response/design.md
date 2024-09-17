@@ -4,7 +4,7 @@
 | -------------------- | -------------------------------------------------------------------------------- |
 | Issue                | [feat(vc): ReqResp](https://github.com/AztecProtocol/aztec-packages/issues/8077) |
 | Owners               | @Maddiaa0                                                                        |
-| Approvers            | @just-mitch @bob                                                                 |
+| Approvers            | @just-mitch                                                                      |
 | Target Approval Date | 2024-09-17                                                                       |
 
 
