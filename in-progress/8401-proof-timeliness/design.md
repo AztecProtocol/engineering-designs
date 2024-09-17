@@ -112,8 +112,8 @@ this means that the committee will have any blocks in its first $C$ slots reorge
 
 ```solidity
 
-interface IEscrowContract {
-    function deposit(uint256 amount, uint256 deadline) external;
+interface IEscrow {
+    function deposit(uint256 amount) external;
     function stakeBond(Quote calldata quote) external returns (address); // returns the bond provider
     function unstakeBond(address bondProvider, uint256 amount) external;
     function withdraw(uint256 amount) external;
