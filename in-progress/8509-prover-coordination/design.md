@@ -35,34 +35,33 @@ We expect the community to develop alternatives for proposers to obtain quotes f
 
 ## Interface
 
-Proving marketplaces will run full nodes, which will follow the pending chain. The node will expose a json-rpc endpoint for `submitEpochProofBid`, with the following signature:
+Proving marketplaces will run full nodes, which will follow the pending chain. The node will expose a json-rpc endpoint for `submitEpochProofQuote`, with the following signature:
 
 ```typescript
 interface ProverCoordination {
-  submitEpochProofBid(epoch: number, basisPointFee: number): Promise<void>;
+  submitEpochProofQuote(epoch: number, basisPointFee: number): Promise<void>;
 }
 ```
 
-This will be exposed via the cli as `aztec prover-coordination submit-epoch-proof-bid --epoch 123 --basis-point-fee 1000`.
+This will be exposed via the cli as `aztec prover-coordination submit-epoch-proof-quote --epoch 123 --basis-point-fee 1000`.
 
-Under the hood, the node will submit the following message to `/aztec/proof-quotes/0.1.0` 
+Under the hood, the node will submit the following message to `/aztec/epoch-proof-quotes/0.1.0` 
 
 
 ```solidity
-struct Quote {
-    address rollup;
-    address feeRecipient;
+struct EpochProofQuote {
+    Signature signature;
     uint256 epochToProve;
-    uint32 basisPointFee;
     uint256 validUntilSlot;
     uint256 bondAmount;
-    Signature signature;
+    address rollup;
+    uint32 basisPointFee;
 }
 ```
 
-The `signature` will be produced using the L1 private key defined in the environment variable `PROVER_PUBLISHER_PRIVATE_KEY` to sign the message `keccak256(abi.encode(rollup, feeRecipient, epochToProve, basisPointFee, validUntilSlot, bondAmount))`.
+The `signature` will be produced using the L1 private key defined in the environment variable `PROVER_PUBLISHER_PRIVATE_KEY` to sign the message `keccak256(abi.encode(epochToProve, validUntilSlot, bondAmount, rollup, basisPointFee))`.
 
-The Proposer will be able to submit this Quote to `claimProofRight` on the rollup contract. See [the design for proof timeliness](https://github.com/AztecProtocol/engineering-designs/pull/22) for more info.
+The Proposer will be able to submit this Quote to `claimEpochProofRight` on the rollup contract. See [the design for proof timeliness](https://github.com/AztecProtocol/engineering-designs/pull/22) for more info.
 
 As an overview, L1 contracts will verify:
 - The current epoch is in the proof claim phase
@@ -85,15 +84,134 @@ Performing a second price, or sealed bid auction is not deemed necessary at this
 
 #### Quotes without bonds
 
-A prover might submit a quote but not actually have the funds to post a bond. This is mitigated by using a custom escrow that requires the prover to deposit the bond before submitting a quote. The escrow will have a delayed withdrawal process, so a proposer can query the escrow contract, then be confident that the funds will be there when they `claimProofRight`.
+A prover might submit a quote but not actually have the funds to post a bond. This is mitigated by using a custom escrow that requires the prover to deposit the bond before submitting a quote. The escrow will have a delayed withdrawal process, so a proposer can query the escrow contract, then be confident that the funds will be there when they `claimEpochProofRight`.
 
 ## Implementation
 
-**TODO**
+### `EpochProofQuote`
 
-Delve into the specifics of the design. Include diagrams, code snippets, API descriptions, and database schema changes as necessary. Highlight any significant changes to the existing architecture or interfaces.
+EpochProofQuote needs an implementation in `circuit-types`, and needs to implement `Gossipable`. 
 
-Discuss any alternative or rejected solutions.
+### In memory `EpochProofQuotePool`
+
+We will need a pool of `EpochProofQuote` objects.
+
+Its initial interface will be:
+```typescript
+interface EpochProofQuotePool {
+  addQuote(quote: EpochProofQuote): void;
+  getQuotes(epoch: number): EpochProofQuote[] | undefined;
+}
+```
+
+We will implement a `InMemoryEpochProofQuotePool` that stores quotes in memory: durable storage is not deemed necessary at this time.
+
+The implementation will only return quotes that are still valid.
+
+### Extension to P2P Client
+
+The `P2P` interface will be extended with 
+```typescript
+interface P2P {
+  //...
+
+  sendEpochProofQuote(quote: EpochProofQuote): Promise<void>;
+  getEpochProofQuotes(epoch: number): Promise<EpochProofQuote[]>;
+}
+```
+
+The  `P2PClient` will be extended with 
+```typescript
+class P2PClient {
+  //...
+
+  public async sendEpochProofQuote(quote: EpochProofQuote): Promise<void> {
+    const ready = await this.isReady();
+    if (!ready) {
+      throw new Error('P2P client not ready');
+    }
+    await this.epochProofQuotePool.addQuote(quote);
+    // we get `propagate` "for free" by implementing `Gossipable` on `EpochProofQuote`
+    this.p2pService.propagate(quote);
+  }
+}
+```
+
+### Extension to `LibP2PService`
+
+A new "route" needs to be added for the topic used by `EpochProofQuote` messages within `handleNewGossipMessage`.
+
+It will call `processEpochProofQuoteFromPeer`, which will add the quote to the `EpochProofQuotePool` if it is still valid.
+
+### ProofQuoteGovernor
+
+The prover node will need to submit quotes to the p2p network in response to an epoch ending.
+
+There will be a configurable controller that specifies under what conditions the prover will submit a quote.
+
+This will sit on the main `work` loop of the prover node.
+
+Its initial interface will be:
+
+```typescript
+interface ProofQuoteGovernor {
+  ensureBond(amount: number): Promise<void>;
+  produceEpochProofQuote(epoch: number): Promise<EpochProofQuote | undefined>;
+}
+```
+
+When the prover node starts up, it will call `ensureBond` to ensure it has the required bond amount in escrow.
+
+The prover node will detect that an epoch has ended, and if `produceEpochProofQuote` returns a quote (not undefined), it will submit a quote to the p2p network.
+
+The default implementation of the governor will be to always produce a quote, and its basis point fee will be set in the environment variable `PROVER_BASIS_POINT_FEE`.
+
+Separately, it needs a watcher on L1 to detect if its quote has been selected.
+
+To this end, the `L1Publisher` will be extended with a new method:
+```typescript
+interface L1Publisher {
+  getEpochProofClaim(): Promise<EpochProofClaim>;
+}
+```
+
+The Prover node will call this method once per L2 slot to check if its quote has been selected.
+
+If so, it will start building the proof and submit it to the rollup contract.
+
+### Augment Proposer Logic
+
+With the completion of [#8576 proposers submit proof claims](https://github.com/AztecProtocol/aztec-packages/issues/8576), proposers will be able to submit proof claims to the rollup contract using quotes they produced themselves. 
+
+As noted in that issue, a separate implementation will be needed to allow proposers to submit proof claims using quotes they received from provers.
+
+The tentative interfaces for this are:
+
+```typescript
+interface EpochProofQuoteSource {
+  getEpochProofQuotes(epoch: number): Promise<EpochProofQuote[]>;
+}
+
+interface EpochProofQuoteAggregator {
+  setSources(sources: EpochProofQuoteSource[]): void;
+  getQuote(epoch: number): Promise<EpochProofQuote | undefined>;
+}
+```
+
+Thus, `P2P` is a `EpochProofQuoteSource`, and the `EpochProofQuoteAggregator` will be used by the proposer to obtain quotes from the p2p network.
+
+
+## Future Work
+
+### Stricter ProofQuoteGovernor
+
+The `ProofQuoteGovernor` should be updated to only produce a quote if it is convinced it has all the data required to produce a proof.
+
+### Peer Scoring
+
+If a peer propagates a quote that is not valid, we will penalize their peer score.
+
+
 
 ## Change Set
 
@@ -124,9 +242,7 @@ Outline what unit and e2e tests will be written. Describe the logic they cover a
 
 ## Documentation Plan
 
-**TODO**
-
-Identify changes or additions to the user documentation or protocol spec.
+Provers need documentation 
 
 
 ## Rejection Reason
