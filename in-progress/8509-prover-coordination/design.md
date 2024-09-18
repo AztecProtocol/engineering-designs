@@ -236,14 +236,25 @@ Fill in bullets for each area that will be affected by this change.
 
 ## Test Plan
 
-**TODO**
+This is a high-level test plan. More detailed test plans will be created as part of the implementation.
 
-Outline what unit and e2e tests will be written. Describe the logic they cover and any mock objects used.
+Generally, tests will be needed around the following:
+
+1. Prover's Submission of Epoch Proof Quotes
+2. Prover's Bond Management
+3. P2P Network Handling of Epoch Proof Quotes
+4. Proposer's Retrieval and Handling of Quotes
+5. Proposer's Submission of Proof Claims to the Rollup Contract
+6. Prover's Detection of Quote Acceptance and Proof Submission
+7. Rollup Contract's Processing of Proof Claims and Proofs
+8. Payout of TST Rewards
+
+The stress test we are building toward is:
+20 actors representing proving marketplaces can submit bids, that at most 1 bid can be accepted on L1 during, the bid can only be accepted during the proof claim period of a prescribed epoch, the bid is only actionable on L1 if the prover has the requisite bond in TST, and that all the above works when there are 300 nodes on the p2p network, and the chain is operating at 1TPS with proving turned on.
 
 ## Documentation Plan
 
-Provers need documentation 
-
+Provers will need documentation on how to set up their node to submit quotes to the p2p network.
 
 ## Rejection Reason
 
