@@ -35,17 +35,13 @@ We expect the community to develop alternatives for proposers to obtain quotes f
 
 ## Interface
 
-Proving marketplaces will run full nodes, which will follow the pending chain. The node will expose a json-rpc endpoint for `submitEpochProofQuote`, with the following signature:
+Proving marketplaces will run "prover nodes", which will follow the pending chain.
 
-```typescript
-interface ProverCoordination {
-  submitEpochProofQuote(epoch: number, basisPointFee: number): Promise<void>;
-}
-```
+Prover nodes will have the ability to detect when there is an epoch to be proven.
 
-This will be exposed via the cli as `aztec prover-coordination submit-epoch-proof-quote --epoch 123 --basis-point-fee 1000`.
+Prover nodes can submit quotes to the p2p network, which proposers can then use to claim the right to submit a proof of an epoch.
 
-Under the hood, the node will submit the following message to `/aztec/epoch-proof-quotes/0.1.0` 
+To do this, the prover node will submit the following message to `/aztec/epoch-proof-quotes/0.1.0` 
 
 
 ```solidity
@@ -64,15 +60,18 @@ The `signature` will be produced using the L1 private key defined in the environ
 The Proposer will be able to submit this Quote to `claimEpochProofRight` on the rollup contract. See [the design for proof timeliness](https://github.com/AztecProtocol/engineering-designs/pull/22) for more info.
 
 As an overview, L1 contracts will verify:
+- The quote was intended for this rollup contract
 - The current epoch is in the proof claim phase
 - There is not already a claim/proof for this epoch
 - The quote has been signed by a prover with an available bond
 - The current proposer (from the perspective of the rollup) matches `msg.sender`
 - The epoch on the quote is the one the rollup contract is expecting (i.e. the oldest unproven epoch)
 
-If all conditions are met, the rollup contract stores the quote, and the address of the proposer.
+If all conditions are met, the rollup will:
+- bond the amount specified in the quote within the escrow contact
+- store the quote, and the address of the proposer
 
-When the prover submits the proof, the rollup contract will pay out TST rewards to the proposer after paying the prover the basis point fee contained in the quote. It will also unstake the bond within the escrow contract.
+When the prover submits the proof to the rollup contract, the rollup contract will pay out TST rewards to the proposer after paying the prover the basis point fee contained in the quote. It will also unstake the bond within the escrow contract.
 
 ### Concerns and Mitigations
 
@@ -145,11 +144,11 @@ It will call `processEpochProofQuoteFromPeer`, which will add the quote to the `
 
 ### ProofQuoteGovernor
 
-The prover node will need to submit quotes to the p2p network in response to an epoch ending.
+The `ProofQuoteGovernor` is part of the Prover Node, and will be responsible for:
+1. Detecting that an epoch has ended and producing a quote for the epoch
+2. Detecting that the quote was accepted
 
-There will be a configurable controller that specifies under what conditions the prover will submit a quote.
-
-This will sit on the main `work` loop of the prover node.
+The Governor will sit on the main `work` loop of the prover node.
 
 Its initial interface will be:
 
@@ -164,11 +163,10 @@ When the prover node starts up, it will call `ensureBond` to ensure it has the r
 
 The prover node will detect that an epoch has ended, and if `produceEpochProofQuote` returns a quote (not undefined), it will submit a quote to the p2p network.
 
-The default implementation of the governor will be to always produce a quote, and its basis point fee will be set in the environment variable `PROVER_BASIS_POINT_FEE`.
-
 Separately, it needs a watcher on L1 to detect if its quote has been selected.
 
 To this end, the `L1Publisher` will be extended with a new method:
+
 ```typescript
 interface L1Publisher {
   getEpochProofClaim(): Promise<EpochProofClaim>;
@@ -178,6 +176,26 @@ interface L1Publisher {
 The Prover node will call this method once per L2 slot to check if its quote has been selected.
 
 If so, it will start building the proof and submit it to the rollup contract.
+
+### ProofQuotePricingService
+
+The `ProofQuotePricingService` will be responsible for determining the basis point fee and bond amount for a quote.
+
+It will have an interface:
+
+```typescript
+interface ProofDetails {
+  totalSubproofs: number;
+}
+
+interface ProofPricingService {
+  getPricing(proofDetails: ProofDetails): Promise<{ basisPointFee: number; bondAmount: number } | undefined>;
+}
+```
+
+The default implementation of the `ProofQuoteGenerator` will take a `ProofPricingService` in its constructor, and call `getPricing` when it needs to produce a quote.
+
+The default implementation of the `PricingServiceClient` will be to always return the same basis point fee and bond amount, which will be set in the environment variables `PROVER_BASIS_POINT_FEE` and `PROVER_BOND_AMOUNT`.
 
 ### Augment Proposer Logic
 
@@ -205,12 +223,26 @@ Thus, `P2P` is a `EpochProofQuoteSource`, and the `EpochProofQuoteAggregator` wi
 
 ### Stricter ProofQuoteGovernor
 
-The `ProofQuoteGovernor` should be updated to only produce a quote if it is convinced it has all the data required to produce a proof.
+The `ProofQuoteGovernor` should be updated to only produce a quote (and ask the pricing service for pricing) if it is convinced it has all the data required to produce a proof.
+
+### Pricing Service accepts endpoint configuration
+
+The pricing service should be able to accept an endpoint configuration, so that the prover can use a third party to determine the pricing of their quotes.
+
+In this case, if the endpoint is defined, the `ProofPricingService` will call the endpoint to determine the pricing.
+Otherwise it will use the default, static pricing.
 
 ### Peer Scoring
 
 If a peer propagates a quote that is not valid, we will penalize their peer score.
 
+### Proof Production Pre-confirmations
+
+It would be ideal if provers could start proving an epoch before it has actually ended. To this end we can envision a separate out-of-protocol mechanism where a prover can submit a quote for the current epoch, potentially with additional metadata.
+
+A proposer can "promise" to select the quote.
+
+This gives the prover assurances to start proving the epoch before it has ended, which would reduce the lag time between the end of the epoch and the submission of the proof.
 
 
 ## Change Set
