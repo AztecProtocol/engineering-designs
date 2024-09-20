@@ -193,7 +193,7 @@ interface ProofPricingService {
 }
 ```
 
-The default implementation of the `ProofQuoteGenerator` will take a `ProofPricingService` in its constructor, and call `getPricing` when it needs to produce a quote.
+The default implementation of the `ProofQuoteGovernor` will take a `ProofPricingService` in its constructor, and call `getPricing` when it needs to produce a quote.
 
 The default implementation of the `PricingServiceClient` will be to always return the same basis point fee and bond amount, which will be set in the environment variables `PROVER_BASIS_POINT_FEE` and `PROVER_BOND_AMOUNT`.
 
