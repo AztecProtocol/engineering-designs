@@ -219,6 +219,28 @@ interface EpochProofQuoteAggregator {
 Thus, `P2P` is a `EpochProofQuoteSource`, and the `EpochProofQuoteAggregator` will be used by the proposer to obtain quotes from the p2p network.
 
 
+### JSON-RPC Fallback
+
+To support testing, we will create a JSON-RPC endpoint on the sequencers that prover nodes can send quotes to.
+
+This will manifest in two places.
+
+#### Update JSON-RPC of Sequencer
+
+```typescript
+interface AztecNode {
+  // ...
+  addEpochProofQuote(quote: EpochProofQuote): Promise<void>;
+}
+```
+
+Under the hood, this will inject the quote into the `EpochProofQuotePool`.
+
+#### Update Prover Node
+
+When the `ProofQuoteGovernor` produces a quote, it will send it to the node specified in its `AZTEC_NODE_URL` using the JSON-RPC endpoint in addition to the p2p network.
+
+
 ## Future Work
 
 ### Stricter ProofQuoteGovernor
