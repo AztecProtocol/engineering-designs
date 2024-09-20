@@ -85,11 +85,13 @@ To minimize the proposers ability to make the transaction fail it can be benefic
 This essentially pushes the above example into a case of "multi-block censorship attack", which can be risky if the entity censoring is not producing both blocks.
 If the entity is producing both blocks, it can be seen fairly close to the same block with the caveat of some TWAP logic etc behaving differently.
 
----
-
 In the following sections, we will outline a design that allows us to provide **inclusion** guarantees to the users.
 
 We will **NOT** provide a mechanism that provide **execution** guarantees.
+
+
+> Consideration around minimum block size:  
+> Since one attack vector a censor could employ is to create blocks of just 1 transaction from the forced queue and thereby censor most for a longer duration it might be beneficial to require a minimum block size.
 
 ## Implementation
 
