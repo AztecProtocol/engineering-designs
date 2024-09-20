@@ -4,7 +4,7 @@
 | -------------------- | ----------------------------------------------------------- |
 | Issue                | https://github.com/AztecProtocol/aztec-packages/issues/8509 |
 | Owners               | @just-mitch                                                 |
-| Approvers            | @aminsammara @LHerskind @spalladino                         |
+| Approvers            | @aminsammara @LHerskind @spalladino @PhilWindle             |
 | Target Approval Date | 2024-09-18                                                  |
 
 
