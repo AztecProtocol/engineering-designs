@@ -1,16 +1,15 @@
-# Incentives
+# Testnet Fees
 
-|                      |                                                             |
-| -------------------- | ----------------------------------------------------------- |
-| Issue                | https://github.com/AztecProtocol/aztec-packages/issues/8757 |
-| Owners               |                                                             |
-| Approvers            |                                                             |
-| Target Approval Date | YYYY-MM-DD                                                  |
-
+|                      |                                                                               |
+| -------------------- | ----------------------------------------------------------------------------- |
+| Issue                | https://github.com/AztecProtocol/aztec-packages/issues/8757                   |
+| Owners               | @just-mitch                                                                   |
+| Approvers            | @LHerskind @Maddiaa0 @PhilWindle @dbanks12 @nventuro @joeandrews @aminsammara |
+| Target Approval Date | 2024-10-24                                                                    |
 
 ## Costs
 
-A user pays fees in a token TST.
+Suppose a user pays fees in a test token TST.
 
 Refer to the unit of work on L2 as "mana", analogous to gas on L1.
 
@@ -57,7 +56,7 @@ $$
 
 Therefore, the cost of a transaction's proposal, data publication, and verification at time $i$ is, denominated in eth:
 $$
-\text{eth}_{tx,i} = \text{blob gas}_{tx} * \text{eth per blob gas at time i} + \text{gas}_{tx} * \text{eth per gas at time i}
+\text{eth}_{tx,i} = \text{blob gas}_{tx} * \text{eth per blob gas}_i + \text{gas}_{tx} * \text{eth per gas}_i
 $$
 
 Where the eth per blob gas and eth per gas are the `base_fee`s of these resources on L1 at time `i`.
@@ -115,67 +114,40 @@ We borrow from EIP-1559. The `tst_per_mana` rate will be stored on the rollup co
 
 The target/limit mana will only be accounting for mana consumed in the L2 execution for a proposed block, i.e. $\sum_{tx \in \text{block}} mana_{tx,L2}$.
 
+In order to drive this oracle, the L2 block header must contain a `total_l2_mana_consumed` field in addition to the existing `total_fees` field.
+
 ## Distribution
 
 When a transaction is included in a block in the pending chain, the L2 balance of TST for the `fee_payer` of the transaction is reduced by the transactions's TST cost.
 
-That cost was determined based on the the oracles' rates, which are held constant for a particular slot/block.
+When an epoch is proven, the fees for the epoch are paid out to each proposer for the block(s) they proposed.
 
-To maintain sound accounting, it must be ensured that:
-- The TST is not paid out until the block is in the proven chain.
-- The TST paid to a proposer is equal to the TST cost of the transactions in the block, borne by the proposer.
+A fixed percentage of each block's TST fees are paid to the prover of the epoch. The percentage is determined based on the quote submitted by the prover for the epoch.
 
-The second point can be ensured by keeping track in the rollup contract the TST due to a proposer for a block.
+This quote is submitted by the prover in epoch `i+1` to prove epoch `i`, and is thus claimed/submitted to L1 by a proposer in epoch `i+1`.
 
-This is computed as:
+In order to prevent a prover bribing a proposer into accepting a quote with an extremely high fee, proposers in epoch `i` will be able to submit a maximum fee they are willing to accept for the quote to be accepted in epoch `i+1`.
+
+The maximum fee will then be averaged throughout the epoch, and the quote claimed in epoch `i+1` must have a fee less than or equal to this average.
+
+## L1 Congestion
+
+If L1 gas spikes during an epoch, this will be reflected in the TST cost of a transaction through:
 
 $$
-\text{Mana for L1 propose function} = \text{Number of transactions in block} \\ * \text{ Proposal L1 gas per transaction} \\ * \text{eth per gas}_i \\ * \text{mana per eth}_{i} 
-\\
-\text{blob mana} : ( transaction, time ) \to mana  := \text{blob gas}_{tx} \\ * \text{eth per blob gas}_{i} \\ * \text{mana per eth}_{i}
-\\
-\text{operation mana} : ( transaction ) \to mana := \sum_{op \in tx} \text{mana per operation}(op)
-\\
-\text{Mana for computation}(block, i) = \sum_{tx \in \text{block}}\lparen \text{blob mana}(tx, i) + \text{operation mana}(tx) + \text{base mana} \rparen
-\\
-\text{Mana for proposed block} = \text{Mana for L1 propose function} + \text{Mana for computation}(block, i)
+\begin{aligned}
+\text{eth}_{tx,i} &= \text{blob gas}_{tx} * \text{eth per blob gas}_i + \text{gas}_{tx} * \text{eth per gas}_i \\
+\text{mana}_{tx,L1,i} &= \text{eth}_{tx,i} * \text{mana per eth}_{i}
+\end{aligned}
 $$
 
+Note that "$\text{mana per eth}_i$" does not need to change to reflect this.
 
+Also, this compensates for spikes in blob gas prices.
 
-However, this fee is not paid out until the block is in the proven chain.
-
-Further, to maintain sound accounting, we 
-
-
-Part of the public inputs to the epoch proof is, for each block, the amount of TST collected and the ethereum address of the proposer.
-
-Given a block's fees, the amount of TST paid to the proposer is:
-
-
-
-
-
-## Introduction
-
-## Interface
-
-## Implementation
-
-eth
-
-```solidity
-contract Rollup {
-
-  
-  uint256 public 
-  uint256 public ethGasUsed;
-  uint256 public daGasUsed;
-
-  function 
-}
-```
-
+However, it is possible for L1 gas prices to spike to a point where it is not profitable for a prover to submit their proof to L1. There are two retorts:
+1. The prover should bake in a risk premium to compensate them for this risk; it is similar to the risk that the price of TST relative to any other asset shifts against them.
+2. The prover can wait until the end of the epoch waiting for a less congested window to submit their proof to L1.
 
 ## Change Set
 
@@ -183,18 +155,18 @@ Fill in bullets for each area that will be affected by this change.
 
 - [ ] Cryptography
 - [ ] Noir
-- [ ] Aztec.js
+- [x] Aztec.js
 - [ ] PXE
 - [ ] Aztec.nr
 - [ ] Enshrined L2 Contracts
-- [ ] Private Kernel Circuits
-- [ ] Sequencer
-- [ ] AVM
+- [x] Private Kernel Circuits
+- [x] Sequencer
+- [x] AVM
 - [ ] Public Kernel Circuits
-- [ ] Rollup Circuits
+- [x] Rollup Circuits
 - [ ] L1 Contracts
 - [ ] Prover
-- [ ] Economics
+- [x] Economics
 - [ ] P2P Network
 - [ ] DevOps
 
