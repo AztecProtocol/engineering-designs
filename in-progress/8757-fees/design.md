@@ -1,15 +1,13 @@
 # Testnet Fees
 
-|                      |                                                                               |
-| -------------------- | ----------------------------------------------------------------------------- |
-| Issue                | https://github.com/AztecProtocol/aztec-packages/issues/8757                   |
-| Owners               | @just-mitch                                                                   |
-| Approvers            | @LHerskind @Maddiaa0 @PhilWindle @dbanks12 @nventuro @joeandrews @aminsammara |
-| Target Approval Date | 2024-10-24                                                                    |
+|                      |                                                                    |
+| -------------------- | ------------------------------------------------------------------ |
+| Issue                | https://github.com/AztecProtocol/aztec-packages/issues/8757        |
+| Owners               | @just-mitch @LHerskind                                             |
+| Approvers            | @Maddiaa0 @PhilWindle @dbanks12 @nventuro @joeandrews @aminsammara |
+| Target Approval Date | 2024-10-24                                                         |
 
-## Costs
-
-Suppose a user pays fees in a test token TST.
+## Mana and Costs
 
 Refer to the unit of work on L2 as "mana", analogous to gas on L1.
 
@@ -22,132 +20,127 @@ A transaction incurs the following costs:
 
 Some costs are independent of the computation or data of the transaction itself, specifically numbers 2, 4, and 5; regardless, they must be covered by the transaction.
 
-## Revenues
+## Protocol Defined Constants
 
-Suppose we have the following parameters:
-- `target_transactions_per_second` - the number of transactions per second that the rollup is designed to handle
-- `seconds_per_l2_slot` - the number of seconds in each L2 slot
+- `overhead_mana_per_tx` - the overhead cost in mana for a transaction
+- `target_mana_per_block` - the amount of mana that an "average" block is expected to consume
+- `blobs_per_block` - the number of blobs per block that are compensated for in the base fee
 - `l2_slots_per_l2_epoch` - the number of L2 slots in each L2 epoch
-- `l1_gas_per_block_proposed` - the amount of gas required to propose an L2 block on L1
-- `l1_gas_per_epoch_verified` - the amount of gas required to verify an L2 epoch on L1
+- `l1_gas_per_block_proposed` - the amount of L1 gas required to propose an L2 block on L1
+- `l1_gas_per_epoch_verified` - the amount of L1 gas required to verify an L2 epoch on L1
+- `minimum_proving_cost_per_mana` - the minimum cost in wei for proving a unit of mana
+- `maximum_proving_cost_multiplier_per_block` - the maximum percentage increase in the cost of proving a unit of mana per block
+- `minimum_fee_asset_price` - the minimum price in wei of the fee asset (e.g. TST)
+- `maximum_fee_asset_price_multiplier_per_block` - the maximum percentage increase in the price of the fee asset per block
+- `underlying_base_fee_oracle_update_interval` - the minimum number of slots between updates to the underlying base fee oracle
+- `congestion_factor_multiplier` - the constant factor to multiply the congestion factor by
+- `maximum_epoch_proof_quote_fee` - the maximum fee a prover can submit for an epoch proof quote
+
+## Oracles
+
+### `fee_asset_per_wei`
+
+This will be stored on the rollup contract. On proposing a block, proposers will be able to adjust the rate by up to `maximum_fee_asset_price_multiplier_per_block`.
+
+Has a minimum value of `minimum_fee_asset_price`.
+
+### `proving_cost_per_mana`
+
+This will be stored on the rollup contract. On proposing a block, proposers will be able to adjust the rate by up to `maximum_proving_cost_multiplier_per_block`.
+
+Has a minimum value of `minimum_proving_cost_per_mana`.
+
+### `wei_per_l1_gas` and `wei_per_l1_blob_gas`
+
+The rollup contract will maintain an `wei_per_l1_gas` oracle. 
+
+Same for `wei_per_l1_blob_gas`.
+
+They will be updated up to every `underlying_base_fee_oracle_update_interval` slots.
 
 
-We can establish fixed costs for a transaction in L1 gas for *proposal*:
-$$
-\text{Proposal L1 gas per transaction} = \frac{\text{L1 gas per block proposed}}{\text{target transactions per second} * \text{seconds per L2 slot}}
-$$
+## Getting the cost of a block in wei/mana
 
-And for *verification*:
-$$
-\text{Verification L1 gas per transaction} = \frac{\text{L1 gas per epoch verified}}{\text{target transactions per second} * \text{seconds per L2 slot} * \text{L2 slots per L2 epoch}}
-$$
+When a proposer is building a block, it calculates the total L1 cost of the block in wei by summing:
+- `l1_gas_per_block_proposed` * `wei_per_l1_gas`
+- `blobs_per_block` * `GAS_PER_BLOB` * `wei_per_l1_blob_gas`
+- `l1_gas_per_epoch_verified` * `wei_per_l1_gas` / `l2_slots_per_l2_epoch`
 
-So we can establish the total *Fixed* cost of a transaction in L1 gas:
+The cost of the block in wei/mana is then the sum of the following:
+- the total L1 cost in wei divided by `target_mana_per_block`
+- `proving_cost_per_mana`
 
-$$
-\text{gas}_{tx} = \text{Proposal L1 gas per transaction} + \text{Verification L1 gas per transaction}
-$$
+## Getting the Base Fee in wei/mana
 
-A particular transaction has a variable cost in L1 blob gas which is consumed when it is proposed.
+After simulating a block, the mana used by each transaction is known.
 
-$$
-\text{blob gas}_{tx} = \text{32 blob gas per field} * \text{number of fields in the transaction's published data}
-$$
+A proposer can compute a block's `total_mana_used` by summing the `mana_used` fields of all transactions in the block.
 
-Therefore, the cost of a transaction's proposal, data publication, and verification at time $i$ is, denominated in eth:
-$$
-\text{eth}_{tx,i} = \text{blob gas}_{tx} * \text{eth per blob gas}_i + \text{gas}_{tx} * \text{eth per gas}_i
-$$
+This `total_mana_used` will be part of the L2 block header.
 
-Where the eth per blob gas and eth per gas are the `base_fee`s of these resources on L1 at time `i`.
+The rollup contract will maintain a `excess_mana` variable for the proven and pending chains.
 
-Assume the existence of an "oracle" which provides the `mana_per_eth` rate (more on this below) at any time `i`. The cost of a transaction's L1 interactions in mana is then:
-$$
-\text{mana}_{tx,L1,i} = \text{eth}_{tx,i} * \text{mana per eth}_{i}
-$$
+The `excess_mana` is computed from the previous block as the difference between `total_mana_used` and `target_mana_per_block`.
 
-Last, assume the existence of an "oracle" which provides the `tst_per_mana` rate, analogous to the `eth_per_gas` rate on L1.
-
-The cost of a transaction's L1 interactions in TST is then:
-$$
-\text{TST}_{tx,L1,i} = \text{mana}_{tx,L1,i} * \text{tst per mana}_{i}
-$$
-
-What remains is to establish the cost of the transaction's L2/prover interactions. The cost of a transaction's L2 interactions in mana is:
-- Simulating the transaction
-- Generating the AVM/Public kernel proofs
-- Generating the rollup proofs
-
-Generating the rollup proof is a fixed cost, and independent of the transaction's data, but rather on the number of transactions on a block, and the number of slots in an epoch, which we have established targets for. Thus we can establish a fixed, base cost in `mana` for transactions as $\text{mana}_{tx,base}$.
-
-Every operation that a transaction performs in its public execution will have a cost in `mana`. The cost of a transaction's L2 interactions in `mana` is then:
-
-$$
-\text{mana}_{tx,L2} = \text{mana}_{tx,base} + \sum_{op \in tx} \text{mana per operation}(op)
-$$
-
-The cost of a transaction's L2 interactions in TST is then:
+Compute the L2 congestion factor as the "fake exponential" of the ratio of `total_mana_used` plus the previous block's `excess_mana` to `target_mana_per_block`, and multiply by a constant factor of 1e9:
 
 $$
-\text{TST}_{tx,L2,i} = \text{mana}_{tx,L2} * \text{tst per mana}_{i}
+\text{congestion factor} = \text{congestion factor multiplier} * \text{exp}\left(\frac{\text{total mana used} + \text{previous excess mana}}{\text{target mana per block}}\right)
 $$
 
-
-The total cost of a transaction `tx` in TST at time `i` is then:
-
+The base fee in wei/mana is then:
 $$
-\text{TST}_{tx,i} = \text{TST}_{tx,L1,i} + \text{TST}_{tx,L2,i}
+\text{base wei per mana} = \text{congestion factor} * \text{cost of block in wei/mana}
 $$
 
 
-### `mana_per_eth` oracle
+## The cost of a transaction in the fee asset
 
-As mentioned, an oracle is needed to convert the cost of a transaction's L1 interactions in eth to mana.
+The amount of mana a transaction consumes is:
+$$
+\text{mana}_{tx} = \text{overhead mana per tx} + \sum_{op \in tx} \text{mana per operation}(op)
+$$
 
-This will be stored on the rollup contract. On proposing a block, proposers will be able to adjust the rate by up to a predefined percentage. 
+Therefore, the cost of a transaction's proposal, data publication, and verification at time $i$ is, denominated in the fee asset:
+$$
+\text{fee asset}_{tx} = \text{mana}_{tx} * \text{base wei per mana} * \text{fee asset per wei}
+$$
 
-### `tst_per_mana` oracle
+## Distribution of the fee asset
 
-We borrow from EIP-1559. The `tst_per_mana` rate will be stored on the rollup contract. We will establish the following parameters on the rollup contract:
-- `target_mana_per_block` - the target amount of mana that a block should consume
-- `limit_mana_per_block` - the maximum amount of mana that a block can consume
-
-The target/limit mana will only be accounting for mana consumed in the L2 execution for a proposed block, i.e. $\sum_{tx \in \text{block}} mana_{tx,L2}$.
-
-In order to drive this oracle, the L2 block header must contain a `total_l2_mana_consumed` field in addition to the existing `total_fees` field.
-
-## Distribution
-
-When a transaction is included in a block in the pending chain, the L2 balance of TST for the `fee_payer` of the transaction is reduced by the transactions's TST cost.
+When a transaction is included in a block in the pending chain, the L2 balance of the fee asset for the `fee_payer` of the transaction is reduced by the transactions's fee asset cost.
 
 When an epoch is proven, the fees for the epoch are paid out to each proposer for the block(s) they proposed.
 
-A fixed percentage of each block's TST fees are paid to the prover of the epoch. The percentage is determined based on the quote submitted by the prover for the epoch.
+A fixed percentage of each block's fee asset fees are paid to the prover of the epoch. The percentage is determined based on the quote submitted by the prover for the epoch.
 
 This quote is submitted by the prover in epoch `i+1` to prove epoch `i`, and is thus claimed/submitted to L1 by a proposer in epoch `i+1`.
 
-In order to prevent a prover bribing a proposer into accepting a quote with an extremely high fee, proposers in epoch `i` will be able to submit a maximum fee they are willing to accept for the quote to be accepted in epoch `i+1`.
+In order to prevent a prover bribing a proposer into accepting a quote with an extremely high fee, the maximum fee a prover can submit for an epoch proof quote is `maximum_epoch_proof_quote_fee`.
 
-The maximum fee will then be averaged throughout the epoch, and the quote claimed in epoch `i+1` must have a fee less than or equal to this average.
+## Clarifications and considerations
 
-## L1 Congestion
+### Why is `blobs_per_block` a constant?
 
-If L1 gas spikes during an epoch, this will be reflected in the TST cost of a transaction through:
+It makes computation easier. Otherwise block builder would need to know the number of blobs consumed by the transaction while it is building.
 
-$$
-\begin{aligned}
-\text{eth}_{tx,i} &= \text{blob gas}_{tx} * \text{eth per blob gas}_i + \text{gas}_{tx} * \text{eth per gas}_i \\
-\text{mana}_{tx,L1,i} &= \text{eth}_{tx,i} * \text{mana per eth}_{i}
-\end{aligned}
-$$
+### L1 Congestion
 
-Note that "$\text{mana per eth}_i$" does not need to change to reflect this.
+If L1 gas spikes during an epoch, this will be reflected in the TST cost of a transaction through factoring in the higher `wei_per_l1_gas` and `wei_per_l1_blob_gas` into the TST cost.
 
-Also, this compensates for spikes in blob gas prices.
+However, the base fee is computed at the time of a block being proposed, based on the current L1 base fees. These may change between the block being proposed and the epoch being verified.
 
-However, it is possible for L1 gas prices to spike to a point where it is not profitable for a prover to submit their proof to L1. There are two retorts:
+Thus, it is possible for L1 gas prices to spike to a point where it is not profitable for a prover to submit their proof to L1. There are two retorts:
 1. The prover should bake in a risk premium to compensate them for this risk; it is similar to the risk that the price of TST relative to any other asset shifts against them.
 2. The prover can wait until the end of the epoch waiting for a less congested window to submit their proof to L1.
+
+### Not charging for DA separately
+
+Current thinking is that proving costs will dominate the cost of a transaction, so metering DA is not necessary.
+
+It also simplifies the implementation.
+
+Regardless, the AVM supports DA gas metering per opcode, so it would not be difficult to add in the future if we change our mind.
 
 ## Change Set
 
@@ -164,7 +157,7 @@ Fill in bullets for each area that will be affected by this change.
 - [x] AVM
 - [ ] Public Kernel Circuits
 - [x] Rollup Circuits
-- [ ] L1 Contracts
+- [x] L1 Contracts
 - [ ] Prover
 - [x] Economics
 - [ ] P2P Network
