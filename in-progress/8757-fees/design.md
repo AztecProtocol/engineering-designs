@@ -89,6 +89,7 @@ $$
 $$
 
 The base fee in wei/mana is then:
+
 $$
 \text{base wei per mana} = \text{congestion factor} * \text{cost of block in wei/mana}
 $$
@@ -97,11 +98,13 @@ $$
 ## The cost of a transaction in the fee asset
 
 The amount of mana a transaction consumes is:
+
 $$
 \text{mana}_{tx} = \text{overhead mana per tx} + \sum_{op \in tx} \text{mana per operation}(op)
 $$
 
 Therefore, the cost of a transaction's proposal, data publication, and verification at time $i$ is, denominated in the fee asset:
+
 $$
 \text{fee asset}_{tx} = \text{mana}_{tx} * \text{base wei per mana} * \text{fee asset per wei}
 $$
