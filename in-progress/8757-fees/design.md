@@ -84,30 +84,30 @@ The `excess_mana` is computed from the previous block as the difference between 
 
 Compute the L2 congestion factor as the "fake exponential" of the ratio of `total_mana_used` plus the previous block's `excess_mana` to `target_mana_per_block`, and multiply by a constant factor of 1e9:
 
-$$
+```math
 \text{congestion factor} = \text{congestion factor multiplier} * \text{exp}\left(\frac{\text{total mana used} + \text{previous excess mana}}{\text{target mana per block}}\right)
-$$
+```
 
 The base fee in wei/mana is then:
 
-$$
+```math
 \text{base wei per mana} = \text{congestion factor} * \text{cost of block in wei/mana}
-$$
+```
 
 
 ## The cost of a transaction in the fee asset
 
 The amount of mana a transaction consumes is:
 
-$$
+```math
 \text{mana}_{tx} = \text{overhead mana per tx} + \sum_{op \in tx} \text{mana per operation}(op)
-$$
+```
 
 Therefore, the cost of a transaction's proposal, data publication, and verification at time $i$ is, denominated in the fee asset:
 
-$$
+```math
 \text{fee asset}_{tx} = \text{mana}_{tx} * \text{base wei per mana} * \text{fee asset per wei}
-$$
+```
 
 ## Distribution of the fee asset
 
