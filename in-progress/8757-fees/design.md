@@ -22,34 +22,37 @@ A transaction incurs the following costs:
 5. Provers generate the rollup proofs for the blocks/epoch
 6. Provers verify the epoch proof on L1
 
-Some costs are independent of the computation or data of the transaction itself, specifically numbers 2, 4, and 5; regardless, they must be covered by the transaction.
+Some costs are independent of the computation or data of the transaction itself, specifically numbers 2, 5, and 6; regardless, they must be covered by the transaction.
 
 ## Protocol Defined Constants
 
 - `OVERHEAD_MANA_PER_TX` - the overhead cost in mana for a transaction (e.g. 21_000)
 - `TARGET_MANA_PER_BLOCK` - the amount of mana that an "average" block is expected to consume (e.g. 15e6)
+- `MAXIMUM_MANA_PER_BLOCK` - the maximum amount of mana that a block can consume (e.g. 2 * TARGET_MANA_PER_BLOCK)
 - `BLOBS_PER_BLOCK` - the number of blobs per block that are compensated for in the base fee (e.g. 3)
 - `L2_SLOTS_PER_L2_EPOCH` - the number of L2 slots in each L2 epoch (e.g. 32)
 - `L1_GAS_PER_BLOCK_PROPOSED` - the amount of L1 gas required to propose an L2 block on L1 (e.g. 0.2e6)
 - `L1_GAS_PER_EPOCH_VERIFIED` - the amount of L1 gas required to verify an L2 epoch on L1 (e.g. 1e6)
+- `MAXIMUM_EPOCH_PROOF_QUOTE_FEE` - the maximum basis point fee a prover can submit for an epoch proof quote (e.g. 9000)
+- `UNDERLYING_BASE_FEE_ORACLE_UPDATE_INTERVAL` - the minimum number of slots between updates to the underlying base fee oracle (e.g. 4)
 - `MINIMUM_PROVING_COST_PER_MANA` - the minimum cost in wei for proving a unit of mana (e.g. 100)
 - `MAXIMUM_PROVING_COST_PERCENT_CHANGE_PER_BLOCK` - the maximum percentage increase in the cost of proving a unit of mana per block (e.g. 1%)
-- `PROVING_COST_PRECISION` - the precision of the `proving_cost_modifier` (e.g. 1e9)
+- `PROVING_COST_UPDATE_FRACTION` - a value used to update the `proving_cost_modifier` (e.g. 1e11)
 - `MINIMUM_FEE_ASSET_PRICE` - the minimum price in wei of the fee asset (e.g. TST)
 - `MAXIMUM_FEE_ASSET_PRICE_PERCENT_CHANGE_PER_BLOCK` - the maximum percentage increase in the price of the fee asset per block (e.g. 1%)
-- `FEE_ASSET_PRICE_PRECISION` - the precision of the `fee_asset_price_modifier` (e.g. 1e9)
-- `UNDERLYING_BASE_FEE_ORACLE_UPDATE_INTERVAL` - the minimum number of slots between updates to the underlying base fee oracle (e.g. 4)
+- `FEE_ASSET_PRICE_UPDATE_FRACTION` - a value used to update the `fee_asset_price_modifier` (e.g. 1e11)
 - `MINIMUM_CONGESTION_MULTIPLIER` - the minimum value the congestion multiplier can take (e.g. 1)
-- `CONGESTION_MULTIPLIER_DAMPER` - the constant factor to dampen movement in the congestion multiplier (e.g. 8.547)
-- `MAXIMUM_EPOCH_PROOF_QUOTE_FEE` - the maximum basis point fee a prover can submit for an epoch proof quote (e.g. 9000)
+- `CONGESTION_MULTIPLIER_UPDATE_FRACTION` - the constant factor to dampen movement in the congestion multiplier (e.g. 8.547 * TARGET_MANA_PER_BLOCK)
 
 ## Block Header Fields
+The L2 block header contains the following fields:
 
 - `total_mana_used` - the total mana used by the block
-- `excess_mana` - the running total of excess mana on the chain relative to `TARGET_MANA_PER_BLOCK`
 - `base_fee_asset_per_mana` - the base fee in fee asset per mana
 
 ## Rollup Contract Fields
+
+The rollup contract contains the following fields:
 
 - `proving_cost_modifier` - a value used in the computation of the proving cost per mana
 - `proving_cost_modifier_delta` - an "oracle" used to update the `proving_cost_modifier` from the previous block
@@ -58,15 +61,15 @@ Some costs are independent of the computation or data of the transaction itself,
 - `wei_per_l1_gas` - the cost of L1 gas in wei. Updated by anyone to the current L1 gas price at most every `UNDERLYING_BASE_FEE_ORACLE_UPDATE_INTERVAL` slots
 - `wei_per_l1_blob_gas` - the cost of L1 blob gas in wei. Updated by anyone to the current L1 blob gas price at most every `UNDERLYING_BASE_FEE_ORACLE_UPDATE_INTERVAL` slots
 
-## Block Execution Cost
+## L1 Execution Cost
 
 The cost of a block's execution in wei is equal to the following:
 ```math
 \begin{aligned}
-\text{execution gas} &= \text{L1 GAS PER BLOCK PROPOSED}  \\
+\text{execution cost in gas} &= \text{L1 GAS PER BLOCK PROPOSED}  \\
 &+ \text{BLOBS PER BLOCK} * \text{POINT EVALUATION PRECOMPILE GAS} \\
 &+ \frac{\text{L1 GAS PER EPOCH VERIFIED}}{\text{L2 SLOTS PER L2 EPOCH}} \\
-\text{execution wei} &= \text{execution gas} * \text{wei per l1 gas}
+\text{execution cost in wei} &= \text{execution cost in gas} * \text{wei per l1 gas}
 \end{aligned}
 ```
 
@@ -75,7 +78,7 @@ The cost of a block's execution in wei is equal to the following:
 The cost of a block's data in wei is equal to the following:
 
 ```math
-\text{data wei} = \text{BLOBS PER BLOCK} * \text{GAS PER BLOB} * \text{wei per l1 blob gas}
+\text{data cost in wei} = \text{BLOBS PER BLOCK} * \text{GAS PER BLOB} * \text{wei per l1 blob gas}
 ```
 
 
@@ -105,7 +108,7 @@ The takeaway is that, in this case, if we cap the change in the numerator betwee
 ### `proving_cost_wei_per_mana`
 
 ```math
-\text{proving cost wei per mana} = \text{MINIMUM PROVING COST PER MANA} * \text{exp}\left(\frac{\text{proving cost modifier}}{100*\text{PROVING COST PRECISION}}\right)
+\text{proving cost wei per mana} = \text{MINIMUM PROVING COST PER MANA} * \text{exp}\left(\frac{\text{proving cost modifier}}{\text{PROVING COST UPDATE FRACTION}}\right)
 ```
 
 A proposer can adjust the `proving_cost_modifier` stored in the rollup contract by up to `MAXIMUM_PROVING_COST_PERCENT_CHANGE_PER_BLOCK` each slot.
@@ -118,13 +121,13 @@ That is,
 \text{new proving cost modifier} := \text{old proving cost modifier} + \text{proving cost modifier delta}
 ```
 
-The new `proving_cost_modifier_delta` is capped at `MAXIMUM_PROVING_COST_PERCENT_CHANGE_PER_BLOCK` * `PROVING_COST_PRECISION`.
+The new `proving_cost_modifier_delta` is capped at (+/-) `MAXIMUM_PROVING_COST_PERCENT_CHANGE_PER_BLOCK` * `PROVING_COST_UPDATE_FRACTION` / 100.
 
 
 ### `fee_asset_per_wei`
 
 ```math
-\text{fee asset per wei} = \text{MINIMUM FEE ASSET PRICE} * \text{exp}\left(\frac{\text{fee asset price modifier}}{100*\text{FEE ASSET PRICE PRECISION}}\right)
+\text{fee asset per wei} = \text{MINIMUM FEE ASSET PRICE} * \text{exp}\left(\frac{\text{fee asset price modifier}}{\text{FEE ASSET PRICE UPDATE FRACTION}}\right)
 ```
 
 A proposer can adjust the `fee_asset_price_modifier` stored in the rollup contract by up to `MAXIMUM_FEE_ASSET_PRICE_PERCENT_CHANGE_PER_BLOCK` each slot.
@@ -137,7 +140,7 @@ That is,
 \text{new fee asset price modifier} := \text{old fee asset price modifier} + \text{fee asset price modifier delta}
 ```
 
-The new `fee_asset_price_modifier_delta` is capped at `MAXIMUM_FEE_ASSET_PRICE_PERCENT_CHANGE_PER_BLOCK` * `FEE_ASSET_PRICE_PRECISION`.
+The new `fee_asset_price_modifier_delta` is capped at (+/-) `MAXIMUM_FEE_ASSET_PRICE_PERCENT_CHANGE_PER_BLOCK` * `FEE_ASSET_PRICE_UPDATE_FRACTION` / 100.
 
 ### `base_fee_wei_per_mana_congestion_multiplier`
 
@@ -145,13 +148,15 @@ First we compute the excess mana in the current block by considering the parent 
 
 ```math
 \text{excess mana} = \begin{cases} 
-0 & \text{if } \text{parent.excess} + \text{parent.spent} < \text{block.target} \\
-\text{parent.excess} + \text{parent.spent} - \text{block.target} & \text{otherwise}
+0 & \text{if } \text{parent.excess} + \text{parent.spent} < \text{TARGET MANA PER BLOCK} \\
+\text{parent.excess} + \text{parent.spent} - \text{TARGET MANA PER BLOCK} & \text{otherwise}
 \end{cases}
 ```
 
 ```math
-\text{base fee wei per mana congestion multiplier} = \text{MINIMUM CONGESTION MULTIPLIER} * \text{exp}\left(\frac{\text{excess mana}}{\text{target mana per block} * \text{CONGESTION MULTIPLIER DAMPER}}\right)
+\begin{aligned}
+\text{base fee wei per mana congestion multiplier} &= \text{MINIMUM CONGESTION MULTIPLIER} * \text{exp}\left(\frac{\text{excess mana}}{\text{CONGESTION MULTIPLIER UPDATE FRACTION}}\right)
+\end{aligned}
 ```
 
 ## Deriving the base fee
@@ -159,8 +164,8 @@ First we compute the excess mana in the current block by considering the parent 
 When a proposer is building a block, it calculates:
 ```math
 \begin{aligned}
-\text{block cost in wei} &= \text{execution wei} + \text{data wei} \\
-\text{block cost in wei/mana} &= \frac{\text{block cost in wei}}{\text{target mana per block}} + \text{proving cost wei per mana} \\
+\text{block cost in wei} &= \text{execution cost in wei} + \text{data cost in wei} \\
+\text{block cost in wei/mana} &= \frac{\text{block cost in wei}}{\text{TARGET MANA PER BLOCK}} + \text{proving cost wei per mana} \\
 \text{base fee in wei/mana} &= \text{block cost in wei/mana} * \text{base fee wei per mana congestion multiplier} \\
 \text{base fee in fee asset/mana} &= \text{base fee in wei/mana} * \text{fee asset per wei}
 \end{aligned}
