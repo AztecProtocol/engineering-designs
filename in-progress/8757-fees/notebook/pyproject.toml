@@ -1,0 +1,12 @@
+[project]
+name = "simple-fee-model"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "eth-ape[recommended-plugins]",
+    "ipykernel>=6.29.5",
+    "matplotlib>=3.9.2",
+    "numpy>=1.26.4"
+]
