@@ -182,7 +182,7 @@ Therefore, the cost of a transaction's proposal, data publication, and verificat
 \text{fee asset}_{tx} = \text{mana}_{tx} * \text{base fee asset per mana}
 ```
 
-## Distribution of the fee asset
+## Distribution of the fees
 
 When a transaction is included in a block in the pending chain, the L2 balance of the fee asset for the `fee_payer` of the transaction is reduced by the transactions's fee asset cost.
 
