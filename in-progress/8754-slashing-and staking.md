@@ -12,9 +12,69 @@
 This design introduces Proof Of Governance (PoG) for slashing. The rationale behind using PoG is that the use of offchain evidence for voting allows nice properties including:
 
 1) Precision in slashing. Honest node operators should not be slashed.
-2) TxObjects / Proofs are not available onchain so some offenses require the use of the P2P layer to detect wrongdoing.
+2) Some offenses require the use of offchain evidence to detect wrongdoing.
 
-## Introduction
+## Staking
+
+Validators stake with a `Deposit` contract in order to join the validator set. They do NOT stake with the Rollup contract directly. This is meant to simplify moving stake during/after a governance upgrade. 
+
+### Deposit Contract
+
+The Deposit contract is an immutable contract living on L1, that is owned by the Governance Contract (i.e. Apella). It implements the following simplified interface:
+
+```solidity
+
+interface IDeposit {
+  function deposit(address validatorAddress, address withdrawalAddress, uint256 amountToDeposit, bool followRegistryBool, address rollupAddress) external returns(bool);
+  function activateValidator(address rollupAddress, address validatorAddress, uint256 amount);
+  function widthdraw(address rollupAddress, address validatorAddress) external returns(bool);
+  function unstakeValidators(addresss rollupAddress, address validatorAddress) external returns(bool);
+  function slashValidator(address rollupAddress, address validatorAddress) external returns(bool);
+  function getRollup() internal view returns(address);
+}
+```
+
+### Deposit Function
+
+* Validators must deposit at least `MIN_DEPOSIT_AMOUNT`.
+* A successful call results in an entry in the `Deposits` mapping. This mapping is a `mapping(address rollupAddress => mapping(address validatorAddress => DepositLib.DepositObject))`
+* A `DepositObject` contains references to the `withdrawalAddress` and `followingRegistryBool` variables. It is unique per rollupAddress / validatorAddress combination. 
+* Therefore validators can have multiple deposits corresponding to different Rollups. But for each Rollup, they can only have one deposited balance, one withdrawal address and one `followingRegistryBool` flag. 
+* Once a validator deposit for a particular Rollup meets or exceeds `MIN_ACTIVATION_AMOUNT`, the Rollup instance can add them to the validator set by calling `activateValidator`
+* Any amounts specified by `activateValidator` are removed from `Deposits` and accounted for in a different mapping, say `StakedDeposits`.
+* Amounts in `StakedDeposits`are now subject to withdrawal delays and slashing requirements. 
+
+### Entering the Validator Set
+
+Each Rollup implements its own logic for how validators join the validator set. I expect standard delays (i.e. 10 epochs) before a validator actually joins the set. 
+
+Once the Rollup instance calls `activateValidator(_rollupAddress, _valAddress, _amount)`, 
+
+```solidity
+ // ...
+Deposits[_rollupAddress][_valAddress].amount -= _amount
+StakedDeposits[_rollupAddress][_valAddress].amount += _amount // if it exists, otherwise create it
+ // ...
+```
+
+### Migrating Stake
+
+The `Deposit` contract is owned by the Governance Contract. As such in the event of an upgrade, the Apella can change the `StakedDeposits` mapping so that any `StakeObject` with `followingRegistryBool=true` can be moved to the new Rollup as pointed to by the Registry contract. 
+
+Validators that choose `followingRegistryBool=false`, will have to exit funds and move manually. Note that this does not require block building on the old Rollup instance to be functional. 
+
+In the event of a Migration (i.e. state wipe), a new Deposit contract must be deployed. 
+
+### Withdraw Function
+
+* Validators can call the withdraw function at any time to remove any balance they have in `Deposits` using `withdraw()`.
+* Only the Rollup contract may withdraw balances from `stakedDeposits` using the function `unstakeValidator()`.
+
+### Rewards
+
+Any block rewards accruing to validators should be sent to `withdrawalAddress` specified
+
+## Proof Of Governance Slashing
 
 Why do we slash?
 
