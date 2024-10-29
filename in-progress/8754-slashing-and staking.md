@@ -3,18 +3,24 @@
 | -------------------- | --------------------------------- |
 | Issue                | [title](github.com/link/to/issue) |
 | Owners               | @aminsammara                              |
-| Approvers            | @LHerskind @just-mitch @JoeAndrews @Maddiaa0 |
-| Target Approval Date | 2024-11-07                        |
+| Approvers            | @LHerskind @just-mitch @joeandrews @Maddiaa0 |
+| Target Approval Date | 2024-11-08                        |
 
 
-## Executive Summary
+# Executive Summary
 
-This design introduces Proof Of Governance (PoG) for slashing. The rationale behind using PoG is that the use of offchain evidence for voting allows nice properties including:
+This design introduces a Staking Mechanism and Proof Of Governance (PoG) for slashing. 
 
-1) Precision in slashing. Honest node operators should not be slashed.
-2) Some offenses require the use of offchain evidence to detect wrongdoing.
+For Staking, we introduce an immutable `Deposit` contract to make stake migrations more seamless.  
 
-## Staking
+For Slashing, the rationale behind using PoG is the use of offchain evidence for voting allows nice properties including:
+
+1) More precision in slashing. Honest node operators should not be slashed but we need offchain evidence to do this. 
+2) Provers can appeal to the validator set to unslash them in the case they could not submit their proof on time (i.e. Ethereum congestion, or an attack on proving marketplace nodes)
+
+So we rely on validators to vote to slash dishoneset actors. 
+
+# Staking
 
 Validators stake with a `Deposit` contract in order to join the validator set. They do NOT stake with the Rollup contract directly. This is meant to simplify moving stake during/after a governance upgrade. 
 
@@ -56,6 +62,30 @@ Deposits[_rollupAddress][_valAddress].amount -= _amount
 StakedDeposits[_rollupAddress][_valAddress].amount += _amount // if it exists, otherwise create it
  // ...
 ```
+In visual form: 
+
+```mermaid
+sequenceDiagram
+title Deposit and Enter the Validator Set
+
+    participant A as Validator
+    participant C as Deposits Contract
+    participant D as Registry
+    participant B as Rollup Instance
+
+    A ->> C:  deposit(amount, followingRegistry=true)
+    C ->> D:  registry.getRollup()
+    C ->> C:  Create DepositObject in Deposits[getRollup()][validatorAddress]
+    A ->> B:  joinValidator()
+    B ->> C:  Check balance of validator
+
+    alt If they have MIN_ACTIVATION_BALANCE
+        B ->> C: Make deposit at stake i.e. call activateValidator()
+        B ->> B: Add to validator set
+    else If they don't
+        B ->> B: Do nothing
+    end
+```
 
 ### Migrating Stake
 
@@ -72,9 +102,9 @@ In the event of a Migration (i.e. state wipe), a new Deposit contract must be de
 
 ### Rewards
 
-Any block rewards accruing to validators should be sent to `withdrawalAddress` specified
+Any block rewards accruing to validators should be sent to the `withdrawalAddress` specified in `stakedDeposits`.
 
-## Proof Of Governance Slashing
+# Proof Of Governance Slashing
 
 Why do we slash?
 
@@ -97,35 +127,16 @@ Based on the offense in question, the rollup contract establishes max slashable 
 This is more subjective than purely onchain slashing but it enables precision that is not possible with purely onchain slashing. We can adopt Ethereum's principle of "honest validators should not be slashed" at the expense of increased coordination cost.
 
 
-## Interface
+### Users of PoG Slashing
 
 Validators are the users of the PoG slashing mechanism. Full nodes can contribute data to validators but they should not be able to vote for a slashing proposal. 
 
-## Implementation
 
-Define the slashing proposal sent to L1 to be a payload that could look like this:
-
-```solidity
-struct SlashingProposal({
-  validatorSignature; // BLS signature
-  aggregatedPublicKey; // Agg public key of validators who signed the proposal
-  offense; // there is a pre-defined list of slashable behaviours
-  validatorsToSlash; Optional address[] of validators to be slashed.
-  epochNumber; Optional epoch in question
-  slotNumbers; Optional uint256[] of slots in question
-  calldataPayload; Optional The calldata passed along with the invalid block proposal function call
-  calldataProof; Optional The merkle path to the contract storage
-  proverAddress; Optional prover address who failed to submit a proof
-)}
-```
-The TS implementation of this but should be similar. The validators who receive a slashing proposal via the p2p must be able to decipher what data is needed to decide how to vote. If they don't have the data, they must request it from peers then determine. 
-
-
-### PoG Slashable Offences
+## PoG Slashable Offences
 
 These are actions that can and will be slashed using PoG.
 
-**1. Committee signs off on an invalid state root**
+### 1. Committee signs off on an invalid state root
 
 Some validators implement a `ALWAYS_EXECUTE` flag which causes them to execute every block regardless of whether they're in the committee or not. Validators who implement this flag are called "Executing Validators". 
 
@@ -213,7 +224,7 @@ The answer is -> Yes! A majority stake voting incorrectly on a data withholding 
 Therefore the Executing Validators who can't download all `TxObject` and proof data for any given block should initiate a data withholding slashing proposal, which works in exactly the same way as the invalid state root slashing proposal.
 
 
-**2. ETH Congestion**
+### 2. ETH Congestion
 
 Provers may not be able to post proofs if the L1 is congested or is experiencing an inactivity leak. Instead of automatic slashing of the prover bond, the validator set can vote to "unslash" the provers. 
 
@@ -230,7 +241,7 @@ They are largely equivalent except that the second requires less coordination.
 
 We would like to slash the following actions but this would require vast changes to the p2p and/or would still be susceptible to attacks. Still including them here for brevity but these offenses are NOT slashable in the implementation.  
 
-**1. Sequencers don't accept EpochProofQuotes**
+### 1. Sequencers don't accept EpochProofQuotes
 
 If no EpochProofQuote is accepted within $C=13$ slots and the epoch reorgs, validators check for whether sequencers could have accepted an actionable EpochProofQuote during their turn. 
 
@@ -247,7 +258,7 @@ Why is this hard to implement?
 - Provers currently can send quotes even without having the necessary bond. 
 - Provers could send the quotes to a partition of the network, excluding the proposers who can activate the quote. This leads to timing games.
 
-**2. Inactivity Leak**
+### 2. Inactivity Leak
 
 Upon entering Based Fallback mode, validators can slash the committee members who have not submitted blocks during their slots. Since entering Based Fallback mode requires $T_{\textsf{fallback, enter}}$ time of no activity on the Pending Chain, validators initiate a proposal to slash the inactive committees during that time period. 
 
@@ -289,14 +300,16 @@ The main changes are to the L1 contracts, p2p and the validator clients.
 **Changes to the L1 Contracts**
 1) The L1 contracts must accept a slashing proposal object and verify whether certain conditions have been met.
 2) The L1 contracts must be able to slash staked validators within a window commensurate with the validator exit delay.
-3) The L1 contracts must be able to verify aggregated BLS signatures. 
+3) The L1 contracts must be able to verify aggregated BLS signatures.
+4) The Deposit contract
+5) Apella execute logic should also update the Rollup instance which owns 
 
 ## Questions to Consider During Review
 
 1. Executing Validators can spam the network with slashing proposals in DOS attack on the p2p. Do we need to make this expensive? i.e. stake some TST then initiate the proposal?
 2. Does a slashing proposal need >50% of the stake? Or >50% of the validators?
 3. Do we really want to want to pay a small fee to cover the cost of verifying the BLS signature on L1? Makes slashing someone free.
-4. 
+4. Does the Deposit contract achieve its intended purpose of making stake migrations easier? 
 
 ## Change Set
 
