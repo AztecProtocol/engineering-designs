@@ -189,7 +189,7 @@ Why is this hard to implement?
 
 **2. Inactivity Leak**
 
-Upon entering Based Fallback mode, validators can slash the committee members who have not submitted blocks during their slots. Since entering Based Fallback mode requires $T_{/text{fallback, enter}$ time of no activity on the Pending Chain, validators initiate a proposal to slash the inactive committees during that time period. 
+Upon entering Based Fallback mode, validators can slash the committee members who have not submitted blocks during their slots. Since entering Based Fallback mode requires $T_{/text{fallback, enter}}$ time of no activity on the Pending Chain, validators initiate a proposal to slash the inactive committees during that time period. 
 
 Why is this hard to implement? 
 - A malicious committee could abuse the Resp/Req module to send attestations to a partition of the network but not the current proposers. While the validators will then gossip the attestations back to the proposer, they may not make it back on time. Again timing games. 
