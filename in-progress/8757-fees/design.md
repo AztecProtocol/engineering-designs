@@ -5,7 +5,7 @@
 | Issue                | https://github.com/AztecProtocol/aztec-packages/issues/8757        |
 | Owners               | @just-mitch @LHerskind                                             |
 | Approvers            | @Maddiaa0 @PhilWindle @dbanks12 @nventuro @joeandrews @aminsammara |
-| Target Approval Date | 2024-10-24                                                         |
+| Target Approval Date | 2024-11-01                                                         |
 
 ## Mana and Costs
 
