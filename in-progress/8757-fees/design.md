@@ -10,7 +10,7 @@
 ## Mana and Costs
 
 Refer to the unit of work on L2 as "mana", analogous to gas on L1. This has been referred to as "L2 gas" in the past.
-This is also separate from the notion of "fee juice", which is conceptually a token with a balance, analogous to ETH.
+This is also separate from the notion of "fee juice", which is conceptually a token with a balance, analogous to ETH; when bridged to L2 it would be non-transferable.
 
 In this document, we will use the term "fee asset" to refer to the unit of account for fees; that is, a transaction accumulates a cost in mana, which is converted to the fee asset according to the current price of mana.
 
