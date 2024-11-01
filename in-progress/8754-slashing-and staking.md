@@ -18,7 +18,9 @@ For Slashing, the rationale behind using PoG is the use of offchain evidence for
 1) More precision in slashing. Honest node operators should not be slashed but we need offchain evidence to do this. 
 2) Provers can appeal to the validator set to unslash them in the case they could not submit their proof on time (i.e. Ethereum congestion, or an attack on proving marketplace nodes)
 
-So we rely on validators to vote to slash dishoneset actors. 
+So we rely on validators to vote to slash dishonest actors. 
+
+
 
 # Staking
 
@@ -122,8 +124,6 @@ Any validator can initiate a proposal to slash any other validator(s). A proposa
 
 Validators vote by signing the slashing proposal and gossiping back the signed message over the p2p. Anyone can submit a slashing proposal that has gathered enough signatures to the L1 for verification. 
 
-Based on the offense in question, the rollup contract establishes max slashable stakes. The rollup contract also verifies certain conditions have occured before executing the slash. 
-
 This is more subjective than purely onchain slashing but it enables precision that is not possible with purely onchain slashing. We can adopt Ethereum's principle of "honest validators should not be slashed" at the expense of increased coordination cost.
 
 
@@ -131,6 +131,9 @@ This is more subjective than purely onchain slashing but it enables precision th
 
 Validators are the users of the PoG slashing mechanism. Full nodes can contribute data to validators but they should not be able to vote for a slashing proposal. 
 
+### Protocol Defined Constants
+
+1. `MIN_REQUIRED_STAKE_PERCENT` : The minimum % of stake that must sign a slashing / unslashing proposal before it is accepted by the L1 contract. 
 
 ## PoG Slashable Offences
 
@@ -157,14 +160,12 @@ If the list of `TxHash` does match, they request all `TxEffects` and proofs from
 
 If they're able to retreive all the required data to re-xecute the block contents and find an invalid state root, they sign the slashing proposal and gossip the signed proposal via the p2p. 
 
-The executing validator who initialized the slashing proposal must aggregate signatures and post to L1 for verification once >50% of the stake has signed the proposal. 
+The Executing Validator who initialized the slashing proposal must aggregate signatures and post to L1 for verification once `MIN_REQUIRED_STAKE_PERCENT`of the stake has signed the proposal. 
 
 On the L1, the contract verifies that: 
-1) The epoch has indeed re-orged.
-2) The committee members named in the slashing proposal have signed the specific block in question.
-3) Validators in control of more than 50% of stake have signed the slashing proposal.
+1) Validators in control of more than `MIN_REQUIRED_STAKE_PERCENT` of stake have signed the slashing proposal.
 
-If the above checks pass, the named committee members are slashed. The L1 contracts pays out a small fee to cover the cost of verifying signatures on the L1. 
+If the above checks pass, the named committee members are slashed. The L1 contracts pays out a small fee to cover the cost of verifying signatures on the L1. This fee goes to the validator who submitted the successful slashing proposal to the L1. 
 
 ```mermaid
 sequenceDiagram
@@ -189,8 +190,8 @@ title Slashing an invalid state root - Happy Path
     A ->> E: Propose Block
     D ->> E: Retrieve TxHash
     par
-        D ->> B: Request TxEffect + Proofs
-        D ->> C: Request TxEffect + Proofs
+        D ->> B: Request TxObjects + Proofs
+        D ->> C: Request TxObjects + Proofs
     end
 
     D ->> D: Execute block and check state root on L1
@@ -202,7 +203,7 @@ title Slashing an invalid state root - Happy Path
     end
 
     C ->> E: Retrieve Tx Hash
-    C ->> D: Request TxEffect + Proofs
+    C ->> D: Request TxObjects + Proofs
     C ->> C: Execute Proposal
     alt If state root matches L1
         C ->> C: Do nothing
@@ -223,25 +224,31 @@ The answer is -> Yes! A majority stake voting incorrectly on a data withholding 
 
 Therefore the Executing Validators who can't download all `TxObject` and proof data for any given block should initiate a data withholding slashing proposal, which works in exactly the same way as the invalid state root slashing proposal.
 
+**Note on L1 verification of slashing proposals**
 
-### 2. ETH Congestion
+This design does not require the L1 to verify any state regarding the slashing proposal. It only requires the L1 to verify that a majority of the stake has signed the slashing proposal. In the future, based on feedback during Testnet, we could extend the L1 verification logic to include checking that:
+1. The epoch has indeed re-orged. 
+2. The committee members named in the slashing proposal have signed the specific block in question.
 
-Provers may not be able to post proofs if the L1 is congested or is experiencing an inactivity leak. Instead of automatic slashing of the prover bond, the validator set can vote to "unslash" the provers. 
+**Note on capability of Nodes to investigate slashing proposals**
 
-The prover's bond sits in escrow (or a separate contract) for $t=4$ weeks. During this period, the prover can plead their case and convince the validators to vote to unslash them. A validator must initiate a vote to unslash the prover and submit to L1 for verification on time, otherwise the bond gets slashed. 
+One question could be that given that the L1 does not verify any state regarding the slashing proposal, why do we require the validator nodes to "investigate" the invalid state root slashing proposal? 
 
-Since "Ethereum was congested" is a subjective statement, two ways we could implement this:
+The answer is that we want to make it as easy as possible for validators to slash dishonest validators. Thus in the case of an invalid state root posted to the L1, where data is available to verify, coordination on the forums is unnecessary. 
 
-1) Make $t$ larger, giving the prover enough time to convince the validators to manually update their software to vote to unslash the prover. This could be done on the forums or validator community channels for example. 
-2) Add an environment variable `max_eth_base_fee` that clients agree to implement. If `base_gas_fee > max_gas_fee` at the proof submission deadline time, then validator nodes automatically sign votes to unslash prover.
+### 2. Bonded provers don't post proofs on time
 
-They are largely equivalent except that the second requires less coordination.
+A bonded prover who fails to post proofs on time should have their bonds slashed. However we allow for an unslashing period where the prover can plead their case and convince the validators to vote to unslash them. 
 
-### PoG Non-slashable offences
+Provers may not be able to post proofs if the L1 is congested or is experiencing an inactivity leak. A proving marketplace may come under an attack where their nodes go offline. There could be other valid reasons. 
 
-We would like to slash the following actions but this would require vast changes to the p2p and/or would still be susceptible to attacks. Still including them here for brevity but these offenses are NOT slashable in the implementation.  
+Instead of automatically and immediatley slashing the bond, the prover's bond sits in escrow (or a separate contract) for $t=4$ weeks. During this period, the prover can plead their case and convince the validators to vote to unslash them. A validator must initiate a vote to unslash the prover and submit to L1 a proposal to unslash the prover that gathers signatures from more than `MIN_REQUIRED_STAKE_PERCENT` of the stake, otherwise the bond gets slashed. 
 
-### 1. Sequencers don't accept EpochProofQuotes
+Proving bond unslashing proposals work differently to the invalid state root slashing proposals. Therefore the validator node software should allow a separate environment variable for voting on unslashing prover proposals. 
+
+Validators should be able to specify that an unslashing proposal for prover with address `0xprover` that they receive over gossipSub should be voted on in a certain manner. They could also specify to always vote yes or always vote no to any unslashing proposal using the same environment variable. 
+
+### 3. Sequencers don't accept EpochProofQuotes
 
 If no EpochProofQuote is accepted within $C=13$ slots and the epoch reorgs, validators check for whether sequencers could have accepted an actionable EpochProofQuote during their turn. 
 
@@ -251,21 +258,29 @@ ii) The epoch information is correct.
 iii) The prover had the required bond in escrow. 
 iv) The `basisPointFee` was within the allowable range. 
 
-Validators check for whether they saw such an actionable `EpochProofQuote`. If they did, they initiate a proposal to slash all committee members that could've accepted the quote but did not. 
+Nodes do NOT need to auto-respond to this type of slashing proposal. It is expected that such coordination happens offchain. 
 
-Why is this hard to implement?
-- We're designing S&P coordination to be out-of-protocol. The above assumes provers send quotes via the p2p.
-- Provers currently can send quotes even without having the necessary bond. 
-- Provers could send the quotes to a partition of the network, excluding the proposers who can activate the quote. This leads to timing games.
+The L1 contract verifies that `MIN_REQUIRED_STAKE_PERCENT` of stake has signed the slashing proposal. 
 
-### 2. Inactivity Leak
+
+### 4. Inactivity Leak
 
 Upon entering Based Fallback mode, validators can slash the committee members who have not submitted blocks during their slots. Since entering Based Fallback mode requires $T_{\textsf{fallback, enter}}$ time of no activity on the Pending Chain, validators initiate a proposal to slash the inactive committees during that time period. 
 
-Why is this hard to implement? 
-- A malicious committee could abuse the Resp/Req module to send attestations to a partition of the network but not the current proposers. While the validators will then gossip the attestations back to the proposer, they may not make it back on time. Again timing games. 
+Nodes do NOT need to auto-respond to this type of slashing proposal. It is expected that such coordination happens offchain. 
 
-We could implement an attestation deadline that takes into account time required to propagate the attestations from validators to proposers but this needs further studying.
+The L1 contract verifies that `MIN_REQUIRED_STAKE_PERCENT` of stake has signed the slashing proposal. 
+
+### Max slashing limits
+
+For the initial version of the slashing implementation, we're opting for not restricting the max slashing limits in the rollup contracts. The reasons being: 
+
+1) In order to utilize the full economic security of the Pending Chain, the entire sum of the validator deposit must be at stake. i.e. it must be possible to get slashed 100%. 
+2) Let's say we have a 1% limit for simple offences, and 50% for larger offenses. Then a `MIN_REQUIRED_STAKE_PERCENT` of stake can still vote to slash based on the larger offense. Since L1 verification is not possible for many of these offenses, we're always dependent on the honesty of the staking set anyway.
+3) Reduces code complexity. 
+4) We could always come back and implement strict limits if we get feedback to do so. 
+
+Note: We're also not limiting the number of validators that can be slashed. If a malicious party acquires `MIN_REQUIRED_STAKE_PERCENT` of the staking set.. it's a Chernobyl scale nuclear event for everybody else.
 
 ### Other Slashable Offences 
 
@@ -279,10 +294,9 @@ In addition to PoG, the following offenses can be slashed entirely via the L1 co
 
 ### Exiting Slashed Validators
 
-Slashed validtors should be exited from the validator set in addition to being slashed. The remaining stake of a slashed validator can be withdrawn after `SLASHING_WITHDRAW_DELAY` time. 
+Slashed validtors should be exited from the validator set in addition to being slashed. The remaining stake of a slashed validator can be withdrawn after `SLASHING_WITHDRAW_DELAY` time. This delay is longer than the exit delay for non-slashed validators. 
 
 Slashed validators can rejoin the validator set at a later time. 
-
 
 ### Changes to existing architecture
 
@@ -290,26 +304,26 @@ The main changes are to the L1 contracts, p2p and the validator clients.
 
 **Changes to the Validator Client**
 1) We introduce a new validtor "mode" called Executing Validator which executes all transactions all the time, even when they are not selected for a committee. 
-2) Validators must deduce what data they need to request from L1 and from other nodes when they receive a slashing proposal via the p2p.
-3) Validators must decide whether to sign a slashing proposal or ignore it based on their view of the L1 and the p2p layer.
-4) Validators should be able to send to L1 a slashing proposal for verification. 
+2) In the case of a invalid state root slashing proposal, validator clients must deduce what data they need to request from L1 and from other nodes when they receive a slashing proposal via the p2p. They must also decide whether to sign the slashing proposal or ignore it based on their view of the L1 and the p2p layer.
+3) Validator clients should be equipped with an environment variable to vote on slashing proposals. 
+4) Validator clients should be equipped with an environment variable to vote on prover bond unslashing proposals. 
+5) Validator clients should be able to send to L1 a slashing proposal for verification. 
 
 **Changes to the P2P**
-1) A new `Gossipable` type slashing proposal object.
+1) A new `Gossipable` type slashing proposal object. 
+2) A new `Gossipable` type prover bond unslashing proposal object. 
 
 **Changes to the L1 Contracts**
-1) The L1 contracts must accept a slashing proposal object and verify whether certain conditions have been met.
-2) The L1 contracts must be able to slash staked validators within a window commensurate with the validator exit delay.
-3) The L1 contracts must be able to verify aggregated BLS signatures.
-4) The Deposit contract
-5) Apella execute logic should also update the Rollup instance which owns 
+1) The L1 contracts must be able to verify that `MIN_REQUIRED_STAKE_PERCENT` of stake has signed a slashing proposal before executing the slash. 
+2) The L1 contracts must be able to verify aggregated BLS signatures.
+3) The Deposit contract
+4) Apella execute logic should also update the Rollup instance which owns 
 
 ## Questions to Consider During Review
 
 1. Executing Validators can spam the network with slashing proposals in DOS attack on the p2p. Do we need to make this expensive? i.e. stake some TST then initiate the proposal?
-2. Does a slashing proposal need >50% of the stake? Or >50% of the validators?
-3. Do we really want to want to pay a small fee to cover the cost of verifying the BLS signature on L1? Makes slashing someone free.
-4. Does the Deposit contract achieve its intended purpose of making stake migrations easier? 
+2. Do we really want to want to pay a small fee to cover the cost of verifying the BLS signature on L1? Makes slashing someone free.
+3. Does the Deposit contract achieve its intended purpose of making stake migrations easier? 
 
 ## Change Set
 
