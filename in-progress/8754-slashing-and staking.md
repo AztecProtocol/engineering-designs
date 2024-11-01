@@ -113,7 +113,7 @@ If it is not aware of the `Deposit` contract (or does not use one), validators m
 
 Thus no new `Deposit` contracts need to be deployed in the state migration case. 
 
-![Upgrade flow](engineering-designs/in-progress/images/8754/upgrade.png)
+![Upgrade flow](./images/8754/upgrade.png)
 
 ### Withdraw Function
 
