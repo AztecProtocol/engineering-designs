@@ -24,7 +24,9 @@ So we rely on validators to vote to slash dishonest actors.
 
 # Staking
 
-Validators stake with a `Deposit` contract in order to join the validator set. They do NOT stake with the Rollup contract directly. This is meant to simplify moving stake during/after a governance upgrade. 
+Validators stake with a `Deposit` contract in order to join the validator set. This `Deposit` contract can be thought of as an auxillary sidecar that Rollup instances could choose to use for stake management. 
+
+If a Rollup is using the `Deposit` contract, validators do NOT stake with the Rollup contract directly. This is meant to simplify moving stake during/after a governance upgrade. 
 
 ### Deposit Contract
 
@@ -33,12 +35,12 @@ The Deposit contract is an immutable contract living on L1, that is owned by the
 ```solidity
 
 interface IDeposit {
-  function deposit(address validatorAddress, address withdrawalAddress, uint256 amountToDeposit, bool followRegistryBool, address rollupAddress) external returns(bool);
+  function deposit(address validatorAddress, address withdrawalAddress, address rewardsAddress, uint256 amountToDeposit, bool followRegistryBool, address rollupAddress) external returns(bool);
   function activateValidator(address rollupAddress, address validatorAddress, uint256 amount);
   function widthdraw(address rollupAddress, address validatorAddress) external returns(bool);
   function unstakeValidators(addresss rollupAddress, address validatorAddress) external returns(bool);
   function slashValidator(address rollupAddress, address validatorAddress) external returns(bool);
-  function getRollup() internal view returns(address);
+  function moveStake() external returns(bool); // only callable by the Governance Contract
 }
 ```
 
@@ -46,11 +48,15 @@ interface IDeposit {
 
 * Validators must deposit at least `MIN_DEPOSIT_AMOUNT`.
 * A successful call results in an entry in the `Deposits` mapping. This mapping is a `mapping(address rollupAddress => mapping(address validatorAddress => DepositLib.DepositObject))`
-* A `DepositObject` contains references to the `withdrawalAddress` and `followingRegistryBool` variables. It is unique per rollupAddress / validatorAddress combination. 
-* Therefore validators can have multiple deposits corresponding to different Rollups. But for each Rollup, they can only have one deposited balance, one withdrawal address and one `followingRegistryBool` flag. 
-* Once a validator deposit for a particular Rollup meets or exceeds `MIN_ACTIVATION_AMOUNT`, the Rollup instance can add them to the validator set by calling `activateValidator`
-* Any amounts specified by `activateValidator` are removed from `Deposits` and accounted for in a different mapping, say `StakedDeposits`.
+* A `DepositObject` contains references to the `withdrawalAddress` , `rewardsAddress` and `followingRegistryBool` variables. It is unique per rollupAddress / validatorAddress combination. 
+* Therefore validators can have multiple deposits corresponding to different Rollups. But for each Rollup, they can only have one deposited balance, one `withdrawalAddrss` one `rewardsAddress` and one `followingRegistryBool` flag. 
+* Once a validator deposit for a particular Rollup meets or exceeds some `MIN_ACTIVATION_AMOUNT`, the Rollup instance can add them to the validator set by calling `activateValidator`. 
+* The Deposit contract does not define `MIN_ACTIVATION_AMOUNT` but expected to be defined by the Rollup instance instead. 
+* Any amounts specified by `activateValidator` are removed from `Deposits` and accounted for in a different mapping, `StakedDeposits`.
 * Amounts in `StakedDeposits`are now subject to withdrawal delays and slashing requirements. 
+* Validators can alter values of their entries in the `Deposits` mapping. For example, they can change `followRegistryBool` or `rewardsAddress`. 
+* Staked valdiators cannot alter values of their entries in the `StakedDeposits` mapping. They must first unstake and re-deposit. 
+* Only the Governance Contract can alter the `StakedDeposits` i.e move validators to a new Rollup. 
 
 ### Entering the Validator Set
 
@@ -89,13 +95,25 @@ title Deposit and Enter the Validator Set
     end
 ```
 
-### Migrating Stake
+### Migrating Validator Stake - Rollup Upgrade
 
-The `Deposit` contract is owned by the Governance Contract. As such in the event of an upgrade, the Apella can change the `StakedDeposits` mapping so that any `StakeObject` with `followingRegistryBool=true` can be moved to the new Rollup as pointed to by the Registry contract. 
+The `Deposit` contract is owned by the Governance Contract. As such in the event of an upgrade of the Rollup instance, the Governance Contract can call the `moveStake()` to move the `rollupAddress` associated with validators who have `followingRegistryBool=true`.  
+
+The Governance Contract can query the validator set of the old Rollup instance, loop over them in the `StakedDeposits` mapping and change the associated `rollupAddress`. 
+
+The new Rollup instance can query the Deposit contract to discover its validator set. It's expected that this will only need to be done once. 
 
 Validators that choose `followingRegistryBool=false`, will have to exit funds and move manually. Note that this does not require block building on the old Rollup instance to be functional. 
 
-In the event of a Migration (i.e. state wipe), a new Deposit contract must be deployed. 
+### Migrating Validator Stake - State Migration
+
+This works similarly to the upgrade case as long as the state wiped Rollup is aware of the `Deposit` contract. It queries the `Deposit` contract and builds its validator set. 
+
+If it is not aware of the `Deposit` contract (or does not use one), validators must unstake and withdraw from the old Rollup and deposit in the new Rolllup. 
+
+Thus no new `Deposit` contracts need to be deployed in the state migration case. 
+
+![Upgrade flow](engineering-designs/in-progress/images/8754/upgrade.png)
 
 ### Withdraw Function
 
@@ -104,7 +122,7 @@ In the event of a Migration (i.e. state wipe), a new Deposit contract must be de
 
 ### Rewards
 
-Any block rewards accruing to validators should be sent to the `withdrawalAddress` specified in `stakedDeposits`.
+Any block rewards accruing to validators should be sent to the `rewardsAddress` specified in `stakedDeposits`.
 
 # Proof Of Governance Slashing
 
@@ -120,7 +138,7 @@ While Based Fallback acts as a backstop that ensures eventual liveness, maliciou
 
 In PoG, validators vote to slash any dishonest validators. To reduce coordination costs, we equip the validator client software with the ability to automatically initiate and respond to votes to slash dishonest validators based on onchain or offchain (i.e. p2p) evidence.
 
-Any validator can initiate a proposal to slash any other validator(s). A proposal to slash must include the offense, epoch/slot information and the validators to be slashed.  
+Any validator can initiate a proposal to slash any other validator(s). A proposal to slash must include the offense type, epoch/slot information and the validators to be slashed.  
 
 Validators vote by signing the slashing proposal and gossiping back the signed message over the p2p. Anyone can submit a slashing proposal that has gathered enough signatures to the L1 for verification. 
 
@@ -135,7 +153,7 @@ Validators are the users of the PoG slashing mechanism. Full nodes can contribut
 
 1. `MIN_REQUIRED_STAKE_PERCENT` : The minimum % of stake that must sign a slashing / unslashing proposal before it is accepted by the L1 contract. 
 
-## PoG Slashable Offences
+## PoG Slashable Offenses
 
 These are actions that can and will be slashed using PoG.
 
@@ -143,7 +161,7 @@ These are actions that can and will be slashed using PoG.
 
 Some validators implement a `ALWAYS_EXECUTE` flag which causes them to execute every block regardless of whether they're in the committee or not. Validators who implement this flag are called "Executing Validators". 
 
-After every succesful block proposal, these Executing Validators will retrieve the list of `TxHash` from L1 and attempt to re-execute all transactions in the block. 
+After every successful block proposal, these Executing Validators will retrieve the list of `TxHash` from L1 and attempt to re-execute all transactions in the block. 
 
 In the happy path, the Executing Validators are able to obtain the `TxObjects` and proofs required to do so. If the resulting state root does not match what was published to L1, they read the list of all committee members who signed the invalid block. 
 
@@ -158,11 +176,11 @@ Validators who receive this proposal first also read the L1 for the list of `TxH
 
 If the list of `TxHash` does match, they request all `TxEffects` and proofs from the p2p. As a last resort, they request from the validator who initiated the slashing proposal. They also read the state root posted to L1. 
 
-If they're able to retreive all the required data to re-xecute the block contents and find an invalid state root, they sign the slashing proposal and gossip the signed proposal via the p2p. 
+If they're able to retrieve all the required data to re-execute the block contents and find an invalid state root, they sign the slashing proposal and gossip the signed proposal via the p2p. 
 
 The Executing Validator who initialized the slashing proposal must aggregate signatures and post to L1 for verification once `MIN_REQUIRED_STAKE_PERCENT`of the stake has signed the proposal. 
 
-On the L1, the contract verifies that: 
+The L1 contract verifies: 
 1) Validators in control of more than `MIN_REQUIRED_STAKE_PERCENT` of stake have signed the slashing proposal.
 
 If the above checks pass, the named committee members are slashed. The L1 contracts pays out a small fee to cover the cost of verifying signatures on the L1. This fee goes to the validator who submitted the successful slashing proposal to the L1. 
@@ -224,29 +242,23 @@ The answer is -> Yes! A majority stake voting incorrectly on a data withholding 
 
 Therefore the Executing Validators who can't download all `TxObject` and proof data for any given block should initiate a data withholding slashing proposal, which works in exactly the same way as the invalid state root slashing proposal.
 
-**Note on L1 verification of slashing proposals**
-
-This design does not require the L1 to verify any state regarding the slashing proposal. It only requires the L1 to verify that a majority of the stake has signed the slashing proposal. In the future, based on feedback during Testnet, we could extend the L1 verification logic to include checking that:
-1. The epoch has indeed re-orged. 
-2. The committee members named in the slashing proposal have signed the specific block in question.
-
-**Note on capability of Nodes to investigate slashing proposals**
-
-One question could be that given that the L1 does not verify any state regarding the slashing proposal, why do we require the validator nodes to "investigate" the invalid state root slashing proposal? 
-
-The answer is that we want to make it as easy as possible for validators to slash dishonest validators. Thus in the case of an invalid state root posted to the L1, where data is available to verify, coordination on the forums is unnecessary. 
 
 ### 2. Bonded provers don't post proofs on time
 
-A bonded prover who fails to post proofs on time should have their bonds slashed. However we allow for an unslashing period where the prover can plead their case and convince the validators to vote to unslash them. 
+A bonded prover who fails to post proofs on time should have her bond 100% slashed. However we allow for an unslashing period where the prover can plead their case and convince the validators to vote to unslash them. 
 
-Provers may not be able to post proofs if the L1 is congested or is experiencing an inactivity leak. A proving marketplace may come under an attack where their nodes go offline. There could be other valid reasons. 
+Provers may not be able to post proofs if the L1 is congested or is experiencing an inactivity leak. A proving marketplace may come under an attack where their nodes go offline. There could be other valid reasons for why provers did not submit on time. 
 
-Instead of automatically and immediatley slashing the bond, the prover's bond sits in escrow (or a separate contract) for $t=4$ weeks. During this period, the prover can plead their case and convince the validators to vote to unslash them. A validator must initiate a vote to unslash the prover and submit to L1 a proposal to unslash the prover that gathers signatures from more than `MIN_REQUIRED_STAKE_PERCENT` of the stake, otherwise the bond gets slashed. 
+Instead of automatically and immediately slashing the bond, the prover's bond sits in escrow (or a separate contract) for $t=4$ weeks. During this period, the prover can plead their case and convince the validators to vote to unslash them. A validator must initiate a vote to unslash the prover and submit to L1 a proposal to unslash the prover that gathers signatures from more than `MIN_REQUIRED_STAKE_PERCENT` of the stake, otherwise the bond gets slashed. 
 
-Proving bond unslashing proposals work differently to the invalid state root slashing proposals. Therefore the validator node software should allow a separate environment variable for voting on unslashing prover proposals. 
+Proving bond unslashing proposals are different from the invalid state root slashing proposals. The validator node software should allow a separate environment variable for voting on unslashing prover proposals. 
 
 Validators should be able to specify that an unslashing proposal for prover with address `0xprover` that they receive over gossipSub should be voted on in a certain manner. They could also specify to always vote yes or always vote no to any unslashing proposal using the same environment variable. 
+
+The L1 contract verifies:
+1. Validators in control of more than `MIN_REQUIRED_STAKE_PERCENT` of stake have signed the unslashing proposal.
+2. The prover named in the proposal was indeed bonded and subsequently missed their proof submission window. 
+3. The bond is sent back to the same prover's address. 
 
 ### 3. Sequencers don't accept EpochProofQuotes
 
@@ -260,8 +272,8 @@ iv) The `basisPointFee` was within the allowable range.
 
 Nodes do NOT need to auto-respond to this type of slashing proposal. It is expected that such coordination happens offchain. 
 
-The L1 contract verifies that `MIN_REQUIRED_STAKE_PERCENT` of stake has signed the slashing proposal. 
-
+The L1 contract verifies: 
+1) Validators in control of more than `MIN_REQUIRED_STAKE_PERCENT` of stake have signed the slashing proposal.
 
 ### 4. Inactivity Leak
 
@@ -269,20 +281,40 @@ Upon entering Based Fallback mode, validators can slash the committee members wh
 
 Nodes do NOT need to auto-respond to this type of slashing proposal. It is expected that such coordination happens offchain. 
 
-The L1 contract verifies that `MIN_REQUIRED_STAKE_PERCENT` of stake has signed the slashing proposal. 
+The L1 contract verifies: 
+1) Validators in control of more than `MIN_REQUIRED_STAKE_PERCENT` of stake have signed the slashing proposal.
 
 ### Max slashing limits
 
-For the initial version of the slashing implementation, we're opting for not restricting the max slashing limits in the rollup contracts. The reasons being: 
+In the initial version of the slashing implementation, we will not impose limits on the maximum stake that can be slashed. The reasons being: 
 
 1) In order to utilize the full economic security of the Pending Chain, the entire sum of the validator deposit must be at stake. i.e. it must be possible to get slashed 100%. 
-2) Let's say we have a 1% limit for simple offences, and 50% for larger offenses. Then a `MIN_REQUIRED_STAKE_PERCENT` of stake can still vote to slash based on the larger offense. Since L1 verification is not possible for many of these offenses, we're always dependent on the honesty of the staking set anyway.
+2) Let's say we have a 1% limit for simple offenses, and 50% for larger offenses. Then a `MIN_REQUIRED_STAKE_PERCENT` of stake can still vote to slash based on the larger offense. Since L1 verification is not possible for many of these offenses, we're always dependent on the honesty of the staking set anyway.
 3) Reduces code complexity. 
 4) We could always come back and implement strict limits if we get feedback to do so. 
 
 Note: We're also not limiting the number of validators that can be slashed. If a malicious party acquires `MIN_REQUIRED_STAKE_PERCENT` of the staking set.. it's a Chernobyl scale nuclear event for everybody else.
 
-### Other Slashable Offences 
+### PoG Other Notes
+
+**Note on L1 verification of slashing proposals**
+
+This design does not require the L1 to verify any state regarding the slashing proposal. It only requires the L1 to verify that a majority of the stake has signed the slashing proposal. In the future, based on feedback during Testnet, we could extend the L1 verification logic to include checking that:
+1. The epoch has indeed re-orged. 
+2. The committee members named in the slashing proposal have signed the specific block in question.
+
+**Note on capability of Nodes to investigate slashing proposals**
+
+One question could be that given that the L1 does not verify any state regarding the slashing proposal, why do we require the validator nodes to "investigate" the invalid state root slashing proposal? 
+
+The answer is that we want to make it as easy as possible for validators to slash dishonest validators. Thus in the case of an invalid state root posted to the L1, where p2p data is available to verify, coordination on the forums is unnecessary. 
+
+To confirm, all validator clients should know how to respond to invalid state slashing proposals (i.e. what data to request and how to vote based off that data) while Executing Validators should also know how to initiate them. 
+
+**Note on compensating the validator which submits the slashing proposal to L1**
+We should consider a small reward for this validator for the costs incurred in executing all transactions, coordinating offchain with other validators, and submitting the slashing proposal payload to L1. Who pays this reward? 
+
+### Non PoG Slashable Offenses 
 
 In addition to PoG, the following offenses can be slashed entirely via the L1 contracts. 
 
@@ -294,7 +326,7 @@ In addition to PoG, the following offenses can be slashed entirely via the L1 co
 
 ### Exiting Slashed Validators
 
-Slashed validtors should be exited from the validator set in addition to being slashed. The remaining stake of a slashed validator can be withdrawn after `SLASHING_WITHDRAW_DELAY` time. This delay is longer than the exit delay for non-slashed validators. 
+Slashed validators should be exited from the validator set in addition to being slashed. The remaining stake of a slashed validator can be withdrawn after `SLASHING_WITHDRAW_DELAY` time. This delay is longer than the exit delay for non-slashed validators. 
 
 Slashed validators can rejoin the validator set at a later time. 
 
@@ -303,7 +335,7 @@ Slashed validators can rejoin the validator set at a later time.
 The main changes are to the L1 contracts, p2p and the validator clients. 
 
 **Changes to the Validator Client**
-1) We introduce a new validtor "mode" called Executing Validator which executes all transactions all the time, even when they are not selected for a committee. 
+1) We introduce a new validator "mode" called Executing Validator which executes all transactions all the time, even when they are not selected for a committee. 
 2) In the case of a invalid state root slashing proposal, validator clients must deduce what data they need to request from L1 and from other nodes when they receive a slashing proposal via the p2p. They must also decide whether to sign the slashing proposal or ignore it based on their view of the L1 and the p2p layer.
 3) Validator clients should be equipped with an environment variable to vote on slashing proposals. 
 4) Validator clients should be equipped with an environment variable to vote on prover bond unslashing proposals. 
