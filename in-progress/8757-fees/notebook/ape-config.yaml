@@ -1,0 +1,8 @@
+name: fee-modelling
+
+default_ecosystem: ethereum
+
+node:
+  ethereum:
+    mainnet:
+      uri: http://localhost:8545
