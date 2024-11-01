@@ -7,12 +7,19 @@
 | Approvers            | @Maddiaa0 @PhilWindle @dbanks12 @nventuro @joeandrews @aminsammara |
 | Target Approval Date | 2024-11-01                                                         |
 
-## Mana and Costs
+## Definitions
 
 Refer to the unit of work on L2 as "mana", analogous to gas on L1. This has been referred to as "L2 gas" in the past.
-This is also separate from the notion of "fee juice", which is conceptually a "token" with a balance, analogous to ETH; when bridged to L2 it is non-transferable, unlike ETH.
 
-In this document, we will use the term "fee asset" to refer to the unit of account for fees; that is, a transaction consumes an amount of mana, which is converted to the fee asset according to the current price of mana.
+This is also separate from the notion of unit of account.
+
+Assume for the sake of this document the existence of a test token which is created on L1. Refer to it as the "fee asset".
+
+When the "fee asset" is bridged into the L2, it is converted to "fee juice", which is conceptually a "token" with a balance but is non-transferable; it can only be used to pay for L2 transactions.
+
+With the exception of the section on distribution of the fees, this document is thus primarily concerned with "fee juice", as that is what users pay for transactions on L2.
+
+## Mana and Costs
 
 A transaction incurs the following costs:
 1. Proposers/validators validate and simulate the transaction
@@ -39,17 +46,17 @@ We then allow an oracle to inform the wei per mana for proving a unit of mana.
 
 We add these two "wei per mana" values together, and multiply by an EIP-1559 style congestion multiplier based on the excess mana in the current block to get the base fee in wei per mana.
 
-We then allow an oracle to inform the fee asset per wei.
+We then allow an oracle to inform the fee juice per wei.
 
-We then multiply the base fee in wei per mana by the fee asset per wei to get the "true" L2 base fee in fee asset per mana (hereafter just `base_fee_asset_per_mana`).
+We then multiply the base fee in wei per mana by the fee juice per wei to get the "true" L2 base fee in fee juice per mana (hereafter just `base_fee_juice_per_mana`).
 
 ### User Flow
 
-When a user submits a transaction, they first compute the `base_fee_asset_per_mana` by looking at the previous block header and the L1 rollup contract.
+When a user submits a transaction, they first compute the `base_fee_juice_per_mana` by looking at the previous block header and the L1 rollup contract.
 
-They then specify a max fee asset per mana (and max priority fee) they are willing to pay.
+They then specify a max fee juice per mana (and max priority fee) they are willing to pay.
 
-The transaction should be included if the specified max fee asset per mana is greater than the L2 base fee, barring caveats such as sufficient balance, etc.
+The transaction should be included if the specified max fee juice per mana is greater than the L2 base fee, barring caveats such as sufficient balance, etc.
 
 ### Why is `BLOBS_PER_BLOCK` a constant?
 
@@ -67,7 +74,7 @@ If L1 gas spikes during an epoch, this will be reflected in the `wei_per_l1_gas`
 However, these oracles lag the current L1 base fees. Furthermore, the base fee computed at the time of a block being proposed may differ from the base fee at the time of the epoch being verified.
 
 Thus, it is possible for L1 gas prices to spike to a point where it is not profitable for a prover to submit their proof to L1. There are two retorts:
-1. The prover should bake in a risk premium to compensate them for this risk; it is similar to the risk that the price of fee asset relative to any other asset shifts against them.
+1. The prover should bake in a risk premium to compensate them for this risk; it is similar to the risk that the price of fee juice relative to any other juice shifts against them.
 2. The prover can wait until the end of the epoch waiting for a less congested window to submit their proof to L1.
 
 ### Not charging for DA separately
@@ -92,9 +99,9 @@ Further, it is assumed that in the immediate term the proving cost will dominate
 - `MINIMUM_PROVING_COST_WEI_PER_MANA` - the minimum cost in wei for proving a unit of mana (e.g. 100)
 - `MAXIMUM_PROVING_COST_WEI_PER_MANA_PERCENT_CHANGE_PER_L2_SLOT` - the maximum percentage increase in the cost of proving a unit of mana per block (e.g. 1%)
 - `PROVING_COST_UPDATE_FRACTION` - a value used to update the `proving_cost_modifier` (e.g. 1e11)
-- `MINIMUM_FEE_ASSET_PER_WEI` - the minimum price in wei of the fee asset (e.g. TST)
-- `MAXIMUM_FEE_ASSET_PER_WEI_PERCENT_CHANGE_PER_L2_SLOT` - the maximum percentage increase in the price of the fee asset per block (e.g. 1%)
-- `FEE_ASSET_PER_WEI_UPDATE_FRACTION` - a value used to update the `fee_asset_price_modifier` (e.g. 1e11)
+- `MINIMUM_FEE_JUICE_PER_WEI` - the minimum price in wei of the fee juice (e.g. 1)
+- `MAXIMUM_FEE_JUICE_PER_WEI_PERCENT_CHANGE_PER_L2_SLOT` - the maximum percentage increase in the price of the fee juice per block (e.g. 1%)
+- `FEE_JUICE_PER_WEI_UPDATE_FRACTION` - a value used to update the `fee_juice_price_modifier` (e.g. 1e11)
 - `MINIMUM_CONGESTION_MULTIPLIER` - the minimum value the congestion multiplier can take (e.g. 1)
 - `CONGESTION_MULTIPLIER_UPDATE_FRACTION` - the constant factor to dampen movement in the congestion multiplier (e.g. 8.547 * TARGET_MANA_PER_BLOCK)
 
@@ -102,7 +109,7 @@ Further, it is assumed that in the immediate term the proving cost will dominate
 The L2 block header contains the following fields:
 
 - `total_mana_used` - the total mana used by the block
-- `base_fee_asset_per_mana` - the base fee in fee asset per mana
+- `base_fee_juice_per_mana` - the base fee in fee juice per mana
 
 ## Rollup Contract Fields
 
@@ -110,8 +117,8 @@ The rollup contract contains the following fields:
 
 - `proving_cost_modifier` - a value used in the computation of the proving cost per mana
 - `proving_cost_modifier_delta` - an "oracle" used to update the `proving_cost_modifier` from the previous block
-- `fee_asset_price_modifier` - a value used in the computation of the fee asset price per wei
-- `fee_asset_price_modifier_delta` - an "oracle" used to update the `fee_asset_price_modifier` from the previous block
+- `fee_juice_price_modifier` - a value used in the computation of the fee juice price per wei
+- `fee_juice_price_modifier_delta` - an "oracle" used to update the `fee_juice_price_modifier` from the previous block
 - `wei_per_l1_gas` - the cost of L1 gas in wei. Updated by anyone to the current L1 gas price at most every `MINIMUM_L2_SLOTS_PER_UNDERLYING_BASE_FEE_ORACLE_UPDATE` slots
 - `wei_per_l1_blob_gas` - the cost of L1 blob gas in wei. Updated by anyone to the current L1 blob gas price at most every `MINIMUM_L2_SLOTS_PER_UNDERLYING_BASE_FEE_ORACLE_UPDATE` slots
 
@@ -140,7 +147,7 @@ The cost of an L2 block's data in wei is equal to the following:
 
 There are 3 important variables that are computed exponentially:
 - `proving_cost_wei_per_mana`
-- `fee_asset_per_wei`
+- `fee_juice_per_wei`
 - `base_fee_wei_per_mana_congestion_multiplier`
 
 The purpose is to allow prices to fluctuate, but with guarantees, e.g. the proving cost in wei per mana will never change by more than X% per block.
@@ -178,23 +185,23 @@ That is,
 The new `proving_cost_modifier_delta` is capped at (+/-) `MAXIMUM_PROVING_COST_WEI_PER_MANA_PERCENT_CHANGE_PER_L2_SLOT` * `PROVING_COST_UPDATE_FRACTION` / 100.
 
 
-### `fee_asset_per_wei`
+### `fee_juice_per_wei`
 
 ```math
-\text{fee asset per wei} = \text{MINIMUM\_FEE\_ASSET\_PER\_WEI} * \text{exp}\left(\frac{\text{fee asset price modifier}}{\text{FEE\_ASSET\_PER\_WEI\_UPDATE\_FRACTION}}\right)
+\text{fee juice per wei} = \text{MINIMUM\_FEE\_ASSET\_PER\_WEI} * \text{exp}\left(\frac{\text{fee juice price modifier}}{\text{FEE\_ASSET\_PER\_WEI\_UPDATE\_FRACTION}}\right)
 ```
 
-A proposer can adjust the `fee_asset_price_modifier` stored in the rollup contract by up to `MAXIMUM_FEE_ASSET_PER_WEI_PERCENT_CHANGE_PER_L2_SLOT` each slot.
+A proposer can adjust the `fee_juice_price_modifier` stored in the rollup contract by up to `MAXIMUM_FEE_JUICE_PER_WEI_PERCENT_CHANGE_PER_L2_SLOT` each slot.
 
-They do so by updating the `fee_asset_price_modifier_delta` field, which is used to update the `fee_asset_price_modifier` stored in the rollup contract.
+They do so by updating the `fee_juice_price_modifier_delta` field, which is used to update the `fee_juice_price_modifier` stored in the rollup contract.
 
 That is,
 
 ```math
-\text{new fee asset price modifier} := \text{old fee asset price modifier} + \text{fee asset price modifier delta}
+\text{new fee juice price modifier} := \text{old fee juice price modifier} + \text{fee juice price modifier delta}
 ```
 
-The new `fee_asset_price_modifier_delta` is capped at (+/-) `MAXIMUM_FEE_ASSET_PER_WEI_PERCENT_CHANGE_PER_L2_SLOT` * `FEE_ASSET_PER_WEI_UPDATE_FRACTION` / 100.
+The new `fee_juice_price_modifier_delta` is capped at (+/-) `MAXIMUM_FEE_JUICE_PER_WEI_PERCENT_CHANGE_PER_L2_SLOT` * `FEE_JUICE_PER_WEI_UPDATE_FRACTION` / 100.
 
 ### `base_fee_wei_per_mana_congestion_multiplier`
 
@@ -221,13 +228,13 @@ When a proposer is building an L2 block, it calculates:
 \text{L1 cost in wei per L2 block} &= \text{L1 execution wei per L2 block} + \text{L1 data wei per L2 block} \\
 \text{wei/mana} &= \frac{\text{L1 cost in wei per L2 block}}{\text{TARGET\_MANA\_PER\_BLOCK}} + \text{proving cost wei per mana} \\
 \text{base fee in wei/mana} &= \text{wei/mana} * \text{base fee wei per mana congestion multiplier} \\
-\text{base fee in fee asset/mana} &= \text{base fee in wei/mana} * \text{fee asset per wei}
+\text{base fee in fee juice/mana} &= \text{base fee in wei/mana} * \text{fee juice per wei}
 \end{aligned}
 ```
 
-This final value is the `base_fee_asset_per_mana` field in the L2 block header.
+This final value is the `base_fee_juice_per_mana` field in the L2 block header.
 
-## The cost of a transaction in the fee asset
+## The cost of a transaction in the fee juice
 
 The amount of mana a transaction consumes is:
 
@@ -235,19 +242,19 @@ The amount of mana a transaction consumes is:
 \text{mana}_{tx} = \text{OVERHEAD\_MANA\_PER\_TX} + \sum_{op \in tx} \text{mana per operation}(op)
 ```
 
-Therefore, the cost of a transaction's proposal, data publication, and verification at time $i$ is, denominated in the fee asset:
+Therefore, the cost of a transaction's proposal, data publication, and verification at time $i$ is, denominated in the fee juice:
 
 ```math
-\text{fee asset}_{tx} = \text{mana}_{tx} * \text{base fee asset per mana}
+\text{fee juice}_{tx} = \text{mana}_{tx} * \text{base fee juice per mana}
 ```
 
 ## Distribution of the fees
 
-When a transaction is included in a block in the pending chain, the L2 balance of the fee asset for the `fee_payer` of the transaction is reduced by the transactions's fee asset cost.
+When a transaction is included in a block in the pending chain, the L2 balance of the fee juice for the `fee_payer` of the transaction is reduced by the transactions's fee asset cost.
 
-When an epoch is proven, the fees for the epoch are paid out to each proposer for the block(s) they proposed.
+When an epoch is proven, the fee *juice* that was collected for the epoch are paid out to each proposer for the block(s) they proposed on L1 as fee *asset*.
 
-A percentage of each block's fee asset fees are paid to the prover of the epoch. The percentage is determined based on the quote submitted by the prover for the epoch.
+A percentage of each block's fee *juice* fees are paid to the prover of the epoch on L1 as fee *asset*. The percentage is determined based on the quote submitted by the prover for the epoch.
 
 This quote is submitted by the prover in epoch `i+1` to prove epoch `i`, and is thus claimed/submitted to L1 by a proposer in epoch `i+1`.
 
