@@ -43,7 +43,7 @@ A deployment of the Aztec Network includes several contracts running on L1.
 
 The Test Token (TST) will be an ERC20 token that will be used to pay for transaction fees on the Aztec Network.
 
-It will also used on L1 as part of the validator selection process.
+It will also be used on L1 as part of the validator selection process.
 
 Protocol incentives are paid out in TST.
 
@@ -239,9 +239,9 @@ Each slot in an epoch will be randomly assigned to a validator in the committee.
 
 ## Fees
 
-Every transaction in the Aztec Network has a fee associated with it. The fee is payed in TST which has been bridged to L2.
+Every transaction in the Aztec Network has a fee associated with it. The fee is paid in TST which has been bridged to L2.
 
-Transactions consume gas. There are two types of gas:
+Transactions consume gas. There are two types of gas fees:
 
 - L2 gas: the cost of computation
 - DA gas: the cost of publishing/storing data
