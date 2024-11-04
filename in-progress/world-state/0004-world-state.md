@@ -33,7 +33,7 @@ Every tree instance is represented by 3 stores of state,
 2. Uncommitted state - an in-memory cache of updated nodes overlaying the committed store also referenced by node index.
 3. Snapshotted state - the historical values of every populated node, structured to minimize space consumption at the expense of node retrieval speed. Reading this tree requires 'walking' down from the root at a given block number.
 
-The idea behind this structure is that sequencers are the only actor interested in uncommitted state. It represents the state of their pending block and they update the uncommitted state as part of building that block. Once a block has been published to L1, its state is committed and the uncommmitted state is destroyed. After each block is committed, the historical tree is traversed in a BFS manner checking for differences in each node. If a node is the same as previously, the search does not continue to its children. Modified nodes are updated in the snapshot tree.
+The idea behind this structure is that sequencers are the only actor interested in uncommitted state. It represents the state of their pending block and they update the uncommitted state as part of building that block. Once a block has been published to L1, its state is committed and the uncommitted state is destroyed. After each block is committed, the historical tree is traversed in a BFS manner checking for differences in each node. If a node is the same as previously, the search does not continue to its children. Modified nodes are updated in the snapshot tree.
 
 Clients only read committed or snapshotted state, they have no need to read uncommitted state.
 
@@ -129,7 +129,7 @@ We now add block 4, which updates leaf 0 again. Whilst this might not be likely 
 
 ### Snapshotting Append Only Trees
 
-We have seperated the snapshotting of append only trees into its own section as we propose a completely different approach. We won't snapshot them at all! By their very nature, simply storing an index of the size of the tree after every additional block, it is possible to reconstruct the state of the tree at any point in its history. We will demonstrate how this works. Consider the following append only tree after 3 blocks of leaves have been added. The index at the bottom shows that the tree was at size 2 after 1 block, size 3 after 2 blocks and size 5 after 3 blocks. We want to query the tree as it was at block 2 so only considering the green leaves, not those coloured yellow.
+We have separated the snapshotting of append only trees into its own section as we propose a completely different approach. We won't snapshot them at all! By their very nature, simply storing an index of the size of the tree after every additional block, it is possible to reconstruct the state of the tree at any point in its history. We will demonstrate how this works. Consider the following append only tree after 3 blocks of leaves have been added. The index at the bottom shows that the tree was at size 2 after 1 block, size 3 after 2 blocks and size 5 after 3 blocks. We want to query the tree as it was at block 2 so only considering the green leaves, not those coloured yellow.
 
 ![append only tree](./append-only-tree.png)
 
