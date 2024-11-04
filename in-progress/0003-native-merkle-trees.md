@@ -26,7 +26,7 @@ There are many parts to this design, we will walk through them individiually and
 
 A new C++ binary, World State, will be created that will be started by the node software. It will be configured with the location in which Merkle Tree data should be stored. It will then accept and respond with msgpack-ed messages over one or more streams. The initial implementation will simply used stdio, but this will be abstracted such that this could be replaced by other stream-based mechanisms.
 
-To interface with the World State, an abstraction will be created at the `MerkleTreeDb` level. This accurately models the scope of functionality provided by the binary as owner of all the trees. It was considered that the abstraction could sit at the level of individual trees, but this creates difficulty whan we want to send an entire block to the World State to be inserted. This is an important use case as synching entire blocks is where signifcant performance optimisations can be made.
+To interface with the World State, an abstraction will be created at the `MerkleTreeDb` level. This accurately models the scope of functionality provided by the binary as owner of all the trees. It was considered that the abstraction could sit at the level of individual trees, but this creates difficulty whan we want to send an entire block to the World State to be inserted. This is an important use case as synching entire blocks is where significant performance optimisations can be made.
 
 
 ``` TS
@@ -154,7 +154,7 @@ The `Update` operation involves inserting side-effects into one or more trees. D
 
 #### Append Only
 
-Append only trees don't support the updating of any leaves. New leaves are inserted at the right-most location and nodes above these are updated to reflect their newly hashed values. Optimisation here is simply a case of dividing the set of leaves into smaller batches and hashing each of these batches into a sub-tree in seperate threads. Finally, the roots are used to build the sub-tree on top before hashing to the root of the main tree.
+Append only trees don't support the updating of any leaves. New leaves are inserted at the right-most location and nodes above these are updated to reflect their newly hashed values. Optimisation here is simply a case of dividing the set of leaves into smaller batches and hashing each of these batches into a sub-tree in separate threads. Finally, the roots are used to build the sub-tree on top before hashing to the root of the main tree.
 
 #### Indexed Tree
 
