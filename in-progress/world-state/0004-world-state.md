@@ -82,7 +82,7 @@ The reasoning behind this structure is:
 3. The block updates cache could be either in memory or persisted in a database. Based on the configuration of the node and what it is used for.
 4. The 'view' of the world state provided by an image is exactly as it was for that block, meaning historic state requests can be served against blocks on the pending chain.
 5. Block building participants can request multiple images for the purpose of e.g. simulating multiple different block permutations or proving multiple blocks concurrently if the chosen proving coordination protocol permits.
-6. For images extending beyond the previous epoch, the referencing of the tip of the previous epoch is to ensure that the block updates database for any image does not grow larger than 1 epoch and it is effecitvely 'reset' upon finalization of an epoch.
+6. For images extending beyond the previous epoch, the referencing of the tip of the previous epoch is to ensure that the block updates database for any image does not grow larger than 1 epoch and it is effectively 'reset' upon finalization of an epoch.
 7. Re-orgs become trivial. The world state simply destroys the current set of images of the pending chain.
 
 ## The Commit Process
