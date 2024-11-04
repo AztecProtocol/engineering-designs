@@ -12,7 +12,7 @@ This design attempts to solve the problem of slow sync and merkle tree insertion
 
 ## Introduction
 
-We require high performance merkle tree implementations both to ensure nodes can stay synched to the network and sequencers/provers can advance the state as required to build blocks. Our cuirrent TS implementations are limited in their single-threaded nature and the unavoidable constraint of have to repeatedly call into WASM to perform a hash operation.
+We require high performance merkle tree implementations both to ensure nodes can stay synched to the network and sequencers/provers can advance the state as required to build blocks. Our current TS implementations are limited in their single-threaded nature and the unavoidable constraint of have to repeatedly call into WASM to perform a hash operation.
 
 Some analysis of the quantity of hashing and the time required can be found [here](https://hackmd.io/@aztec-network/HyfTK9U5a?type=view).
 
@@ -24,7 +24,7 @@ There are many parts to this design, we will walk through them individiually and
 
 ### Overall Architecture
 
-A new C++ binary, World State, will be created that will be started by the node software. It will be configured with the location in which Merkle Tree data should be stored. It will then accept and respond with msgpack-ed messages over one or more streams. The initial implementation will simply used stdio, but this will be absrtacted such that this could be replaced by other stream-based mechanisms.
+A new C++ binary, World State, will be created that will be started by the node software. It will be configured with the location in which Merkle Tree data should be stored. It will then accept and respond with msgpack-ed messages over one or more streams. The initial implementation will simply used stdio, but this will be abstracted such that this could be replaced by other stream-based mechanisms.
 
 To interface with the World State, an abstraction will be created at the `MerkleTreeDb` level. This accurately models the scope of functionality provided by the binary as owner of all the trees. It was considered that the abstraction could sit at the level of individual trees, but this creates difficulty whan we want to send an entire block to the World State to be inserted. This is an important use case as synching entire blocks is where signifcant performance optimisations can be made.
 
@@ -140,11 +140,11 @@ Examples of reads are requesting sibling paths, state roots etc.
 
 #### Updates
 
-As a sequencer/prover inserts transaction side-effects, the resulting new state is computed and cached in memory. This allows for the seperation of `committed` and `uncommitted` reads and the easy rolling back of unsuccessful blocks.
+As a sequencer/prover inserts transaction side-effects, the resulting new state is computed and cached in memory. This allows for the separation of `committed` and `uncommitted` reads and the easy rolling back of unsuccessful blocks.
 
 #### Commits
 
-When a block settles, the node performs a commit. It verifies any uncommitted state it may have against that published on chain to determine if that state is canonical. If it is not, the `uncommitted` state is dicarded and the node perform an `Update` operation using the newly published side effects.
+When a block settles, the node performs a commit. It verifies any uncommitted state it may have against that published on chain to determine if that state is canonical. If it is not, the `uncommitted` state is discarded and the node perform an `Update` operation using the newly published side effects.
 
 Once the node has the correct `uncommitted` state, it commits that state to disk. This is the only time that a write transaction is required against the database.
 
