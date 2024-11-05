@@ -1,18 +1,24 @@
 
 |                      |                                                                        |
 | -------------------- | ---------------------------------------------------------------------- |
-| Issue                | [Spartan](https://github.com/AztecProtocol/aztec-packages/issues/7482) |
+| Issue                |  |
 | Owners               | @aminsammara                                     |
 | Approvers            | @joeandrews @ludamad @PhilWindle @LHerskind   |
-| Target Approval Date | 2024-07-24                                                             |
+| Target Approval Date | 2024-11-11                                                             |
 
 ## Executive Summary
 
-Sequencer & Prover Testnet (S&P Testnet) is a series of intermediate network launches, each release scaling the network in the number of validators, throughput and features. The goal is to release each of these networks leading to a final release which will be the Public Testnet network. 
+The Sequencer & Prover Testnet (S&P Testnet) is structured as a progressive series of network launches, designed to scale the number of validators, network throughput, and protocol complexity with each release. The approach is to launch intermediate networks, rigorously test them internally, and advance to the next stage only if the network demonstrates stable performance for an established period. By moving through these phases deliberately, we aim to ensure a reliable testnet foundation while maintaining flexibility to address technical challenges as they arise.
 
-We will perform a total of 2 network upgrades to i) test the governance upgrade mechanism and ii) deploy the actual Testnet network after demonstrating Sepolia and blobDA work on a private live network. Both upgrades will be “state wipes” i.e. the upgraded networks will start from genesis state. 
 
-We will run 1TPS for only 10 epochs while running the 3rd network deployed in S&P Testnet. If we fail, we try again in the 4th network launch. 
+### Goals
+**Stability in Each Phase:** Each deployment is intended to operate stably over multiple days before moving forward. Each deployment advances network capacity or governance functionality, allowing us to evaluate new features in controlled conditions, gain insights, and refine configurations.
+
+**Incremental Success:** We prioritize creating a positive, adaptable release schedule by avoiding rigid deadlines. This encourages each team to collaborate at their best pace, reducing technical debt and enhancing the quality of each milestone without pressure from missed timelines.
+
+**Structured Coordination:** All teams will participate in a coordinated release cycle that aligns engineering, commercial, and S&P testnet participants. Deployment readiness is evaluated each Monday following internal stress tests, with potential releases set for Tuesday, allowing ample preparation and communication.
+
+
 
 ## Release schedule
 
