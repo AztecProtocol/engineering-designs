@@ -225,7 +225,7 @@ Today the `process` method does the following:
 5. Test data availability against the availability oracle
 6. Verify the root rollup proof
 7. Insert L2-to-L1 messages into the Outbox using the `out_hash` and block number
-8. Pay out `total_fees` to `coinbase` in the L1 gas token
+8. Pay out `total_fees` to `coinbase` in the L1 gas asset
 
 The first four items can keep being carried out by the `process` method for each new block that gets submitted. Proof verification, L2-to-L1 messages, and fee payment messages are moved to `submitProof`. Data availability needs more clarity based the interaction between the blob circuits and the point evaluation precompile, but it may be moved entirely to `submitProof`.
 
@@ -239,7 +239,7 @@ This method receives the root rollup public inputs, plus the aggregation object 
 
 1. Verify the root rollup proof
 2. Insert L2-to-L1 messages into the Outbox using the `public_inputs.out_hash` and the _last block number in the range_
-3. Pay out `value` to `recipient` in the L1 gas token for each pair in the `public_inputs.fees` array
+3. Pay out `value` to `recipient` in the L1 gas asset for each pair in the `public_inputs.fees` array
 
 In addition, this method:
 
@@ -256,7 +256,7 @@ Assuming we implement a proving coordination mechanism where the block ranges pr
 
 ### Batched vs optimistic vs pull fee payments
 
-In the model above, fee payments are executed in-batch at the time the proof is submitted. Assuming the L1 payment token includes a `transferBatch` method, the cost of 32 payments can be brought down to about 160k gas (5000 x 32), which is manageable. However, it imposes a max size on the number of blocks it can be proven on a single batch, and 160k is still a significant number.
+In the model above, fee payments are executed in-batch at the time the proof is submitted. Assuming the L1 payment asset includes a `transferBatch` method, the cost of 32 payments can be brought down to about 160k gas (5000 x 32), which is manageable. However, it imposes a max size on the number of blocks it can be proven on a single batch, and 160k is still a significant number.
 
 Alternatively, we could keep fee payments as part of the `Rollup.process` method, so that a sequencer is payed the moment they submit a block, even if it doesn't get proven. Depending on how we implement unhappy paths in block building, we could optimistically pay fees on submission, and recoup them as part of a slashing mechanism. This would also simplify the block rollup circuits, as we would not need to construct an array of payments. Either way, it could be a good idea to start with this approach initially as it requires the least engineering effort.
 

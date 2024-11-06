@@ -43,7 +43,7 @@ During this time, the proposer for a slot can submit a claim to be the prover fo
 This can be a transaction separate from the submission of their proposed block.
 
 Doing so grants monopoly rights to the rewards for submitting the proof of epoch `n-1`:
-if there are block rewards in test token TST, they will be sent to the address that submitted the claim.
+if there are block rewards in TST, they will be sent to the address that submitted the claim.
 
 If no claim is submitted, the pending chain is pruned to the tip of the proven chain;
 a caveat is if a proof for epoch `n-1` is submitted during the proof claim phase.
@@ -66,13 +66,13 @@ sequenceDiagram
     participant Proposer
     participant EscrowContract
     participant RollupContract
-    participant TokenContract
+    participant TSTContract
 
-    Note over Prover,TokenContract: Prover deposits bond in escrow once
+    Note over Prover,TSTContract: Prover deposits bond in escrow once
 
     activate Prover
     Prover->>EscrowContract: deposit(amount, deadline)
-    EscrowContract->>TokenContract: transferFrom(prover, escrow, amount)
+    EscrowContract->>TSTContract: transferFrom(prover, escrow, amount)
     deactivate Prover
     
     loop Per Epoch

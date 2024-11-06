@@ -13,9 +13,9 @@ Refer to the unit of work on L2 as "mana", analogous to gas on L1. This has been
 
 This is also separate from the notion of unit of account.
 
-Assume for the sake of this document the existence of a test token which is created on L1. Refer to it as the "fee asset".
+Assume for the sake of this document the existence of TST which is created on L1. Refer to it as the "fee asset".
 
-When the "fee asset" is bridged into the L2, it is converted to "fee juice", which is conceptually a "token" with a balance but is non-transferable; it can only be used to pay for L2 transactions.
+When the "fee asset" is bridged into the L2, it is converted to "fee juice", which is conceptually an "asset" with a balance but is non-transferable; it can only be used to pay for L2 transactions.
 
 With the exception of the section on distribution of the fees, this document is thus primarily concerned with "fee juice", as that is what users pay for transactions on L2.
 
