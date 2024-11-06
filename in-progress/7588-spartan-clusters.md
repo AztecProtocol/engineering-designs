@@ -277,9 +277,9 @@ Fill in bullets for each area that will be affected by this change.
 
 ## Test Plan
 
-### Token Transfer Matrix
+### Asset Transfer Matrix
 
-We will build out a matrix of conditions to test token transfers. This will include:
+We will build out a matrix of conditions to test asset transfers. This will include:
 
 - different network topologies (number of nodes, validators, pxes)
 - different network conditions (latency, node failures)
@@ -315,8 +315,8 @@ We will write documentation on how people can join the `spartan` network.
 ## Timeline
 
 - [ ] 2024-08-16: Target Approval Date
-- [ ] 2024-08-21: Small network passing token transfer in CI. No chaos.
-- [ ] 2024-08-28: Large network passing token transfer in CI with chaos.
+- [ ] 2024-08-21: Small network passing asset transfer in CI. No chaos.
+- [ ] 2024-08-28: Large network passing asset transfer in CI with chaos.
 - [ ] 2024-09-04: Attack scenarios passing in CI.
 - [ ] 2024-09-09: `staging` network deployed
 - [ ] 2024-09-11: `spartan` network deployed

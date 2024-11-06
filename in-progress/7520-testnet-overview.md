@@ -41,7 +41,7 @@ A deployment of the Aztec Network includes several contracts running on L1.
 
 ### TST Contract
 
-The Test Token (TST) will be an ERC20 token that will be used to pay for transaction fees on the Aztec Network.
+TST will be an ERC20 asset that will be used to pay for transaction fees on the Aztec Network.
 
 It will also used on L1 as part of the validator selection process.
 
@@ -87,7 +87,7 @@ An Instance will be comprised of:
 
 ### Rollup Contract
 
-The initial Rollup Contract will require holders of TST to stake their tokens to become validators.
+The initial Rollup Contract will require holders of TST to stake to become validators.
 
 The initial Rollup Contract will maintain a balance of TST to be used for rewards.
 
@@ -221,7 +221,7 @@ Prover nodes will receive information from proposers and will be responsible for
 
 ## Proposer/Validator Selection
 
-As noted above, the initial Rollup contract will allow holders of TST to stake a set amount of their tokens to become validators.
+As noted above, the initial Rollup contract will allow holders of TST to stake a set amount to become validators.
 
 One user can have multiple validators.
 
