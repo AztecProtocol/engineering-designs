@@ -22,6 +22,7 @@ With the exception of the section on distribution of the fees, this document is 
 ## Mana and Costs
 
 A transaction incurs the following costs:
+
 1. Proposers/validators validate and simulate the transaction
 2. Proposers publish pending blocks to L1
 3. Proposers/validators/nodes update their state
@@ -34,6 +35,7 @@ Some costs are independent of the computation or data of the transaction itself,
 ## Mechanism Overview
 
 We can reasonably assume the following:
+
 - The L1 gas cost of publishing a block is constant
 - The L1 gas cost of verifying an epoch is constant
 - We can compute a constant number of blobs per block needed to hit our target TPS
@@ -56,14 +58,14 @@ When a user submits a transaction, they first compute the `base_fee_juice_per_ma
 
 They then specify a max fee juice per mana (and max priority fee) they are willing to pay.
 
-The transaction should be included if the specified max fee juice per mana is greater than the L2 base fee, barring caveats such as sufficient balance, etc.
+The transaction can only be included if the specified max fee juice per mana is greater than the L2 base fee, barring caveats such as sufficient balance, etc.
 
 ### Why is `BLOBS_PER_BLOCK` a constant?
 
 It makes computation easier. Otherwise block builder would need to know the number of blobs consumed by the transaction while it is building.
 
 Further, if we are targeting 10 TPS, and each transaction consumes about 1KB, and each blob is ~131KB, then we can fit 131 transactions in a blob.
-Then if we are publishing L2 blocks every 36 seconds, we can fit 131 * NUM_BLOBS transactions per 36 seconds. So we can choose BLOBS_PER_BLOCK to be `3`, which then gives us ~10 TPS.
+Then if we are publishing L2 blocks every 36 seconds, we can fit 131 \* NUM_BLOBS transactions per 36 seconds. So we can choose BLOBS_PER_BLOCK to be `3`, which then gives us ~10 TPS.
 
 This means that it should always be the case that a proposer has its data costs covered when building at up to 10 TPS.
 
@@ -74,6 +76,7 @@ If L1 gas spikes during an epoch, this will be reflected in the `wei_per_l1_gas`
 However, these oracles lag the current L1 base fees. Furthermore, the base fee computed at the time of a block being proposed may differ from the base fee at the time of the epoch being verified.
 
 Thus, it is possible for L1 gas prices to spike to a point where it is not profitable for a prover to submit their proof to L1. There are two retorts:
+
 1. The prover should bake in a risk premium to compensate them for this risk; it is similar to the risk that the price of fee juice relative to any other juice shifts against them.
 2. The prover can wait until the end of the epoch waiting for a less congested window to submit their proof to L1.
 
@@ -89,7 +92,7 @@ Further, it is assumed that in the immediate term the proving cost will dominate
 
 - `OVERHEAD_MANA_PER_TX` - the overhead cost in mana for a transaction (e.g. 21_000)
 - `TARGET_MANA_PER_BLOCK` - the amount of mana that an "average" block is expected to consume (e.g. 15e6)
-- `MAXIMUM_MANA_PER_BLOCK` - the maximum amount of mana that a block can consume (e.g. 2 * TARGET_MANA_PER_BLOCK)
+- `MAXIMUM_MANA_PER_BLOCK` - the maximum amount of mana that a block can consume (e.g. 2 \* TARGET_MANA_PER_BLOCK)
 - `BLOBS_PER_BLOCK` - the number of blobs per block that are compensated for in the base fee (e.g. 3)
 - `L2_SLOTS_PER_L2_EPOCH` - the number of L2 slots in each L2 epoch (e.g. 32)
 - `L1_GAS_PER_BLOCK_PROPOSAL` - the amount of L1 gas required to propose an L2 block on L1 (e.g. 0.2e6)
@@ -103,9 +106,15 @@ Further, it is assumed that in the immediate term the proving cost will dominate
 - `MAXIMUM_FEE_JUICE_PER_WEI_PERCENT_CHANGE_PER_L2_SLOT` - the maximum percentage increase in the price of the fee juice per block (e.g. 1%)
 - `FEE_JUICE_PER_WEI_UPDATE_FRACTION` - a value used to update the `fee_juice_price_modifier` (e.g. 1e11)
 - `MINIMUM_CONGESTION_MULTIPLIER` - the minimum value the congestion multiplier can take (e.g. 1)
-- `CONGESTION_MULTIPLIER_UPDATE_FRACTION` - the constant factor to dampen movement in the congestion multiplier (e.g. 8.547 * TARGET_MANA_PER_BLOCK)
+- `CONGESTION_MULTIPLIER_UPDATE_FRACTION` - the constant factor to dampen movement in the congestion multiplier (e.g. 8.547 \* TARGET_MANA_PER_BLOCK)
+
+## Transaction Fields
+
+- `max_fee_per_mana` - the maximum fee per mana the user is willing to pay
+- `priority_fee_per_mana` - the priority fee per mana the user is willing to pay
 
 ## Block Header Fields
+
 The L2 block header contains the following fields:
 
 - `total_mana_used` - the total mana used by the block
@@ -125,6 +134,7 @@ The rollup contract contains the following fields:
 ## L1 Execution Cost of an L2 Block
 
 The cost of an L2 block's execution on L1 in wei is equal to the following:
+
 ```math
 \begin{aligned}
 \text{L1 execution gas per L2 block} &= \text{L1\_GAS\_PER\_BLOCK\_PROPOSED}  \\
@@ -142,10 +152,10 @@ The cost of an L2 block's data in wei is equal to the following:
 \text{L1 data wei per L2 block} = \text{BLOBS\_PER\_BLOCK} * \text{L1\_GAS\_PER\_BLOB} * \text{wei per L1 blob gas}
 ```
 
-
-## Exponentially Computed Values 
+## Exponentially Computed Values
 
 There are 3 important variables that are computed exponentially:
+
 - `proving_cost_wei_per_mana`
 - `fee_juice_per_wei`
 - `base_fee_wei_per_mana_congestion_multiplier`
@@ -160,7 +170,7 @@ All three computations follow the same formula:
 
 ### Example Calculation
 
-[See a calculation](https://www.wolframalpha.com/input?i=%28exp%28%281e9%2B1e9%29%2F%281e9*100%29%29-exp%28%281e9%29%2F%281e9*100%29%29%29%2Fexp%28%281e9%29%2F%281e9*100%29%29) which shows the percent change if the numerator doubles from 1e9 to 2e9 when the denominator is 1e9*100 is ~1%. 
+[See a calculation](https://www.wolframalpha.com/input?i=%28exp%28%281e9%2B1e9%29%2F%281e9*100%29%29-exp%28%281e9%29%2F%281e9*100%29%29%29%2Fexp%28%281e9%29%2F%281e9*100%29%29) which shows the percent change if the numerator doubles from 1e9 to 2e9 when the denominator is 1e9\*100 is ~1%.
 
 You can repeat the calculation for [a starting point of zero](https://www.wolframalpha.com/input?i=%28exp%28%281*1e9%29%2F%281e9*100%29%29-exp%28%280%29%2F%281e9*100%29%29%29%2Fexp%28%280%29%2F%281e9*100%29%29) to see that the percent change is ~1% as well.
 
@@ -182,8 +192,7 @@ That is,
 \text{new proving cost modifier} := \text{old proving cost modifier} + \text{proving cost modifier delta}
 ```
 
-The new `proving_cost_modifier_delta` is capped at (+/-) `MAXIMUM_PROVING_COST_WEI_PER_MANA_PERCENT_CHANGE_PER_L2_SLOT` * `PROVING_COST_UPDATE_FRACTION` / 100.
-
+The new `proving_cost_modifier_delta` is capped at (+/-) `MAXIMUM_PROVING_COST_WEI_PER_MANA_PERCENT_CHANGE_PER_L2_SLOT` \* `PROVING_COST_UPDATE_FRACTION` / 100.
 
 ### `fee_juice_per_wei`
 
@@ -201,14 +210,14 @@ That is,
 \text{new fee juice price modifier} := \text{old fee juice price modifier} + \text{fee juice price modifier delta}
 ```
 
-The new `fee_juice_price_modifier_delta` is capped at (+/-) `MAXIMUM_FEE_JUICE_PER_WEI_PERCENT_CHANGE_PER_L2_SLOT` * `FEE_JUICE_PER_WEI_UPDATE_FRACTION` / 100.
+The new `fee_juice_price_modifier_delta` is capped at (+/-) `MAXIMUM_FEE_JUICE_PER_WEI_PERCENT_CHANGE_PER_L2_SLOT` \* `FEE_JUICE_PER_WEI_UPDATE_FRACTION` / 100.
 
 ### `base_fee_wei_per_mana_congestion_multiplier`
 
 First we compute the excess mana in the current block by considering the parent mana spent and excess mana.
 
 ```math
-\text{excess mana} = \begin{cases} 
+\text{excess mana} = \begin{cases}
 0 & \text{if } \text{parent.excess} + \text{parent.spent} < \text{TARGET\_MANA\_PER\_BLOCK} \\
 \text{parent.excess} + \text{parent.spent} - \text{TARGET\_MANA\_PER\_BLOCK} & \text{otherwise}
 \end{cases}
@@ -223,6 +232,7 @@ First we compute the excess mana in the current block by considering the parent 
 ## Deriving the base fee
 
 When a proposer is building an L2 block, it calculates:
+
 ```math
 \begin{aligned}
 \text{L1 cost in wei per L2 block} &= \text{L1 execution wei per L2 block} + \text{L1 data wei per L2 block} \\
@@ -245,18 +255,36 @@ The amount of mana a transaction consumes is:
 Therefore, the cost of a transaction's proposal, data publication, and verification at time $i$ is, denominated in the fee juice:
 
 ```math
-\text{fee juice}_{tx} = \text{mana}_{tx} * \text{base fee juice per mana}
+\begin{aligned}
+\text{priority fee juice per mana} &= \min(
+    \text{transaction.priority fee juice per mana}, \text{transaction.max fee per mana} - \text{base fee juice per mana}) \\
+\text{fee juice}_{tx} &= \text{mana}_{tx} * (\text{base fee juice per mana} + \text{priority fee juice per mana})
+\end{aligned}
 ```
 
-## Distribution of the fees
+Recall: Any transactions must have a max fee per mana that is greater than the base fee juice per mana to be included
+
+## Collection of the fees
 
 When a transaction is included in a block in the pending chain, the L2 balance of the fee juice for the `fee_payer` of the transaction is reduced by the transactions's fee asset cost.
 
-When an epoch is proven, the fee *juice* that was collected for the epoch are paid out to each proposer for the block(s) they proposed on L1 as fee *asset*.
+## Distribution of the fees
 
-A percentage of each block's fee *juice* fees are paid to the prover of the epoch on L1 as fee *asset*. The percentage is determined based on the quote submitted by the prover for the epoch.
+When an epoch is proven, the fees paid throughout the epoch are collected, and the congestion component is burned.
+
+The unburned component is distributed to the proposers of the blocks in the epoch, split between the prover and the sequencer based on the quote submitted by the prover for the epoch.
 
 This quote is submitted by the prover in epoch `i+1` to prove epoch `i`, and is thus claimed/submitted to L1 by a proposer in epoch `i+1`.
+
+### Why burn the congestion component
+
+This is done to ensure that there are no profit motives to manipulate the congestion multiplier by including bloat transactions.
+Why this is important follows from an example.
+Assume that the congestion component is distributed to the proposer (for now, assume he is both the prover and the sequencer).
+If the sequencer includes extra bloat transactions in his blocks, the following block will have an increased congestion multiplier, increasing the fees paid.
+As he pays the congestion fee to himself, and the real costs remain the same, the increase in other people's congestion components will be extra income for him.
+As the congestion cost grows exponentially, and are directly a multipler on the real cost, this can quickly become a very lucrative strategy, as long as people keep sending transactions.
+Effectively, this pushes fees unnecessarily high.
 
 ## Change Set
 
@@ -286,7 +314,6 @@ Outline what unit and e2e tests will be written. Describe the logic they cover a
 ## Documentation Plan
 
 Identify changes or additions to the user documentation or protocol spec.
-
 
 ## Rejection Reason
 
