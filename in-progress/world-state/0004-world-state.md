@@ -17,7 +17,7 @@ This has a number of shortfalls.
 
 ### Snapshotting
 
-The current snapshot implementation provides 2 options. Either a node only offers `current` state or it offers both `current` state and **all** historical state. The intention being that only full archive nodes would need to offer historical state. This has turned out to be an invalid assumption as most nodes will probably want to provide a short history of snapshotted state leaving archive nodes to provide the full history. We will therefore need to provide the ability to configure a window of blocks for which state is available, up the current latest block number. Currently, it is very hard to prune historical state.
+The current snapshot implementation provides 2 options. Either a node only offers `current` state or it offers both `current` state and **all** historical state. The intention being that only full archive nodes would need to offer historical state. This has turned out to be an invalid assumption as most nodes will probably want to provide a short history of snapshotted state leaving archive nodes to provide the full history. We will therefore need to provide the ability to configure a window of blocks for which state is available, up to the current latest block number. Currently, it is very hard to prune historical state.
 
 ### Inability to Handle Chain Re-Orgs
 
@@ -164,7 +164,7 @@ fr getNodeValue(uint32_t level, index_t index, uint32_t blockHeight) {
 } 
 ```
 
-Now that we have a way of computing the value of any node at any previous block height we can serve requests for historic state directly from the `current` state. We are swapping a significant reduction in storage for an increase in compute to regenerate point-in-time state. This trade-off seems benficial however now that the underlying native merkle tree design affords us the ability to perform these operations concurrently across multiple cores.
+Now that we have a way of computing the value of any node at any previous block height we can serve requests for historic state directly from the `current` state. We are swapping a significant reduction in storage for an increase in compute to regenerate point-in-time state. This trade-off seems beneficial however now that the underlying native merkle tree design affords us the ability to perform these operations concurrently across multiple cores.
 
 ## Change Set
 
