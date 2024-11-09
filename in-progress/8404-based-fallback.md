@@ -49,10 +49,10 @@ The based fallback is expected to have a significantly worse user experience sin
 
 Because of this, we really do not want to enter the fallback too often, but we need to make it happen often enough that it is usable.
 For applications that are dependent on users acting based on external data or oracle data, a low bar to enter based mode can be desirable since it will mean that they would be able to keep running more easily.
-Lending and trading falls into these catagories as they usually depend on external data sources, e.g., prices of CEX'es influence how people use a trading platform and lending platforms mostly use oracles to get prices.
+Lending and trading falls into these categories as they usually depend on external data sources, e.g., prices of CEX'es influence how people use a trading platform and lending platforms mostly use oracles to get prices.
 
 We suggest defining the time where Based fallback can be entered to be $T_{\textsf{fallback}, \textsf{enter}}$ after the last proven block. 
-The minimum acceptable value for $T_{\textsf{fallback}, \textsf{enter}}$ should therefore be if a committee fails to performs its proving duties as specified as a full epoch $E$ in https://github.com/AztecProtocol/engineering-designs/pull/22 * 2.
+The minimum acceptable value for $T_{\textsf{fallback}, \textsf{enter}}$ should therefore be if a committee fails to perform its proving duties as specified as a full epoch $E$ in https://github.com/AztecProtocol/engineering-designs/pull/22 * 2.
 
 The reason we want $T_{\textsf{fallback}, \textsf{enter}} > 2 E$ is fairly simple, but more easily seen with a drawing.
 In the figure, we mark a proven block with a gray background.
@@ -73,7 +73,7 @@ Note that this will prune the pending chain!
 ### Proposing blocks in based mode
 
 When the based fallback have been activated, a new set of rules starts applying for what is seen as a valid block proposal.
-Namely, because there are no committee to assure availability or correctness of the transactions, we rely on the proposer's claims until the proof arrives.
+Namely, because there are no committee is to assure availability or correctness of the transactions, we rely on the proposer's claims until the proof arrives.
 For this our solution is simple - we require that he provides the proof along with the proposal.
 
 Note as shown in the diagram below, that the pending (unproven) blocks are pruned from the chain and the bond for epoch 2 is gone.
@@ -103,7 +103,7 @@ However, this is where we start potentially having some issues.
 Say we stopped being in the based fallback when a pending block is proposed:
 
 - In the honest case, the consensus layer is online again, and can start performing their duties
-- In the dishonest case, the consensus layer wish to censor the chain, and could propose unprovable blocks, but still exiting the fallback mode.
+- In the dishonest case, the consensus layer wishes to censor the chain, and could propose unprovable blocks, but still exiting the fallback mode.
 
 Another approach might be that we allow a committee to exit the fallback mode if they provide an epoch proof (does not need to include blocks for every slot).
 
@@ -136,8 +136,8 @@ The minimum throughput here under the assumption that either they will need to p
 
 The changes should mostly be on the L1 contract and the sequencer client, with a minor potential change for the rollup circuit (might simply not be necessary).
 
-- The L1 contract need to deal with the flows as above.
-- The sequencer client need to know when fallback is activated such that it does not try to act as it normally would.
+- The L1 contract needs to deal with the flows as above.
+- The sequencer client needs to know when fallback is activated such that it does not try to act as it normally would.
   - I believe simply doing nothing is best here, as the fallbacks can be seen as a fully separate type of sequencer then.
 - Add a new "fallback" sequencer, which skips a lot of the checks of the current sequencer but mainly build and prove blocks.
 - The L1 contract/rollup circuit mix needs to support individual block proofs for this specific mode.
