@@ -2236,6 +2236,7 @@ dependencies = [
     { name = "ipykernel" },
     { name = "matplotlib" },
     { name = "numpy" },
+    { name = "pydantic" },
 ]
 
 [package.metadata]
@@ -2244,6 +2245,7 @@ requires-dist = [
     { name = "ipykernel", specifier = ">=6.29.5" },
     { name = "matplotlib", specifier = ">=3.9.2" },
     { name = "numpy", specifier = ">=1.26.4" },
+    { name = "pydantic", specifier = ">=2.9.2" },
 ]
 
 [[package]]
