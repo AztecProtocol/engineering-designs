@@ -2,25 +2,56 @@
 
 ## Requirements
 
+>Note: Any implementation detail in this design document, such as pseudo-code or implied data structures, is strictly for purposes of illustrating requirements. 
+
+**General**
 1. Validators MUST stake to join the validator set. 
-2. Validators MUST be able to vote on a governance proposal at the Governance Contract to deploy a new rollup and still be able to migrate stake *before* the new Rollup becomes "canonical". 
-3. Staked validators MUST be able to specify their rewards address which could be different from their withdrawal address. 
-4. Staked validators MUST be able to migrate stake in one transaction. 
-5. The new validator set that chooses to migrate should still be able to slash any validators who chose not to move along. This should remain possible for some amount of time AFTER the activation of the new rollup. 
+2. We must support two types of delegations:
+    * Peer-to-Peer: A large member of the Aztec Governance can negotiate with and delegate to institutional operators directly. 
+    * Peer-to-Pool-Peer: A small retail user can delegate to a non-custodial staking provider which can then delegate to an institutional validator. 
+4. Moving stake between Rollup instances should not be subject to delays. 
+5. Moving delegations between different validators should not be subject to delays. 
+10. We prioritize security over liveness. Upgrades should not degrade the security of the new canonical Pending Chain, even if momentarily. 
+
+**Delegation**
+
+1. Validators must be able to receive delegations from users who want to put funds "at-stake" but don't want to run the validator node themselves. 
+3. Staked validators and their delegators must be able to vote for proposals put up for voting by the Governance contracts. Only staked validators can nominate proposals to the GovernanceProposer contract. 
+4. Delegators must be able to override the vote of the validators they delegate to if they choose to vote directly. Otherwise they inherit the vote of the validator to which they've delegated tokens to. 
+5. It must legally or otherwise mathematically be possible to enforce profit sharing between delegators and validators. 
+6. Delegators MUST also get slashed if the validator they delegate to gets slashed. 
+7. It should be possible to show onchain how much self-stake a validator has (i.e. non-delegated stake). 
+
+**Validator Keys**
+1. There should be clear separation of the various keys associated with a validator:
+    i. The Signing Key: The key that generates the validator's L1 public key. (different from BLS key / could be different from the key that signs attestations and block proposals).
+    ii. The Withdrawal Key: The key that generates the public key of the L1 withdrawal address. 
+2. In the case of a retail user delegating to a large institutional validator like say Chorus One: the validator would be in control of the Signing Key and the retail user in control of the Withdrawal Key. 
+3. The Withdrawal Key should be able to rotate "Signing Keys" but not the other way around i.e. The Signing Key cannot rotate the Withdrawal Key. 
+4. The only way to change a Withdrawal Key is to exit and deposit again. No key rotation on the Withdrawal Key. 
+5. The Withdrawal Key can "initiate" a withdrawal. 
+6. No rotation of the BLS public keys either. 
+
+> Note: The objective here is that as a user, I can generate my own Withdrawal Key, and then name the public key / address of a validator operator as the Signing Key. This is in essence what the "delegation" flow looks like. Self delegation can be something where the two keys are one and the same. 
+
+
+
+
+
+### Deposit Contract
 
 Validators stake with a `Deposit` contract in order to join the validator set. This `Deposit` contract can be thought of as an auxillary sidecar that Rollup instances could choose to use for stake management. 
 
 If a Rollup is using the `Deposit` contract, validators do NOT stake with the Rollup contract directly. This is meant to simplify moving stake during/after a governance upgrade. 
-
-### Deposit Contract
 
 The Deposit contract is an immutable contract living on L1, that is owned by the Governance Contract (i.e. Apella). It implements the following simplified interface:
 
 ```solidity
 
 interface IDeposit {
-  function deposit(address validatorAddress, address withdrawalAddress, address rewardsAddress, uint256 amountToDeposit, bool followRegistryBool, address rollupAddress) external returns(bool);
-  function activateValidator(address rollupAddress, address validatorAddress, uint256 amount);
+  function deposit(address validatorAddress, address rollupAddress, uint256 amountToDeposit, address withdrawalAddress, address rewardsAddress, bool followRegistryBool, bytes pubKey, bytes signature) external returns(bool);
+  function activateValidator(address rollupAddress, address validatorAddress, uint256 amount); external returns(bool);
+  function moveStake(address rollupAddress, calldata address[] validatorAddressList) external returns(bool);
   function editDeposits(address rollupAddress, address withdrawalAddress, address rewardAddress, address followsRegistryBool):
   function widthdraw(address rollupAddress, address validatorAddress) external returns(bool);
   function unstakeValidators(addresss rollupAddress, address validatorAddress) external returns(bool);
@@ -31,149 +62,208 @@ interface IDeposit {
 ### Deposit Function
 
 * Validators must deposit at least `MIN_DEPOSIT_AMOUNT`. This is the minimum amount you need to deposit to create a new entry in the `Deposits` mapping.  It is completely separate from what Rollup instances dictate to be the minimum staking requirement to join their validator sets. 
+
+>**Why have this?**
+
+To prevent cluttering the Deposit objects with dust deposits. I see this as the equivalent of Ethereum's 1 gwei minimum deposit. 
+
 * Calling the deposit function should create an entry in the `Deposits` mapping. This mapping is a `mapping(address rollupAddress => mapping(address validatorAddress => DepositLib.DepositObject))`
-* A `DepositObject` contains references to the `withdrawalAddress` , `rewardsAddress` and `followingRegistryBool` variables. It is unique per rollupAddress / validatorAddress combination. 
-* Therefore validators can have multiple deposits corresponding to different Rollups. But for each Rollup, they can only have one deposited balance, one `withdrawalAddrss` one `rewardsAddress` and one `followingRegistryBool` flag. 
+* A `DepositObject` contains references to the `withdrawalAddress` , `rewardsAddress`, `rollupAddress`, `pubKey` and `followingRegistryBool` variables. It is unique per rollupAddress / validatorAddress combination. 
+* Therefore validators can have multiple deposits corresponding to different Rollups. But for each Rollup, they can only have one deposited balance, one `withdrawalAddrss` one `rewardsAddress`, one `pubKey` and one `followingRegistryBool` flag. 
+* The signature field is such that "A validator can send to a delegator a request for stake, the delegator signs with the withdrawal address only iff the , sends it back to the validator or deposits it themselves"
+
+>Note: A first time deposit creates a new `DepositObject` and populates it with fields passed into `deposit()`. A `deposit()` function call referencing an existing `DepositObject` should ONLY ever increase the `DepositObject.balance` attribute and do nothing else. Said differently, a validator cannot change `followRegistryBool` or `pubKey` by calling `deposit()` with different parameters.  
+
+
 
 ```python
 ## High level psuedocode for deposit()
-function deposit(validatorAddress, withdrawalAddress, rewardsAddress, amountToDeposit, followRegistryBool, rollupAddress):
+function deposit(validatorAddress, rollupAddress, amountToDeposit, withdrawalAddress, rewardsAddress, followRegistryBool, pubKey, signatures)
     # Step 1: Check minimum deposit requirement
     if amountToDeposit < MIN_DEPOSIT_AMOUNT:
         return False  # or throw an error indicating insufficient deposit amount
+    
+    # Step 2: Check signature
+    ## ...
 
     # Step 2: Check if a DepositObject already exists for this rollup and validator address
     if Deposits[rollupAddress][validatorAddress] exists:
         # Add the deposited amount to the existing DepositObject
         Deposits[rollupAddress][validatorAddress].balance += amountToDeposit
+        # Transfer the ASSET from (msg.sender)
     else:
         # Step 3: If no deposit exists, create a new DepositObject
         newDeposit = DepositLib.DepositObject(
             withdrawalAddress=withdrawalAddress,
             rewardsAddress=rewardsAddress,
+            followRegistryBool=followRegistryBool,
+            pubKey=pubKey,
             balance=amountToDeposit,
-            followRegistryBool=followRegistryBool
         )
 
         # Step 4: Store the new DepositObject in the Deposits mapping
         Deposits[rollupAddress][validatorAddress] = newDeposit
+        # Transfer the ASSET from msg.sender
 
     # Step 5: Emit a Deposit event to record the deposit action
     emit Deposit(validatorAddress, rollupAddress, amountToDeposit)
 
     return True
 ```
->Note: Sorry I seem to have made up my own language. It's on you @LHerskind
+>Note: Sorry I seem to have made up my own language writing these pseudo-code snippets. It's on you @LHerskind
 
 ### Entering the Validator Set
 
-* A Rollup instance can add validators to its validator set by calling `activateValidator`. 
-* Any amounts specified by `activateValidator` are removed from `Deposits` and accounted for in a different mapping, `StakedDeposits` which is the same mapping as `Deposits`. 
-* Balances held in `StakedDeposits` are subject to slashing.
+* A Rollup instance can direct funds to be at stake by calling `activateValidator`. 
+* Only the Rollup with address `rollupAddress` can place balances in `Deposits[rollupAddress][validatorAddress]` to be under stake. 
+* Any amounts specified by `activateValidator` are removed from `Deposits` and accounted for in a different mapping, `StakedDeposits` which is the same mapping as `Deposits` with the exception that balances in `StakedDeposits` can be slashed by the Rollup. 
 
 ```python
-function activateValidator(rollupAddress, validatorAddress, amount):
-    ## If rollupAddress != address(0) then this is attempting to migrate stake. 
-    if rollupAddress != address(0):
-        if Deposits[rollupAddress][validatorAddress] does not exist:
-            return false # Validator has never deposited to rollupAddress
-    # If this validator already has a staked deposit entry
-        if StakedDeposits[rollupAddress][validatorAddress] does not exist:
-            return False
-        ## Validator is not following along with governance, must first unstake then manually migrate
-        if StakedDeposits[rollupAddress][validatorAddress].followRegistryBool != true:
-            return False
-        ## Make sure msg.sender is the current canonical rollup. 
-        newRollup = this.getRollup()
-        require(msg.sender == newRollup)
-        require(amount <= StakedDeposits[rollupAddress][validatorAddress].balance)
-        ## Move over stake
-        StakedDeposits[rollupAddress][validatorAddress].balance -= amount
-        ## Create new StakedDeposit object
-        oldStakedDeposit = StakedDeposits[rollupAddress][validatorAddress]
-        newStakedDeposit = new DepositLib.StakedDeposit(
-            withdrawalAddress = oldStakedDeposit.withdrawalAddress,
-            rewardsAddress=oldStakedDeposit.rewardsAddress,
-            balance=amount,
-            followRegistryBool=oldStakedDeposit.followRegistryBool
-        )
-        StakedDeposits[newRollup][validatorAddress] = newStakedDeposit
-        ## Notify old Rollup that validator's new balance is StakedDeposits[rollupAddress][validatorAddress].balance
-        ## ...
-        return True
-    ## rollupAddress == address(0)
+function activateValidator(validatorAddress, amount):
+    ## Checks
     if Deposits[msg.sender][validatorAddress] does not exist:
         return False
-    else:
-        require(amount <= Deposits[msg.sender][validatorAddress].balance)
-        ## Reduce balance
-        Deposits[msg.sender][validatorAddress].balance -= amount
-        newStakedDeposit = DepositLib.StakedObject(
+    
+    require(amount <= Deposits[msg.sender][validatorAddress].balance)
+    ##  Effects
+    Deposits[msg.sender][validatorAddress].balance -= amount
+
+    newStakedDeposit = DepositLib.StakedObject(
             withdrawalAddress = Deposits[msg.sender][validatorAddress].withdrawalAddress,
             rewardsAddress=Deposits[msg.sender][validatorAddress].rewardsAddress,
             balance=amount,
             followRegistryBool=Deposits[msg.sender][validatorAddress].followRegistryBool
-        )
+    )
+    StakedDeposits[msg.sender][validatorAddress] = newStakedDeposit
+    return True
 ```
->Note: The code sucks but it showcases the requirements. A validator migrates stake from one rollup to another by calling one function on the Rollup contract which in turn calls `activateValidator()`.
+```mermaid
+sequenceDiagram
+title Entering the validator set
 
-### StakedDeposits vs Deposits mappings
+    participant A as Validator
+    participant B as Delegator
+    participant C as Deposit Contract
+    participant D as Rollup
+    
 
-* `StakedDeposits` has the same mapping structure as `Deposits`. 
-* Validators can alter values of their entries in the `Deposits` mapping. They can change `followRegistryBool` or `rewardsAddress` but they cannot change `withdrawalAddress`. To change `withdrawalAddress` they must first withdraw then re-deposit. 
-* Staked validators cannot alter values of their entries in the `StakedDeposits` mapping. They must first unstake and re-deposit. 
-* Rollup contracts can reduce / increase balance of staked validators inside `StakedDeposits` but cannot alter values such as `followingRegistryBool`, `withdrawalAddress` or `rewardsAddress`. 
+    A ->> C: Deposit self stake
+    B ->> C: Delegate stake
+    A ->> D: activateValidator()
+    D ->> C: Checks balances and other conditions
+    C ->> D: Return True
+    D ->> D: _addvalidator()
+```
+
+### Moving Stake
+
+ One external function that anyone could call to change the `rollupAddress` of any entry in `StakedDeposits` with `followRegistryBool=true`. The new rollupAddress can only be derived from the Registry / Governance contracts. 
+
+```python
+function moveStake(address rollupAddress, validatorAddressList):
+    ## Maybe limit the size of validatorAddressList so that someone can only move i.e. 500 validators at a time.
+    for validatorAddress in validatorAddressList:
+        if Deposits[rollupAddress][validatorAddress] does not exist:
+            return False
+        if StakedDeposits[rollupAddress][validatorAddress] does not exist:
+            return False
+        if StakedDeposits[rollupAddress][validatorAddress].followRegistryBool != true:
+            return False
+        
+        newRollup = this.getRollup()
+        balanceToMove = StakedDeposits[rollupAddress][validatorAddress].balance
+        ## moves over all of it
+        StakedDeposits[rollupAddress][validatorAddress].balance = 0
+
+        newStakedDeposit = DepositLib.StakedObject(
+            withdrawalAddress = StakedDeposits[rollupAddress][validatorAddress].withdrawalAddress,
+            rewardsAddress= StakedDeposits[msg.sender][validatorAddress].rewardsAddress,
+            pubKey = StakedDeposits[msg.sender][validatorAddress].pubKey,
+            followRegistryBool= true,
+            balance = balanceToMove
+        )
+        StakedDeposits[newRollup][validatorAddres] = newStakedDeposit
+```
+
+>Note: The specific requirement  here is that it should be quick to mass move stake once a rollup becomes "canonical", in a way that is not on the critical path. To be more specific, we should minimize the time between a rollup becoming "canonical" and a rollup having "sufficient" stake. One way to do this is a "Registry.nextUp" flag on the Registry os the above flow can be replicated "before" a rollup becomes canonical. Another is for Rollups to limit block building until it registers a certain amount of stake / validators. 
+
+**What about the old Rollup**
+
+If anyone can move stake, then the old Rollup will not know that it has lost a validator. This can be dealt with if someone on the old Rollup notifies it to check balances again. We don't necessarily have to explicitly bake this into the Deposit contract. 
+
+>Note: See `checkIfValidatorShouldBeExited()` in the mermaid diagram below. 
 
 ### withdraw and unstakeValidator functions
 
-* Validators can call the withdraw function at any time to remove any balance they have in `Deposits` using `withdraw()`.
-* Only the Rollup contract may withdraw balances from `stakedDeposits` using the function `unstakeValidator()`.
+* Holders of the `validatorAddress` keys MUST be able to withdraw balances from the `Deposits` mapping. This withdraws any funds to the `withdrawalAddress`. 
+* Holders of the `withdrawalAddress` keys MUST be able to withdraw balances from the `Deposits` mapping. This withdraws any funds to the `withdrawalAddress`. 
 
-```python
-## Change values of a DepositObject
-function editDeposits(rollupAddress, rewardAddress, followsRegistryBool):
-    if Deposits[rollupAddress][msg.sender] does not exist:
-        return False
-    else:
-        Deposits[rollupAddress][msg.sender].rewardsAddress = rewardsAddress
-        Deposits[rollupAddress][msg.sender].followsRegistryBool = followsRegistryBool
-## Withdraws from Deposits
-function withdraw(rollupAddress, amount):
-    if Deposits[rollupAddress][msg.sender] does not exist:
-        return False
-    
-    require(amount <= Deposits[rollupAddress][msg.sender].balance)
-    Deposits[rollupAddress][msg.sender].balance -= amount
-    ## Transfer asset to msg.sender
-    ## ...
+* To withdraw balances from `stakedDeposits` the Deposit contract must interact with the Rollup contract.
 
-## Rollup withdraws from StakedObjects
-function unstakeValidators(validatorAddress, amount):
-    if StakedDeposits[msg.sender][validatorAddress] does not exist:
-        return False
+* The requirement is that both validators and delegators can unstake and withdraw funds to the `withdrawalAddress` after waiting an exit delay.
+* While delegators can "re-delegate" to another validator without waiting for a withdrawal delay. 
+
+To achieve this, I propose that we change the "unstaking" workflow such that the entrypoint becomes the Deposit contract. 
+
+```mermaid
+sequenceDiagram
+title Withdrawing stake
+
+    participant B as Delegator / Validator
+    participant C as Deposit Contract
+    participant D as Rollup
+    participant E as Governance Contract
     
-    require(amount <= StakedDeposits[msg.sender][validatorAddress].balance)
-    StakedDeposits[msg.sender][validatorAddress].balance -= amount
-    ## Transfer asset to withdrawalAddress
-    ## ...
+
+    B ->> C: Request to unstake `amount` from `rollupAddress`
+    alt If Delegator
+        C -->> C: Check that delegator controls withdrawalKey
+    end
+    C -->> D: checkIfValidatorShouldBeExited()
+    D -->> C: Checks balances and other conditions
+    alt If enough balance
+        D -->> D: Do Nothing
+    else If low balance
+        D -->> D: removeValidator()
+end
+    
+    C ->> E: Initiate a withdrawal request
 ```
+> Note this assumes that Deposit Contract deposits stake with the Governance Contract so that validators / delegators may vote. The requirement to have delegators be able to override the votes of validators they delegated to will probably involve changing the Governance contract. 
 
-Each Rollup implements its own logic for how validators join and exit the validator set. I expect standard delays (i.e. 10 epochs) before a validator  joins the set and longer withdraw delays for PoG-slashing Rollups. 
+### Moving Delegations
 
-### Migrating Validator Stake - Rollup Upgrade
+A delegator could change which validators they have delegated to in much the same way as the unstake action. 
 
-Validators join the validator set of the newly deployed Rollup which calls `activateValidator()` on the Deposit contract. This flow is as described above in the pseudocode of `activateValidator()`. 
 
-### Migrating Validator Stake - State Migration
+### BLS Signatures
 
-Validators join the validator set of the newly deployed Rollup which calls `activateValidator()` on the Deposit contract. This flow is as described above in the pseudocode of `activateValidator()`. 
+Every validator submits a BLS public key associated with their `validatorAddress` (Note: they have nothing to do with each other, but they're a "set" of keys rather). Those public keys are kept in an Enumerable Set on the Rollup contract. Everytime the committee is calculated, the aggregate public key for all validators in the committee is also computed and stored. Let's call this `COMMITTEE_AGGREGATED`
 
-Thus no new `Deposit` contracts need to be deployed in the state migration case. 
+Sequencer aggregates public keys and signatures of committee members. Sequencer reads off L1 the ordered committee array. Instead of sending to L1 an array of signatures, it sends:
 
-### Upgrading to a Rollup that does not utilize the Deposit contract
+1) Binary array of 0,1. The indices on this array match those of the computed committee array. `BIT_ARRAY[i] = 1` if `committee[i]` signed and 0 otherwise. 
+2) The aggregated public key of all validators who signed the proposal. 
 
-If the new Rollup is not aware of the `Deposit` contract (or does not use one), validators must unstake and withdraw from the old Rollup and deposit in the new Rolllup. 
+
+The L1 contract knows the public keys of everyone in the committee. For every `0` in the `BIT_ARRAY` it adds (in a group addition sense) the inverse of that validator's public key to `COMMITTEE_AGGREGATED`. Once its gone through the committee array, the resulting aggregate public key computed by the L1 should match the aggregated public key sent by the proposer. 
+
+No rotating BLS keys is allowed. A validator must exit first and then re-stake with a different BLS key. 
 
 ### Rewards
 
 Any block rewards accruing to validators should be sent to the `rewardsAddress` specified in `StakedDeposits`.
+
+
+### Questions
+
+**Should we do stake-weighted PoS? i.e. a validator with 1% of the total stake should propose 1% of all blocks?**
+-> We don't need to imo. Validators can generate a new Signing Key as needed and instruct clients to delegate to that key. 
+-> Any obvious objections to this? 
+
+**Can the accounting for votes happen in the Deposit contract?**
+-> Basically the only requirement here is that validators AND delegators be able to vote. Delegators don't need to be able to vote at GovernanceProposer. Delegators vote inherit the vote of the validator by default, but delegators can chose to override this if they participate directly. 
+-> Based on this description, where should accounting for voting happen? Should ASSETs still be locked within Governance? 
+
+**Proof of Possession**
+-> The deposit function is probably missing another signature which is the signature of pubKey using the associated BLS private key. 
