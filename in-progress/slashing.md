@@ -1,5 +1,59 @@
 # Staking
 
+
+## Update
+
+Went through this document with Lasse, this is the feedback that emerged:
+
+1. On Delegation
+
+The proposal below asks for completely separating the following credentials:
+1) Signing Credentials: Expected to be owned by the node operator. 
+2) Withdrwal Credentials: Expected to be owned by the Asset Holder. 
+
+and have it such that the withdrawal credential can rotate the signing address (i.e. to delegate to different to validators for example) but the operator cannot rotate the withdrawal key. 
+
+Lasse's suggestion: Don't enshrine "delegation" in the protocol. Allow for designs that enable smart contracts to perform that function. 
+
+![AOS is a smart contract deployed to mimic the delegation process without building it into the protocol conracts.](./images/staking_contract.png)
+
+
+Lasse's approach involves more minimal changes to the protocol and is probably better from a sense of let's build and then optimize. It misses features I considered nice to haves such as delegators being able to override the vote of the validator they're delegating to and some rather important features such as the withdrawal key being able to rotate the operator credentials without a withdrawal delay. 
+
+I think all of the previous functionality can be accomplished by smart contracts but this still deserves a conversation on whether we want to enshrine stake delegation in the protocol versus fallback to smart contracts to achieve these benefits.
+
+2. On Moving Stake
+
+The proposal asks to "prioritize security over liveness" but also to make moving stake seamless and not subject to undue delays. 
+
+Lasse's feedback: A Schrödinger attack is possible: As everybody is moving, a malicious validator who is not following governance can make a last minute attack on the old rollup. Since (most) validators move along they won't be able to slash the perpetrator who now possibly controls the governance of the old rollup. The only way out of this is to have all withdraws (including moving stake) be subject to delays long enough to slash any malicious actors. 
+
+My rebuttal: Moving stake is only possible AFTER a rollup becomes canonical so the new chain is not grieved by attacks on the old rollup. You still need a malicious committee to grief the canonical chain at all times. So I think moving stake AFTER a new chain has become canonical is okay. The following caveats:
+
+1. The Rollup should only start producing blocks after a certain number of validators / stake has registered. 
+
+3. On How We Move Stake
+
+The proposal suggests a Deposit contract that stores a mapping `StakedDeposits[rollupAddress][validatorAddress]`. It is only possible to move stake of validators who opted in to follow governance. 
+
+This looks like this:
+
+![Moving Scenario 1](./images/mapping_approach.png)
+
+Lasse suggestion: Instead of recording governance following validator stake in the mapping object, implement a different structure that by definition records the assets of validators who are governance following (and thus does not need to be "moved").
+
+![Moving Scenario 2](./images/moving_stake_alt.png)
+
+In my approach the transaction that moves over stake also calls the Rollup to register the new validators, so that it is aware of its validator set. Lasse's approach moves the validatorSet to the Deposit Contract so now Leonidas has to query the Deposit Contract to figure out what the validator set is and to shuffle them to compute the committee. 
+
+I don't see an obvious problem so agreed to this change as well. 
+
+4. On rewards
+
+The proposal suggests we record a separate `rewardsAddress` in the Deposit Contract. 
+
+Lasse suggestion: This is already covered by GlobalVariables.coinbase so we agreed to drop the `rewardAddress` from this proposal.  
+
 ## Requirements
 
 >Note: Any implementation detail in this design document, such as pseudo-code or implied data structures, is strictly for purposes of illustrating requirements. 
