@@ -15,17 +15,16 @@ See https://github.com/AztecProtocol/engineering-designs/pull/21 for background 
 
 <!-- Briefly describe the problem the work solves, and for whom. Include any relevant background information and the goals (and non-goals) of this implementation. -->
 
-Transition the node to use blobs, fully remove our dependence on calldata when syncing transaction effects from the chain.
+Transition the node to use blobs, fully remove our dependence on calldata when syncing transaction effects from L1.
 
 There are a number of infrastructure related changes that are required to "complete" the blob integration. The primary concerns are:
-- Nodes must request blobs from the "consensus layer" rather than from l1 (anvil is no longer suitable for syncing)
-- Blobs are stored on the consensus layer for a ~3 week period, so a robust service must exist to serve blobs information post expiration
+- Nodes must request blobs from the "consensus layer" (CL) rather than from l1 (anvil is no longer suitable for syncing)
+- Blobs are stored on the consensus layer for a ~3 week period, so a robust service must exist to serve blobs information post CL expiration.
 - A way for nodes to request block information for their initial sync ( with an alternative solution that they can request this information OUT of protocol, and check the blob hashes 
  against long lived hashes that are published to l1 calldata. )
 - Testing infrastructure must be updated to support the new blob service
     - End to end protocol integration tests
     - More advanced configurations tested in the cluster setting
-        - Potential exploration of the "kurtosis" tooling
 
 ### Goals
 We want to remove the `body` field from the `propose` function inputs, leaving only the `blobInput` field.
@@ -65,8 +64,6 @@ We want to remove the `body` field from the `propose` function inputs, leaving o
 ## Interface
 
 <!-- Who are your users, and how do they interact with this? What is the top-level interface? -->
-
-<!-- TODO(md): Check the end point  -->
 
 ### Changes to node configuration
 Node operators will need to provide an additional configuration value; pointing at an ethereum consensus layer node (CL).
@@ -144,7 +141,7 @@ a consensus layer node when running end to end tests. Furthermore, with minor mo
 
 This is safe as the node will check blobs against the blob commitment provided on l1. This code has already been included as part of https://github.com/AztecProtocol/aztec-packages/pull/9302. 
 
-TODO(9101) includes changes to be made in this suite of PRs.
+TODO(9101) includes changes to be made in response to this eng design.
 ```ts
   const blockBody = Body.fromBuffer(Buffer.from(hexToBytes(bodyHex)));
 
@@ -179,18 +176,14 @@ TODO(9101) includes changes to be made in this suite of PRs.
 We will replace getting the blobBody from the bodyHex, which is retrieved from the l1 propose transaction, and replace it with a request to the endpoint on the CL (or emulator) above.
 
 
-
 #### Request Response Modifications (Optional Extension)
 If they choose to, nodes should be able to sync without a dependence on a centralized provider. To facilitate this, we can extend the Request Response Framework defined in [9101-request-response](../9101-request-response/design.md). 
-
 
 ```
 /aztec/req/txeffects/{version}
 ```
 
 This request will have the following format:
-
-<!-- TODO: ensure that this request format makes sense -->
 
 - Request
 ```ts
@@ -207,27 +200,25 @@ interface TxEffectResponse {
 
 interface Blob {
     fields: [Fr_BLS12_381, 4096]
+    kzgCommitment: Buffer
+    zkgProof: Buffer
 }
 ```
 
 #### For Spartan Deployments
 Spartan Deployments already use a "real" L1 execution node underneath, we will extend the spartan cluster to run an ethereum consensus layer service. This will involve setting up a link between the execution layer node and consensus layer node via the engine API. 
 
-SEE LINK TO FURTHER DOCUMENTATION ABOUT HOW TO RUN THIS
+In our current spartan configuration which has an L1 execution client underneath, it runs in a --dev configuration. This means that it does not perform any interactions with Ethereum's Consensus Layer. These consensus clients decide what blocks are part of the chain, while execution clients only validate blocks and transactions with respect to the world state. 
 
+EL <> CL communication happens over the engine api, exposed (by default) on the EL port 8551. Connection between the CL and EL is authenticated via a JWT using a jwt secret set by the EL. 
 
-## Implementation
+Spartan deployments will need to be modified to generate a JWT for the execution layer, and provide it in the CL configuration, such that they can communicate in an authenticated manner.
 
-Delve into the specifics of the design. Include diagrams, code snippets, API descriptions, and database schema changes as necessary. Highlight any significant changes to the existing architecture or interfaces.
+<!-- ## Implementation -->
 
-Discuss any alternative or rejected solutions.
+<!-- Delve into the specifics of the design. Include diagrams, code snippets, API descriptions, and database schema changes as necessary. Highlight any significant changes to the existing architecture or interfaces. -->
 
-- There will need to be another configuration value stored in the nodes to point at a l1 consensus layer node.
-- There will need to be changes to the archiver to request information from this consensus layer, with a potential fallback to request this information from other nodes.
-- The removal of block data from the l1 contracts 
-    - Most of this work has been covered by miranda when she did the initial blobs integration.
-    - In theory, based on the current state of affairs, this epic can be marked as completed ONCE the block bytes can be removed from the l1 contracts without 
-    any further code breakages. 
+<!-- Discuss any alternative or rejected solutions. -->
 
 
 ## Change Set
@@ -237,7 +228,7 @@ Fill in bullets for each area that will be affected by this change.
 - [ ] Cryptography
 - [ ] Noir
 - [ ] Aztec.js
-- [x????] PXE
+- [ ] PXE
 - [ ] Aztec.nr
 - [ ] Enshrined L2 Contracts
 - [ ] Private Kernel Circuits
