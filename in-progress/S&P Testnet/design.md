@@ -41,7 +41,7 @@ Refer to the node guide here for setup instructions.
 |---------|---------------|----------------|
 | CPU     | 16 cores      | 32 cores       |
 | Bandwidth | +250 mbps      | +500 mbps       |
-| Storage | PCIe Gen 4 x2, 4 TB of disk space | PCIe Gen 4 x2, 4 TB of disk space     |
+| Storage | PCIe Gen 4, 2 TB of disk space | PCIe Gen 4 x2, 4 TB of disk space     |
 | RAM     | DDR4 or better. 32GB of memory       | DDR4 or better. 64GB of memory         |
 
 ***What are Gating Requirements?**
@@ -58,7 +58,7 @@ The goal of the first deployment is to produce a stable network with 48 validato
 | -----|-----|
 | Committee Size | 16 |
 | Validator Set | 48 |
-| Whitelisted Validators | Aztec Labs will run 4 validators, full list here |
+| Whitelisted Validators | Aztec Labs will run 4 validators |
 | Network | 1tx per block, 36s blocks, 32 block epochs |
 
 **Gating Requirements**
@@ -70,64 +70,46 @@ The goal of the first deployment is to produce a stable network with 48 validato
 
 ### Phase 2
 
-For the second deployment, we will increase the size of the validator set to 128 and throughput to 0.1 TPS (~3/4txs per block). Committee size stays the same. For a duration of 10 epochs, we will increase network throughput to about 1TPS.
+For the second deployment, we will increase the size of the validator set to 128 and throughput to 0.1 TPS (~3/4txs per block), while committee size stays the same. First governance upgrade will run in Phase 2. 
 
 The goals here are to test: 
-1) The network can handle a variable tx load i.e. going from 0.1 TPS -> 1 TPS and back. 
-2) How many provers can prove at 1TPS and what are the time/hardware requirements to do so. 
+1) The network can handle an increased throughput sporting a larger validator set
+2) Sequencers can coordinate to vote on governance proposals. 
 
 | Feature | Description |
 | -----|-----|
 | Committee Size | 16 |
 | Validator Set | 128 |
-| Whitelisted Validators | Aztec Labs will run 4 validators, full list here |
+| Whitelisted Validators | Aztec Labs will run 4 validators|
 | Network | 0.1TPS, 36s blocks, 32 block epochs |
 
 **Gating Requirements** 
 
 * Prior to public release, Aztec Labs can internally run a stable network with 128 validators, 16 committee size, at least 0.1TPS with proving on for at least a period of 90 hours. 
 * Prior to public release, Aztec Labs to publish node guide and setup instructions. 
-* After public release, the deployed network in Phase 2 can survive 120 hours without a fatal crash. 
-* 1 TPS is NOT a gating requirement. If the network crashes due to 1TPS, valuable learnings 🤷🏼‍♂️
+* After public release, the deployed network in Phase 2 can survive 120 hours without a fatal crash.
+* Governance upgrade is successfully executed, and validators move to the new Rollup. 
 
 ### Phase 3
 
-For the third deployment, we will perform the first governance upgrade. The upgrade will deploy a new Rollup with an efficient computation of the committee i.e. [Pleistarchus](#https://github.com/AztecProtocol/aztec-packages/issues/7978) of size 16. Validators will need to i) nominate proposals for voting by the Governance and ii) vote to execute the proposal. 
+This is the final deployment before the Public Testnet launch, aimed at deploying a private network with full feature parity to the Public Testnet. 
 
-
-| Feature | Description |
-| -----|-----|
-| Committee Size | 16 |
-| Validator Set | 128 |
-| Whitelisted Validators | Aztec Labs will run 4 validators, full list here |
-| Network | 0.1TPS, 36s blocks, 32 block epochs |
-
-**Gating Requiremnets**
-
-* [Pleistarchus](#https://github.com/AztecProtocol/aztec-packages/issues/7978)
-* Prior to public release, Aztec Labs can internally run a stable network with 128 validators, 16 committee size, at least 0.1TPS with proving on and successfully complete the governance upgrade. 
-* Prior to public release, Aztec Labs to share node guide and setup instructions including how to deploy the GovernanceProposer payload. 
-* After public release, Aztec Labs will deploy the proposal to be voted on to the L1 and initiate a proposal nomination period. 
-* After public release, participating validators successfully vote to execute the upgrade and move to the new Rollup. 
-
-### Phase 4
-
-This is the final deployment BEFORE Public Testnet begins. The objective here is to deploy a private network that “upgrades” into a permissionless Public Testnet. 
-
-This deployment should land on Sepolia and we should be using blob DA. This is non-negotiable as we cannot launch Public Testnet without Sepolia or without blob DA.
+When the Gating Requirements have been met, we will commence Public Testnet. 
 
 | Feature | Description |
 | -----|-----|
 | Committee Size | 16 |
 | Validator Set | 128 |
-| Whitelisted Validators | Aztec Labs will run 4 validators, full list here |
+| Whitelisted Validators | Aztec Labs will run 4 validators|
 | Network | 0.1TPS, 36s blocks, 32 block epochs |
 
 **Gating Requirements**
-* Validators stake sepETH to join the validator set.
+* [Minimal Staking](#https://github.com/AztecProtocol/aztec-packages/issues/10023)
+* [Minimal Slashing](#https://github.com/AztecProtocol/aztec-packages/issues/10025)
 * [Sepolia L1](#https://github.com/AztecProtocol/aztec-packages/issues/9456)
 * [Blob DA](#https://github.com/AztecProtocol/aztec-packages/issues/8955)
 * [L1 Reorgs](#https://github.com/AztecProtocol/aztec-packages/issues/8793)
+* A subset of P0s from the [Testnet Milestone](#https://github.com/AztecProtocol/aztec-packages/milestone/42)
 * Prior to public release, Aztec Labs can internally run a stable network on Sepolia, with blob DA, 128 validators, 16 committee size, at least 0.1 TPS with proving on for at least a period of 90 hours. 
 * Priot to public release, Aztec Labs to share node guide and setup instructions. 
 * After public release, network is running without crash for at least 2 weeks.
