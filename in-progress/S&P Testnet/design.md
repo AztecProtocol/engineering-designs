@@ -18,33 +18,42 @@ The Sequencer & Prover Testnet (S&P Testnet) is structured as a progressive seri
 
 **Structured Coordination:** All teams will participate in a coordinated release cycle that aligns engineering, commercial, and S&P testnet participants. Deployment readiness is evaluated each Monday following internal stress tests, with potential releases set for Tuesday, allowing ample preparation and communication.
 
+## Why Sequencer & Prover Testnet
+
+The goal is to launch a fully permissionless Public Testnet, enabling users, sequencers, provers, and developers to interact with the Aztec network under conditions that, as much as possible, mirror real-world usage. S&P Testnet is a controlled testing environment that serves to derisk the Public Testnet network. 
+
+S&P Testnet derisks the following:
+
+1. The network can run at 1TPS throughput.
+2. Committee size of 128 with +3000 validators does not impact block production.
+3. Network can coordinate and execute client updates (or just "soft forks") with minimal interruption to block produciton.
+4. Network can propose, vote on and execute a governance upgrade to hard fork the Rollup.
+5. External provers, besides Aztec Labs, can fully prove the network at the 1TPS rate.
+6. Ecosystem partners can onboard and test their apps on an execution environment that has feature parity with Public Testnet.
+
+Since S&P Testnet is a real-world environment, Public Testnet is de-risked if the networks that are launched during S&P Testnet confirm the above hypotheses. S&P Testnet will progress into Public Testnet only once all the above has been accomplished. 
+
+## Release Schedule
+
+Aztec Labs follows a systematic release process to ensure each testnet deployment meets stability and performance criteria before public release:
+
+**Internal Deployment (Thursday, 3 PM UTC):** Each week, Aztec Labs internally deploys a network that mirrors the intended public release. This environment is rigorously tested over the weekend. The internal network must remain operational and stable through the weekend. Any failures prompt further internal iterations instead of a public release.
+
+**Evaluation (Monday, 2:30 PM UTC):** During the Alpha standup, the team assesses the internal deployment’s performance. If the network meets stability criteria, we commit to launching it publicly.
+
+**Participant Communication (Monday, 6 PM UTC):** S&P Testnet participants are updated on the status of the public deployment. If no release is planned, participants are notified of the next steps.
+
+**Public Deployment (Tuesday, 3 PM UTC):** If the internal deployment is successful, Aztec Labs releases the network to the public. Otherwise, the process resets, with another internal deployment scheduled for Thursday.
 
 
-## Release schedule
-
-Every Thursday 3pm UTC Aztec Labs will internally deploy a network **identical** to what we want to publicly release the following week. This network must survive the weekend until Alpha standup on Monday 2:30pm UTC. 
-
-If the network does not go down, then on Monday during Alpha standup, we commit to publicly deploying the network on Tuesday 3pm UTC. If the network goes down during the weekend, we commit to NOT deploying publicly that week. Instead we deploy privately again on Thursday and repeat the process the following Monday.
-
-Every Monday 6pm UTC we will commnicate with S&P Testnet participants whether we're going ahead with launching a new network the following day on Tuesday 3pm UTC. 
-
-### Information for Participants
+## Information for Participants
 
 Please make sure to submit one fresh Ethereum address for every validator node you want to run during S&P Testnet. We are still thoroughly testing client software so in the case of undocumented code or network outages, please ping [Amin](#discordapp.com/users/65773032211231539) for any questions. 
 
 Refer to the node guide here for setup instructions. 
 
-**Recommended hardware requirements**
 
-
- | 🖥️      |  Minimum      |   Recommended|
-|---------|---------------|----------------|
-| CPU     | 16 cores      | 32 cores       |
-| Bandwidth | +250 mbps      | +500 mbps       |
-| Storage | PCIe Gen 4, 2 TB of disk space | PCIe Gen 4 x2, 4 TB of disk space     |
-| RAM     | DDR4 or better. 32GB of memory       | DDR4 or better. 64GB of memory         |
-
-***What are Gating Requirements?**
+**What are Gating Requirements?**
 
 For each deployment, there are a set of requirements to i) deploy the network and ii) consider it a success and therefore move on to the next deployment. If a deployment fails to meet gating requiremnets, we will either not deploy anything or re-deploy the same network depending on the specific circumstances. 
 
@@ -52,7 +61,7 @@ For each deployment, there are a set of requirements to i) deploy the network an
 
 ### Phase 1
 
-The goal of the first deployment is to produce a stable network with 48 validators coordinating with provers to advance the Proven Chain. In addition to participating provers, Aztec Labs will run a prover node and submit bids to prove the network. 
+In Phase 1, Aztec Network can produce blocks and advance the Final Chain with a validator set of 48 at a throughput of up to 0.02 TPS. 
 
 | Feature | Description |
 | -----|-----|
@@ -69,7 +78,7 @@ The goal of the first deployment is to produce a stable network with 48 validato
 
 ### Phase 2
 
-For the second deployment, we will increase the size of the validator set to 128 and throughput to 0.1 TPS (~3/4txs per block), while committee size stays the same. First governance upgrade will run in Phase 2. 
+In Phase 2, Aztec Network has a validator set of size 128 and supports throughput of upto 0.1 TPS (~3/4txs per block). The network can also coordinate and survive client upgrades /soft forks.
 
 The goals here are to test: 
 1) The network can handle an increased throughput sporting a larger validator set
@@ -86,9 +95,14 @@ The goals here are to test:
 * Prior to public release, Aztec Labs can internally run a stable network with 128 validators, 16 committee size, at least 0.1TPS with proving on for at least a period of 90 hours. 
 * Prior to public release, Aztec Labs to publish node guide and setup instructions. 
 * After public release, the deployed network in Phase 2 can survive 120 hours without a fatal crash.
-* Governance upgrade is successfully executed, and validators move to the new Rollup. 
+* Governance upgrade is successfully executed, and validators move to the new Rollup.
 
 ### Phase 3
+
+
+
+
+### Phase 4
 
 This is the final deployment before the Public Testnet launch, aimed at deploying a private network with full feature parity to the Public Testnet. 
 
@@ -96,8 +110,8 @@ When the Gating Requirements have been met, we will commence Public Testnet.
 
 | Feature | Description |
 | -----|-----|
-| Committee Size | 16 |
-| Validator Set | 128 |
+| Committee Size | 128 |
+| Validator Set | 300 |
 | Network | 0.1TPS, 36s blocks, 32 block epochs, Sepolia L1 |
 
 **Gating Requirements**
