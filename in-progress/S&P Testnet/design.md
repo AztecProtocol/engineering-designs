@@ -58,7 +58,6 @@ The goal of the first deployment is to produce a stable network with 48 validato
 | -----|-----|
 | Committee Size | 16 |
 | Validator Set | 48 |
-| Whitelisted Validators | Aztec Labs will run 4 validators |
 | Network | 1tx per block, 36s blocks, 32 block epochs |
 
 **Gating Requirements**
@@ -80,7 +79,6 @@ The goals here are to test:
 | -----|-----|
 | Committee Size | 16 |
 | Validator Set | 128 |
-| Whitelisted Validators | Aztec Labs will run 4 validators|
 | Network | 0.1TPS, 36s blocks, 32 block epochs |
 
 **Gating Requirements** 
@@ -100,8 +98,7 @@ When the Gating Requirements have been met, we will commence Public Testnet.
 | -----|-----|
 | Committee Size | 16 |
 | Validator Set | 128 |
-| Whitelisted Validators | Aztec Labs will run 4 validators|
-| Network | 0.1TPS, 36s blocks, 32 block epochs |
+| Network | 0.1TPS, 36s blocks, 32 block epochs, Sepolia L1 |
 
 **Gating Requirements**
 * [Minimal Staking](#https://github.com/AztecProtocol/aztec-packages/issues/10023)
