@@ -294,15 +294,15 @@ The information set out herein is for discussion purposes only and does not repr
 
 
 ## Tickets
-- Add configuration value to nodes to add a consensus layer endpoint
-- Add a blob caching service for use in end to end tests 
-- Deploy the sandbox to run with an in container version of the blob caching service
-- Add a consensus layer node into spartan
-- Begin reading TxEffects data from the consensus layer
-- Provide a way for nodes to sync the chain without a dependence on calldata
+- Add configuration value to nodes to add a consensus layer endpoint - https://github.com/AztecProtocol/aztec-packages/issues/10052
+- Add a blob caching service for use in end to end tests - https://github.com/AztecProtocol/aztec-packages/issues/10053
+- Deploy the sandbox to run with an in container version of the blob caching service - https://github.com/AztecProtocol/aztec-packages/issues/10054
+- Add a consensus layer node into spartan - https://github.com/AztecProtocol/aztec-packages/issues/10055
+- Begin reading TxEffects data from the consensus layer - https://github.com/AztecProtocol/aztec-packages/issues/10056
+- Provide a way for nodes to sync the chain without a dependence on calldata - https://github.com/AztecProtocol/aztec-packages/issues/10057
     - Request Response for block data
     - Sync from `snap` sync service - a publically hosted database (this can be checked against the calldata)
-- Remove `data` blob from the rollup
+- Remove `data` blob from the rollup - https://github.com/AztecProtocol/aztec-packages/issues/10058
 
 ## QUESTIONS
 - Does the PXE read from L1, or does it just interface with the node itself?? 
