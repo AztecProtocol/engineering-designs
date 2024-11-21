@@ -173,7 +173,7 @@ TODO(9101) includes changes to be made in response to this eng design.
   }
 ```
 
-We will replace getting the blobBody from the bodyHex, which is retrieved from the l1 propose transaction, and replace it with a request to the endpoint on the CL (or emulator) above.
+We will replace getting the blockBody from the bodyHex, which is retrieved from the l1 propose transaction, and replace it with a request to the endpoint on the CL (or emulator) above.
 
 
 #### Request Response Modifications (Optional Extension)
