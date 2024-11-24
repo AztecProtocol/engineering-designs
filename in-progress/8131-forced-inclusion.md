@@ -25,7 +25,7 @@ We use a similar definition of a censored transaction as the one outlined in [Th
 
 > _"a transaction is censored if a third party can prevent it from achieving its goal."_
 
-For a system as the ours, even with the addition of the [based fallback mechanism](8404-based-fallback.md), there is a verity of methods a censor can use to keep a transaction out.
+For a system as the ours, even with the addition of the [based fallback mechanism](8404-based-fallback.md), there is a verify of methods a censor can use to keep a transaction out.
 
 The simplest is that the committee simply ignore the transaction.
 In this case, the user would need to wait until a more friendly committee comes along, and he is fully dependent on the consensus mechanism of our network being honest.
@@ -33,17 +33,17 @@ In this case, the user would need to wait until a more friendly committee comes 
 Note, that there is a case where a honest committee would ignore your transaction, you might be paying an insufficient fee.
 This case should be easily solved, pay up you cheapskate!
 
-But lets assume that this is not the case you were in, you paid a sufficient fee and they keep excluding it.
+But let's assume that this is not the case you were in, you paid a sufficient fee and they keep excluding it.
 
 In rollups such as Arbitrum and Optimism both have a mechanism that allow the user to take his transactions directly to the base layer, and insert it into a "delayed" queue.
 After some delay have passed, the elements of the delayed queue can be forced into the ordering, and the sequencer is required to include it, or he will enter a game of fraud or not where he already lost.
 
 The delay is introduced into the system to ensure that the forced inclusions cannot be used as a way to censor the rollup itself.
 
-Curtesy of [The Hand-off Problem](https://blog.init4.technology/p/the-hand-off-problem), we borrow this great figure:
+Courtesy of [The Hand-off Problem](https://blog.init4.technology/p/the-hand-off-problem), we borrow this great figure:
 ![There must be a hand-off from unforced to forced inclusion.](https://substackcdn.com/image/fetch/f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F35f3bee4-0a8d-4c40-9c8d-0a145be64d87_3216x1243.png)
 
-The hand-off is here the point where we go from the ordering of transactions that the sequencer/proposer is freely choosing and the transactions that they are forced to include specifically ordered.
+The hand-off is the point where we go from the ordering of transactions that the sequencer/proposer is freely choosing and the transactions that they are forced to include specifically ordered.
 For Arbitrum and Optimisms that would be after this delay passes and it is forced into the ordering.
 
 By having this forced insertion into the ordering the systems can get the same **inclusion** censorship resistance as their underlying baselayer.
