@@ -75,43 +75,57 @@ In Phase 1, Aztec Network can produce blocks and advance the Final Chain with a 
 * Prior to public release, Aztec Labs to publish node guide and setup instructions. 
 * After public release, the deployed network in Phase 1 can survive 120 hours without a fatal crash. 
 
-
 ### Phase 2
 
-In Phase 2, Aztec Network has a validator set of size 128 and supports throughput of upto 0.1 TPS (~3/4txs per block). The network can also coordinate and survive client upgrades /soft forks as well hard forks. 
-
-> To pass Phase 2, we will perform a soft fork standalone first. Then perform a governance upgrade that deploys a new Rollup contract. 
-
-The goals here are to test: 
-1) The network can handle an increased throughput sporting a larger validator set
-2) A soft fork: sequencers and provers can update client software and resync with minimal network disruption.
-3) A hard fork: sequencers can coordinate to vote on governance proposals. 
-
-| Feature | Description |
-| -----|-----|
-| Max Committee Size | 16 |
-| Validator Set | 128 |
-| Network | 0.1TPS, 36s blocks, 32 block epochs |
-
-**Gating Requirements** 
-
-* Prior to public release, Aztec Labs can internally run a stable network with 128 validators, 16 committee size, at least 0.1TPS with proving on for at least a period of 90 hours. 
-* Prior to public release, Aztec Labs to publish node guide and setup instructions. 
-* After public release, the deployed network in Phase 2 can survive 120 hours without a fatal crash.
-* The client software update is successful, nodes are able to resync and continue building the Finalized Chain. 
-* Governance upgrade is successfully executed, and validators move to the new Rollup.
-
-### Phase 3
-
-In Phase 3, the network features a full feature execution environment and attained full feature parity with Public Testnet. 
-
-When this network passes the gating requirements, it is deployed as a new DevNet release. 
+In Phase 3, the network runs on Sepolia L1 and uses blob DA (in addition to potentially also calldata). Throughput is increased to 0.1TPS (~3/4txs per block)
 
 | Feature | Description |
 | -----|-----|
 | Committee Size | 16 |
 | Validator Set | 128 |
-| Network | 0.1TPS, 36s blocks, 32 block epochs, |
+| Network | 0.1TPS, 36s blocks, 32 block epochs, Sepolia L1, BlobDA |
+
+**Gating Requirements** 
+
+* Prior to public release, Aztec Labs can internally run a stable network with 128 validators, 16 committee size, at least 0.1TPS with proving on for at least a period of 90 hours. 
+* Prior to public release, Aztec Labs to publish node guide and setup instructions.
+* After public release, the deployed network in Phase 2 can survive 120 hours without a fatal crash. 
+
+### Phase 3
+
+In Phase 3. The network can coordinate and survive client upgrades/soft forks as well as hard forks. 
+
+> To pass Phase 3, we will perform a soft fork standalone first. Then perform a governance upgrade that deploys a new Rollup contract. 
+
+The goals here are to test: 
+1) A soft fork: sequencers and provers can update client software and resync with minimal network disruption.
+2) A hard fork: sequencers can coordinate to vote on governance proposals. 
+
+| Feature | Description |
+| -----|-----|
+| Max Committee Size | 16 |
+| Validator Set | 128 |
+| Network | 0.1TPS, 36s blocks, 32 block epochs, Sepolia L1, Governance, Staking |
+
+**Gating Requirements** 
+
+* Prior to public release, Aztec Labs can internally run a stable network with 128 validators, 16 committee size, at least 0.1TPS with proving on for at least a period of 90 hours. 
+* Prior to public release, Aztec Labs to publish node guide and setup instructions. 
+* After public release, the deployed network in Phase 3 can survive 120 hours without a fatal crash.
+* The client software update is successful, nodes are able to resync and continue building the Finalized Chain. 
+* Governance upgrade is successfully executed, and validators move to the new Rollup.
+
+### Phase 4
+
+In Phase 4, the network features a full feature execution environment and attained full feature parity with Public Testnet. The network runs at a max throughput of 1TPS. 
+
+When this network passes the gating requirements, it is deployed as a new DevNet release. 
+
+| Feature | Description |
+| -----|-----|
+| Committee Size | 128 |
+| Validator Set | +300 |
+| Network | 1TPS, 36s blocks, 32 block epochs, |
 
 **Gating Requirements**
 * [Minimal Staking](#https://github.com/AztecProtocol/aztec-packages/issues/10023)
@@ -120,24 +134,8 @@ When this network passes the gating requirements, it is deployed as a new DevNet
 * [Blob DA](#https://github.com/AztecProtocol/aztec-packages/issues/8955)
 * [L1 Reorgs](#https://github.com/AztecProtocol/aztec-packages/issues/8793)
 * A subset of P0s from the [Testnet Milestone](#https://github.com/AztecProtocol/aztec-packages/milestone/42)
-* Prior to public release, Aztec Labs can internally run a stable network with the above features, 128 validators, 16 committee size, at least 0.1 TPS with proving on for at least a period of 90 hours. 
+* Prior to public release, Aztec Labs can internally run a stable network with the above features, 128 validators, 128 committee size, at least 1 TPS with proving on for at least a period of 90 hours. 
 * Priot to public release, Aztec Labs to share node guide and setup instructions. 
 * After public release, network is running without crash for at least 1 week.
-* Infrastructure partners are able to be onboarded to the DevNet version of this network.
-
-### Phase 4
-
-This is the final stage in S&P Testnet. The network has achieved full feature execution environment AND the highest throughput and validator set requirements. 
-
-Phase 4 networks have the same feature set as Phase 3, but have proven stable when producing blocks at 1 TPS, 128 max committee size and at least 300 validators in the set. 
-
-| Feature | Description |
-| -----|-----|
-| Committee Size | 128 |
-| Validator Set | +300 |
-| Network | 1TPS, 36s blocks, 32 block epochs |
-
-**Gating Requirements**
-* Prior to public release, Aztec Labs can internally run a stable network with the same feature set as in Phase 3 but with 128 max committee size, 1TPS with proving on. Assume validator set size is at least 300.
-* After public release, network is running without crashing for at least 1 week. 
+* Aztec infrastructure providers are onboarded to the DevNet version of this network.
 
