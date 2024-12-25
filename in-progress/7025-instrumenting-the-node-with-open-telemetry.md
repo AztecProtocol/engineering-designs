@@ -11,7 +11,7 @@ The node should emit useful stats about the way its running so that node operato
 
 ## Introduction
 
-In order to confidently deploy and maintain a node in production it needs to provide basic information about how it's operating. These metrics need to be emitted in portable manner so that monitoring tools can easily ingest them. These metrics should be optional such that running a node does not require running any other infrastructure to ingest the metrics.
+In order to confidently deploy and maintain a node in production it needs to provide basic information about how it's operating. These metrics need to be emitted in а portable manner so that monitoring tools can easily ingest them. These metrics should be optional such that running a node does not require running any other infrastructure to ingest the metrics.
 
 OpenTelemetry is a framework for capturing instrumentation data from applications and encoding them into a standard format that's vendor neutral. In the past we've used Prometheus and Grafana to capture metrics from services, OpenTelemetry would enable us to continue running that stack while also giving the community the chance to ingest data into different systems (e.g. Clickhouse, DataDog).
 
