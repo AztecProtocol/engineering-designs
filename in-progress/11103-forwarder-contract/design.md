@@ -70,27 +70,30 @@ contract Forwarder is Ownable {
 
 L1 publisher will be broken into two classes:
 
-- `SequencerL1API`
-- `ProverL1API`
+- within `@aztec/sequencer-client`, there will be a `L1TxManager`
+- within `@aztec/prover-node`, there will be a `L1TxPublisher`
 
 Under the hood, both of these will use the `L1TxUtils` to create and send L1 transactions.
 
-### ProverL1API
+### ProverNode `L1TxPublisher`
 
-The `ProverL1API` will have the functions within `l1-publisher.ts` that are related to the prover node, and have the same interface/semantics as the current `L1Publisher`. As an aside, this means `@aztec/prover-node` should no longer have a dependency on the `@aztec/sequencer-client` package.
+The `ProverNode` will have a `L1TxPublisher` that has the functions within `l1-publisher.ts` that are related to the prover node, and have the same interface/semantics as the current `L1Publisher`. As an aside, this means `@aztec/prover-node` should no longer have a dependency on the `@aztec/sequencer-client` package.
 
-### SequencerL1API
+In essence, this class is an API for L1 transactions for the prover node, and a simple wrapper around the `L1TxUtils` class.
 
-The `SequencerL1API` will have many of the same functions currently within the `l1-publisher.ts`, but will have different semantics.
+### SequencerClient `L1TxManager`
 
-The `SequencerL1API` will have
+The `SequencerClient` will have a `L1TxManager` that has many of the same functions currently within the `l1-publisher.ts`, but will have different semantics.
 
-- knowledge of the sequencer's forwarder contract
-- knowledge of L1 slot boundaries
+The `L1TxManager` will have:
+
 - `queuedRequests: L1TxRequest[]`
 - a work loop
+- knowledge of the sequencer's forwarder contract
+- knowledge of L1 slot boundaries
+- knowledge of successful L1 transactions per L2 slot
 
-The `Sequencer` uses the `SequencerL1API` to make calls to:
+The `Sequencer` uses its `L1TxManager` to make calls to:
 
 - propose an l2 block
 - cast a governance proposal vote
