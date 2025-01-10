@@ -4,8 +4,8 @@
 | -------------------- | ---------------------------------------------------------------------------------- |
 | Issue                | [Forwarder Contract](https://github.com/AztecProtocol/aztec-packages/issues/11103) |
 | Owners               | @just-mitch                                                                        |
-| Approvers            | @LHerskind @PhilWindle                                                             |
-| Target Approval Date | 2025-01-20                                                                         |
+| Approvers            | @LHerskind @PhilWindle @spalladino @spypsy                                         |
+| Target Approval Date | 2025-01-15                                                                         |
 
 ## Executive Summary
 
@@ -15,9 +15,9 @@ Adjust the sequencer client to batch its actions into a single L1 transaction.
 
 ## Introduction
 
-Within the same L1 transaction, we cannot make blob transactions and regular transactions from the same address.
+Within the same L1 transaction, one cannot make blob transactions and regular transactions from the same address.
 
-We must be able to do that though, since we want to be able to do things like:
+However, aztec node operators must be able to do things like:
 
 - propose and l2 block
 - vote in the governance proposer contract
@@ -66,6 +66,10 @@ contract Forwarder is Ownable {
 }
 ```
 
+Note: this requires all the actions to succeed, so the sender must be sure that, e.g. a failed governance vote will not prevent the L2 block from being proposed.
+
+Note: this implementation is not technically part of the protocol, and as such will live in `l1-contracts/src/periphery`.
+
 ### Refactoring L1 Publisher
 
 L1 publisher will be broken into two classes:
@@ -100,11 +104,48 @@ The `Sequencer` uses its `L1TxManager` to make calls to:
 - cast a slashing vote
 - claim an epoch proof quote
 
+The return type of each of these functions will be a `Promise<TransactionReceipt>`, which will be resolved when the bundled transaction is included in an L1 block.
+
 These requests will be added to the `queuedRequests` list.
 
-The work loop will wait for a configurable amount of time (e.g. 6 seconds) into each L1 slot.
+The work loop will wait for a configurable amount of time (e.g. 6 seconds) into each L1 slot. This will be exposed as an environment variable `sequencer.l1TxSubmissionDeadline`.
 
 If there are any queued requests, it will send them to the forwarder contract, and flush the `queuedRequests` list.
+
+### L1PublishBlockStats
+
+Since one `L1PublishBlockStats` can be used for multiple actions, its constituent `event` will be changed to `actions`, which will be a `string[]`.
+
+The sequencer's `L1TxManager` and the prover node's `L1TxPublisher` will populate this array and record the metric.
+
+### Cancellation/Resend
+
+A complication is that ethereum nodes make replacement of blob transactions expensive, and cancelation impossible, as they operate under the assumption that rollups seldom/never need to replace/cancel blob transactions.
+
+See [geth's blob pool](https://github.com/ethereum/go-ethereum/blob/581e2140f22566655aa8fb2d1e9a6c4a740d3be1/core/txpool/blobpool/blobpool.go) for details/constraints.
+
+This is not true for Aztec's decentralized sequencer set with strict L1 timeliness requirements on L2 blocks.
+
+So a concern is the following scenario:
+
+- proposer A submits a tx with nonce 1 (with a blob) that is not priced aggressively enough
+- Tx1 sits in the blob pool, but is not included in an L1 block
+- proposer A tries to submit another transaction, but needs to know to use Tx2
+- Tx1 needs to be replaced with a higher fee, but it will revert if the network is in a different L2 slot and the bundle contained a proposal
+
+This is addressed by:
+
+- Upgrading viem to at least v2.15.0 to use their nonceManager to be aware of pending nonces
+- Aggressive pricing of blob transactions
+- The L1TxUtils will be able to speed up Tx1 (even if it reverts), which should unblock Tx2
+
+A different approach would be to have the sequencer client maintain a pool of available forwarder contracts, and use one until it gets stuck, then switch to the next one: presumably by the time the sequencer client gets to the original forwarder contract, the blob pool will have been cleared.
+
+Broader changes about changing the timeliness requirements are not in scope for this change.
+
+### Setup
+
+There will be an optional environment variable `sequencer.forwarderContractAddress` that will be used to specify the forwarder contract address. To improve UX, there will be a separate environment variable `sequencer.deployForwarderContract` that will default to `true` and be used to specify whether the forwarder contract should be deployed. If so, the Aztec Labs implementation of the forwarder contract will be deployed and used by the sequencer.
 
 ### Gas
 
@@ -139,35 +180,23 @@ Fill in bullets for each area that will be affected by this change.
 - [ ] Aztec.nr
 - [ ] Enshrined L2 Contracts
 - [ ] Private Kernel Circuits
-- [ ] Sequencer
+- [x] Sequencer
 - [ ] AVM
 - [ ] Public Kernel Circuits
 - [ ] Rollup Circuits
-- [ ] L1 Contracts
-- [ ] Prover
+- [x] L1 Contracts
+- [x] Prover
 - [ ] Economics
 - [ ] P2P Network
 - [ ] DevOps
 
 ## Test Plan
 
-Outline what unit and e2e tests will be written. Describe the logic they cover and any mock objects used.
+The primary test is [cluster governance upgrade](https://github.com/AztecProtocol/aztec-packages/issues/9638), ensuring that block production does not stall (as it currently does).
 
 ## Documentation Plan
 
-Identify changes or additions to the user documentation or protocol spec.
-
-## Rejection Reason
-
-If the design is rejected, include a brief explanation of why.
-
-## Abandonment Reason
-
-If the design is abandoned mid-implementation, include a brief explanation of why.
-
-## Implementation Deviations
-
-If the design is implemented, include a brief explanation of deviations to the original design.
+No plans to document this as yet: the node operator guide effectively does not exist.
 
 ## Disclaimer
 
