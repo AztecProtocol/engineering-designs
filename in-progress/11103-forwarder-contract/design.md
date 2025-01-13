@@ -79,6 +79,8 @@ L1 publisher will be broken into two classes:
 
 Under the hood, both of these will use the `L1TxUtils` to create and send L1 transactions.
 
+The publisher had also had responsibilities as a "getter" of different information on L1. This will be refactored into classes specific to the individual contracts that are being queried, e.g. `yarn-project/ethereum/src/contracts/rollup.ts` has a `Rollup` class that is responsible for getting information from the rollup contract.
+
 ### ProverNode `L1TxPublisher`
 
 The `ProverNode` will have a `L1TxPublisher` that has the functions within `l1-publisher.ts` that are related to the prover node, and have the same interface/semantics as the current `L1Publisher`. As an aside, this means `@aztec/prover-node` should no longer have a dependency on the `@aztec/sequencer-client` package.
@@ -92,31 +94,25 @@ The `SequencerClient` will have a `L1TxManager` that has many of the same functi
 The `L1TxManager` will have:
 
 - `queuedRequests: L1TxRequest[]`
-- a work loop
 - knowledge of the sequencer's forwarder contract
-- knowledge of L1 slot boundaries
-- knowledge of successful L1 transactions per L2 slot
 
-The `Sequencer` uses its `L1TxManager` to make calls to:
+It will have an interface of:
+
+```typescript
+interface L1TxManager {
+  addRequest(request: L1TxRequest): void;
+  sendRequests(): Promise<TransactionReceipt | undefined>;
+}
+```
+
+The `Sequencer` uses its `L1TxManager.addRequest()` to push requests to the `queuedRequests` list whenever it wants to:
 
 - propose an l2 block
 - cast a governance proposal vote
 - cast a slashing vote
 - claim an epoch proof quote
 
-The return type of each of these functions will be a `Promise<TransactionReceipt>`, which will be resolved when the bundled transaction is included in an L1 block.
-
-These requests will be added to the `queuedRequests` list.
-
-The work loop will wait for a configurable amount of time (e.g. 6 seconds) into each L1 slot. This will be exposed as an environment variable `sequencer.l1TxSubmissionDeadline`.
-
-If there are any queued requests, it will send them to the forwarder contract, and flush the `queuedRequests` list.
-
-### L1PublishBlockStats
-
-Since one `L1PublishBlockStats` can be used for multiple actions, its constituent `event` will be changed to `actions`, which will be a `string[]`.
-
-The sequencer's `L1TxManager` and the prover node's `L1TxPublisher` will populate this array and record the metric.
+At end of every iteration of the Sequencer's work loop, it will await a call to `L1TxManager.sendRequests()`, which will send the queued requests to the forwarder contract, and flush the `queuedRequests` list.
 
 ### Cancellation/Resend
 
@@ -139,13 +135,11 @@ This is addressed by:
 - Aggressive pricing of blob transactions
 - The L1TxUtils will be able to speed up Tx1 (even if it reverts), which should unblock Tx2
 
-A different approach would be to have the sequencer client maintain a pool of available forwarder contracts, and use one until it gets stuck, then switch to the next one: presumably by the time the sequencer client gets to the original forwarder contract, the blob pool will have been cleared.
-
-Broader changes about changing the timeliness requirements are not in scope for this change.
-
 ### Setup
 
-There will be an optional environment variable `sequencer.forwarderContractAddress` that will be used to specify the forwarder contract address. To improve UX, there will be a separate environment variable `sequencer.deployForwarderContract` that will default to `true` and be used to specify whether the forwarder contract should be deployed. If so, the Aztec Labs implementation of the forwarder contract will be deployed and used by the sequencer.
+There will be an optional environment variable `sequencer.custForwarderContractAddress` that can be used to specify a custom forwarder contract address.
+
+If this is not set, the sequencer will deploy the Aztec Labs implementation of the forwarder contract, using the Universal Deterministic Deployer, supplying the sequencer's address as the deployment salt, and the sequencer's address as the owner.
 
 ### Gas
 
@@ -156,6 +150,10 @@ Operating at 10TPS, this would mean an overhead of under 3 gas per L2 transactio
 Unfortunately, the current design to support forced inclusion requires a hash for each transaction in the proposal args.
 
 This means that the overhead per L2 transaction will be ~35 gas, which is still under 50 gas, but a significant portion of the overall target of 500 gas per L2 transaction.
+
+### Future work
+
+For more robust cancellation, the sequencer client could maintain a pool of available EOAs, each of which are "owners"/"authorized senders" on its forwarder contract, and use one until it gets stuck, then switch to the next one: presumably by the time the sequencer client gets to the original EOA, the blob pool will have been cleared.
 
 ### Alternative solutions
 
