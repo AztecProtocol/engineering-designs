@@ -15,11 +15,11 @@ Adjust the sequencer client to batch its actions into a single L1 transaction.
 
 ## Introduction
 
-Within the same L1 transaction, one cannot make blob transactions and regular transactions from the same address.
+Within the same L1 block, one cannot make blob transactions and regular transactions from the same address.
 
 However, aztec node operators must be able to do things like:
 
-- propose and l2 block
+- propose an l2 block
 - vote in the governance proposer contract
 - claim an epoch proof quote
   all in the same L1 block.
@@ -100,7 +100,7 @@ It will have an interface of:
 
 ```typescript
 interface L1TxManager {
-  addRequest(request: L1TxRequest): void;
+  addRequest(request: L1TxRequest, validThroughL2Slot: number): void;
   sendRequests(): Promise<TransactionReceipt | undefined>;
 }
 ```
@@ -137,19 +137,18 @@ This is addressed by:
 
 ### Setup
 
-There will be an optional environment variable `sequencer.custForwarderContractAddress` that can be used to specify a custom forwarder contract address.
+There will be an optional environment variable `sequencer.customForwarderContractAddress` that can be used to specify a custom forwarder contract address.
 
 If this is not set, the sequencer will deploy the Aztec Labs implementation of the forwarder contract, using the Universal Deterministic Deployer, supplying the sequencer's address as the deployment salt, and the sequencer's address as the owner.
 
 ### Gas
 
 Once the L2 block body is removed from calldata, the "static" arguments to call the propose function should be under 1KB.
+But including commitee ECDSA signatures, this goes to ~7KB.
 
-Operating at 10TPS, this would mean an overhead of under 3 gas per L2 transaction.
+Operating at 10TPS, this means an overhead of under (16 gas/B _ 8KB) / (10 transactions/s _ 36s) = 355 gas per L2 transaction.
 
-Unfortunately, the current design to support forced inclusion requires a hash for each transaction in the proposal args.
-
-This means that the overhead per L2 transaction will be ~35 gas, which is still under 50 gas, but a significant portion of the overall target of 500 gas per L2 transaction.
+However, after the committee signatures convert to BLS, the calldata will drop to 1KB total, so the overhead will drop to (16 gas/B _ 1KB) / (10 transactions/s _ 36s) = 44 gas per L2 transaction.
 
 ### Future work
 
