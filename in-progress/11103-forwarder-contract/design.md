@@ -81,38 +81,52 @@ Under the hood, both of these will use the `L1TxUtils` to create and send L1 tra
 
 The publisher had also had responsibilities as a "getter" of different information on L1. This will be refactored into classes specific to the individual contracts that are being queried, e.g. `yarn-project/ethereum/src/contracts/rollup.ts` has a `Rollup` class that is responsible for getting information from the rollup contract.
 
-### ProverNode `L1TxPublisher`
+### `ProverNodePublisher`
 
-The `ProverNode` will have a `L1TxPublisher` that has the functions within `l1-publisher.ts` that are related to the prover node, and have the same interface/semantics as the current `L1Publisher`. As an aside, this means `@aztec/prover-node` should no longer have a dependency on the `@aztec/sequencer-client` package.
+The `ProverNode` will have a `ProverNodePublisher` that has the functions currently within `l1-publisher.ts` that are related to the prover node, and have the same interface/semantics as the current `L1Publisher`. As an aside, this means `@aztec/prover-node` should no longer have a dependency on the `@aztec/sequencer-client` package.
 
 In essence, this class is an API for L1 transactions for the prover node, and a simple wrapper around the `L1TxUtils` class.
 
-### SequencerClient `L1TxManager`
+### `SequencerPublisher`
 
-The `SequencerClient` will have a `L1TxManager` that has many of the same functions currently within the `l1-publisher.ts`, but will have different semantics.
+The `SequencerClient` will have a `SequencerPublisher` that has many of the same functions currently within the `l1-publisher.ts`, but will have different semantics.
 
-The `L1TxManager` will have:
+The `SequencerPublisher` will have:
 
-- `queuedRequests: L1TxRequest[]`
+- `requests: RequestWithExpiry[]`
+-
 - knowledge of the sequencer's forwarder contract
 
-It will have an interface of:
+where:
 
 ```typescript
-interface L1TxManager {
-  addRequest(request: L1TxRequest, validThroughL2Slot: number): void;
-  sendRequests(): Promise<TransactionReceipt | undefined>;
+type Action = "propose" | "claim" | "governance-vote" | "slashing-vote";
+interface RequestWithExpiry {
+  action: Action;
+  request: L1TxRequest;
+  lastValidL2Slot: bigint;
+  gasConfig?: L1GasConfig;
+  blobConfig?: L1BlobInputs;
+  onResult?: (
+    request: L1TxRequest,
+    result?: {
+      receipt: TransactionReceipt;
+      gasPrice: GasPrice;
+      stats?: TransactionStats;
+      errorMsg?: string;
+    }
+  ) => void;
 }
 ```
 
-The `Sequencer` uses its `L1TxManager.addRequest()` to push requests to the `queuedRequests` list whenever it wants to:
+The `Sequencer` will append to the `requests` list whenever it wants to:
 
 - propose an l2 block
 - cast a governance proposal vote
 - cast a slashing vote
 - claim an epoch proof quote
 
-At end of every iteration of the Sequencer's work loop, it will await a call to `L1TxManager.sendRequests()`, which will send the queued requests to the forwarder contract, and flush the `queuedRequests` list.
+At end of every iteration of the Sequencer's work loop, it will await a call to `SequencerPublisher.sendRequests()`, which will send the queued requests to the forwarder contract, and flush the `requests` list.
 
 ### Cancellation/Resend
 
@@ -146,9 +160,9 @@ If this is not set, the sequencer will deploy the Aztec Labs implementation of t
 Once the L2 block body is removed from calldata, the "static" arguments to call the propose function should be under 1KB.
 But including commitee ECDSA signatures, this goes to ~7KB.
 
-Operating at 10TPS, this means an overhead of under (16 gas/B _ 8KB) / (10 transactions/s _ 36s) = 355 gas per L2 transaction.
+Operating at 10TPS, this means an overhead of under (16 gas/B \* 8KB) / (10 transactions/s \* 36s) = 355 gas per L2 transaction.
 
-However, after the committee signatures convert to BLS, the calldata will drop to 1KB total, so the overhead will drop to (16 gas/B _ 1KB) / (10 transactions/s _ 36s) = 44 gas per L2 transaction.
+However, after the committee signatures convert to BLS, the calldata will drop to 1KB total, so the overhead will drop to (16 gas/B \* 1KB) / (10 transactions/s \* 36s) = 44 gas per L2 transaction.
 
 ### Future work
 
