@@ -17,14 +17,6 @@
   - @critesjosh
 - Target PRD Approval Date: 2025-03-14
 
-|                      |                               |
-| -------------------- | ----------------------------- |
-| Title                | Engineering Process           |
-| Type                 | Project Requirements Document |
-| Owners               | @just-mitch                   |
-| Approvers            |                               |
-| Target Approval Date |                               |
-
 ## Key words
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
