@@ -17,18 +17,17 @@ Adjust the sequencer client to batch its actions into a single L1 transaction.
 
 Within the same L1 block, one cannot make blob transactions and regular transactions from the same address.
 
-However, aztec node operators must be able to do things like:
+However, aztec node operators must be able to:
 
 - propose an l2 block
 - vote in the governance proposer contract
-- claim an epoch proof quote
-  all in the same L1 block.
+
+in the same L1 block.
 
 ### Goals
 
 - Allow the sequencer client to take multiple actions in the same L1 transaction
 - No changes to governance/staking
-- Under 50 gas overhead per L2 transaction when operating at 10TPS
 
 ### Non-goals
 
@@ -49,21 +48,25 @@ The Aztec Labs sequencer client implementation will need to be updated to use th
 It is straightforward.
 
 ```solidity
-import {Address} from "@oz/utils/Address.sol";
-import {Ownable} from "@oz/access/Ownable.sol";
-
-contract Forwarder is Ownable {
+contract Forwarder is Ownable, IForwarder {
   using Address for address;
 
   constructor(address __owner) Ownable(__owner) {}
 
-  function forward(address[] calldata _to, bytes[] calldata _data) external onlyOwner {
-    require(_to.length == _data.length);
+  function forward(address[] calldata _to, bytes[] calldata _data)
+    external
+    override(IForwarder)
+    onlyOwner
+  {
+    require(
+      _to.length == _data.length, IForwarder.ForwarderLengthMismatch(_to.length, _data.length)
+    );
     for (uint256 i = 0; i < _to.length; i++) {
       _to[i].functionCall(_data[i]);
     }
   }
 }
+
 ```
 
 Note: this requires all the actions to succeed, so the sender must be sure that, e.g. a failed governance vote will not prevent the L2 block from being proposed.
@@ -74,8 +77,8 @@ Note: this implementation is not technically part of the protocol, and as such w
 
 L1 publisher will be broken into two classes:
 
-- within `@aztec/sequencer-client`, there will be a `L1TxManager`
-- within `@aztec/prover-node`, there will be a `L1TxPublisher`
+- within `@aztec/sequencer-client`, there will be a `SequencerPublisher`
+- within `@aztec/prover-node`, there will be a `ProverNodePublisher`
 
 Under the hood, both of these will use the `L1TxUtils` to create and send L1 transactions.
 
@@ -124,7 +127,6 @@ The `Sequencer` will append to the `requests` list whenever it wants to:
 - propose an l2 block
 - cast a governance proposal vote
 - cast a slashing vote
-- claim an epoch proof quote
 
 At end of every iteration of the Sequencer's work loop, it will await a call to `SequencerPublisher.sendRequests()`, which will send the queued requests to the forwarder contract, and flush the `requests` list.
 
@@ -162,8 +164,6 @@ But including commitee ECDSA signatures, this goes to ~7KB.
 
 Operating at 10TPS, this means an overhead of under (16 gas/B \* 8KB) / (10 transactions/s \* 36s) = 355 gas per L2 transaction.
 
-However, after the committee signatures convert to BLS, the calldata will drop to 1KB total, so the overhead will drop to (16 gas/B \* 1KB) / (10 transactions/s \* 36s) = 44 gas per L2 transaction.
-
 ### Future work
 
 For more robust cancellation, the sequencer client could maintain a pool of available EOAs, each of which are "owners"/"authorized senders" on its forwarder contract, and use one until it gets stuck, then switch to the next one: presumably by the time the sequencer client gets to the original EOA, the blob pool will have been cleared.
@@ -178,7 +178,7 @@ This is unacceptable since the L2 blocks should eventually be published in the _
 
 Alternatively, the EmpireBase contract could have an additional address specified by validators, specifying a separate address that would be used for governance voting.
 
-This seemed more complex, and has a similar problem when considering the flow where a proposer tries to claim an epoch proof quote instead of building a block (because there were no transactions at the start of the slot), but then a transaction became available, and they tried to build/propose an L2 block in the same slot; delays or other queueing in the sequencer client would be required regardless.
+This seemed more complex, and has a similar problem when considering the flow where a proposer tries to vote instead of building a block (because there were no transactions at the start of the slot), but then a transaction became available, and they tried to build/propose an L2 block in the same slot; delays or other queueing in the sequencer client would be required regardless.
 
 ## Change Set
 
