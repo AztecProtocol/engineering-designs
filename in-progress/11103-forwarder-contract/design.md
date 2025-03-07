@@ -28,6 +28,7 @@ in the same L1 block.
 
 - Allow the sequencer client to take multiple actions in the same L1 transaction
 - No changes to governance/staking
+- Under 10 gas overhead per L2 transaction
 
 ### Non-goals
 
@@ -159,10 +160,27 @@ If this is not set, the sequencer will deploy the Aztec Labs implementation of t
 
 ### Gas
 
-Once the L2 block body is removed from calldata, the "static" arguments to call the propose function should be under 1KB.
-But including commitee ECDSA signatures, this goes to ~7KB.
+Including signatures, the calldata for a propose transaction is ~7KB.
 
-Operating at 10TPS, this means an overhead of under (16 gas/B \* 8KB) / (10 transactions/s \* 36s) = 355 gas per L2 transaction.
+So the overhead of the forwarder contract is:
+
+1. **Calldata Copying**:
+
+   - Copy cost: 3 gas per 32‑byte word
+   - 7000 bytes / 32 bytes per word ~= 220 words
+   - 220 words × 3 gas ≈ 660 gas
+   - Memory expansion cost: Memory is priced using the formula C(m) = 3\*m + floor(m²/512) for m words.
+   - For 220 words: 3×220 + floor(220²/512) = 660 + 96 ≈ 754 gas
+   - Total for copying: 660 + 754 ≈ 1414 gas
+
+2. **Call Overhead**:
+   - The basic cost of a call is about 700 gas.
+
+**Adding it up**:
+
+- 1414 gas (copying/calculation) + 700 gas (call) ≈ 2114 gas
+
+Operating at 10TPS, this means an overhead of under 2114 gas / (10 transactions/s \* 36s) = 5.87 gas per L2 transaction.
 
 ### Future work
 
@@ -211,4 +229,4 @@ No plans to document this as yet: the node operator guide effectively does not e
 
 ## Disclaimer
 
-The information set out herein is for discussion purposes only and does not represent any binding indication or commitment by Aztec Labs and its employees to take any action whatsoever, including relating to the structure and/or any potential operation of the Aztec protocol or the protocol roadmap. In particular: (i) nothing in these projects, requests, or comments is intended to create any contractual or other form of legal relationship with Aztec Labs or third parties who engage with this AztecProtocol GitHub account (including, without limitation, by responding to a conversation or submitting comments) (ii) by engaging with any conversation or request, the relevant persons are consenting to Aztec Labs’ use and publication of such engagement and related information on an open-source basis (and agree that Aztec Labs will not treat such engagement and related information as confidential), and (iii) Aztec Labs is not under any duty to consider any or all engagements, and that consideration of such engagements and any decision to award grants or other rewards for any such engagement is entirely at Aztec Labs’ sole discretion. Please do not rely on any information on this account for any purpose - the development, release, and timing of any products, features, or functionality remains subject to change and is currently entirely hypothetical. Nothing on this account should be treated as an offer to sell any security or any other asset by Aztec Labs or its affiliates, and you should not rely on any content or comments for advice of any kind, including legal, investment, financial, tax, or other professional advice.
+The information set out herein is for discussion purposes only and does not represent any binding indication or commitment by Aztec Labs and its employees to take any action whatsoever, including relating to the structure and/or any potential operation of the Aztec protocol or the protocol roadmap. In particular: (i) nothing in these projects, requests, or comments is intended to create any contractual or other form of legal relationship with Aztec Labs or third parties who engage with this AztecProtocol GitHub account (including, without limitation, by responding to a conversation or submitting comments) (ii) by engaging with any conversation or request, the relevant persons are consenting to Aztec Labs' use and publication of such engagement and related information on an open-source basis (and agree that Aztec Labs will not treat such engagement and related information as confidential), and (iii) Aztec Labs is not under any duty to consider any or all engagements, and that consideration of such engagements and any decision to award grants or other rewards for any such engagement is entirely at Aztec Labs' sole discretion. Please do not rely on any information on this account for any purpose - the development, release, and timing of any products, features, or functionality remains subject to change and is currently entirely hypothetical. Nothing on this account should be treated as an offer to sell any security or any other asset by Aztec Labs or its affiliates, and you should not rely on any content or comments for advice of any kind, including legal, investment, financial, tax, or other professional advice.
