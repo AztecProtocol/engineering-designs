@@ -98,7 +98,6 @@ The `SequencerClient` will have a `SequencerPublisher` that has many of the same
 The `SequencerPublisher` will have:
 
 - `requests: RequestWithExpiry[]`
--
 - knowledge of the sequencer's forwarder contract
 
 where:
@@ -108,6 +107,8 @@ type Action = "propose" | "claim" | "governance-vote" | "slashing-vote";
 interface RequestWithExpiry {
   action: Action;
   request: L1TxRequest;
+  // the last L2 slot that the request is valid for.
+  // requests will be dropped if the sequencer is already past this slot.
   lastValidL2Slot: bigint;
   gasConfig?: L1GasConfig;
   blobConfig?: L1BlobInputs;
@@ -160,27 +161,27 @@ If this is not set, the sequencer will deploy the Aztec Labs implementation of t
 
 ### Gas
 
-Including signatures, the calldata for a propose transaction is ~7KB.
+Including signatures, the calldata for a propose transaction is ~3.6KB.
 
 So the overhead of the forwarder contract is:
 
 1. **Calldata Copying**:
 
    - Copy cost: 3 gas per 32‑byte word
-   - 7000 bytes / 32 bytes per word ~= 220 words
-   - 220 words × 3 gas ≈ 660 gas
+   - 3600 bytes / 32 bytes per word ~= 113 words
+   - 113 words × 3 gas ≈ 339 gas
    - Memory expansion cost: Memory is priced using the formula C(m) = 3\*m + floor(m²/512) for m words.
-   - For 220 words: 3×220 + floor(220²/512) = 660 + 96 ≈ 754 gas
-   - Total for copying: 660 + 754 ≈ 1414 gas
+   - For 113 words: 3×113 + floor(113²/512) = 339 + 24 ≈ 363 gas
+   - Total for copying: 339 + 363 ≈ 702 gas
 
 2. **Call Overhead**:
    - The basic cost of a call is about 700 gas.
 
 **Adding it up**:
 
-- 1414 gas (copying/calculation) + 700 gas (call) ≈ 2114 gas
+- 702 gas (copying/calculation) + 700 gas (call) ≈ 1402 gas
 
-Operating at 10TPS, this means an overhead of under 2114 gas / (10 transactions/s \* 36s) = 5.87 gas per L2 transaction.
+Operating at 10TPS, this means an overhead of under 1402 gas / (10 transactions/s \* 36s) = 3.9 gas per L2 transaction.
 
 ### Future work
 
