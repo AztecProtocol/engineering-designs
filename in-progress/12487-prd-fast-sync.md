@@ -2,7 +2,7 @@
 
 - Owners: @spalladino, @aminsammara
 - Approvers:
-  - @andre
+  - @AndreOxski
   - @charlielye
   - @PhilWindle
   - @joshcrites
