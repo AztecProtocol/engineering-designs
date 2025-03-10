@@ -55,3 +55,7 @@ For an initial version of this feature, snapshots are trusted, meaning that the 
 Aztec Labs is to generate these snapshots on a weekly basis (preferred, every 2 weeks at least) and upload them to IPFS. Labs is to ensure the availability of this snapshot, either by directly hosting a node or by relying on a pinning service.
 
 Snapshots should be listed in the snapshots index, stored in a well-known location (eg S3 bucket) hosted by Labs. Nodes will default to this S3 index, pick the latest snapshot, and use fast-sync by default.
+
+### Snapshot contents
+
+The snapshot should contain all information needed for the client to be considered synced up to a given L2 chain tip. For the current client being built, this is the archiver and world state databases. Snapshot should not include any data whatsoever from the P2P layer. This should only be data syncable from L1. The resulting state of downloading a snapshot should be indistinguishable from a full sync from L1.
