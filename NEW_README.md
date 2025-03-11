@@ -13,7 +13,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 ## Introduction
 
-- "Complex work" by engineering MUST have a Design Document (DD) and be tracked as an issue in GitHub.
+- "Complex work" by engineering MUST have a Design Document (DD).
 - Determining whether work is "complex" is the responsibility of engineering team leads and product managers. Good candidates include:
   - Introduces new concepts, data structures, algorithms, services, or contracts
   - Interface or protocol changes
@@ -78,7 +78,7 @@ The purpose of a DD is to describe **how** the work will be done.
   - For example, if the project is called `my-project`, the DD SHOULD be in `docs/my-project/dd.md`.
   - A DD MUST be written in markdown.
 - A DD MUST identify:
-  - The PRD (including the commit hash) that the DD supports
+  - The PRD (including the commit hash) that the DD supports (if applicable)
   - A title/name for the design
   - The design approach
   - The key architecture decisions

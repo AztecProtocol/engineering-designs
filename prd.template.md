@@ -17,9 +17,17 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 ## Background
 
-Provide a high-level background for the project. Add links to any relevant documents rather than duplicating information.
+Provide a high-level background for the project. Add links to any relevant documents rather than duplicating information (note, if linking to github, make sure to include the commit hash).
 
 Explain what the status quo is and why it is inadequate.
+
+## Key assumptions and dependencies
+
+List the key assumptions made in creating the requirements.
+
+List the key dependencies on other work streams or requirements.
+
+For example, we assume that feature X will be complete by Y date, and that it will be cheaper to do Z than V.
 
 ## Desired User Flow(s)
 
@@ -35,13 +43,13 @@ Each flow should discuss why you believe the user demands (or will tolerate) thi
 
 ### (Example) Easy Upgrades for End Users
 
-When there is a new canonical version of the rollup, end users (i.e. wallets) want...
+When a new canonical version of the rollup is released, end users (e.g., wallet users) expect...
 
 We know this because...
 
 ### (Example) Easy Upgrades for Validators
 
-When there is a new canonical version of the rollup, validator operators want...
+When a new canonical version of the rollup is released, validator operators expect...
 
 We know this because...
 
@@ -51,7 +59,7 @@ Describe all the requirements you know of for the project which are relevant giv
 
 For example, if we were speccing an upgrade mechanism for a "regular database", we might have the following requirements:
 
-### Functional Requirements
+### Functional Requirements (what the system does)
 
 #### (Example) Data Migration Utility
 
@@ -65,15 +73,15 @@ For example, if we were speccing an upgrade mechanism for a "regular database", 
 - Why: To safeguard against potential data corruption or upgrade errors, ensuring business continuity.
 - Where: Based on IT risk assessments and business continuity planning guidelines.
 
-### Non-Functional Requirements
+### Non-Functional Requirements (qualities the system has)
 
-#### Security Compliance
+#### (Example) Security Compliance
 
 - What: The upgrade process MUST enforce encryption and strict access control measures to protect data in transit and at rest.
 - Why: To protect sensitive information against unauthorized access and to comply with data protection regulations.
 - Where: Sourced from regulatory requirements (e.g., GDPR, HIPAA) and security audits.
 
-#### Maintainability
+#### (Example) Maintainability
 
 - What: Upgrade scripts and procedures SHOULD be modular and well-documented to facilitate future maintenance and troubleshooting.
 - Why: To reduce long-term maintenance costs and ensure the system can be easily updated or modified.
@@ -93,6 +101,10 @@ For example, if we were speccing an upgrade mechanism for a "regular database", 
 - Why: To ensure that system performance meets user expectations and maintains efficient operations.
 - Where: Derived from performance benchmarks established during testing and requirements from the performance engineering team.
 - NOTE: Within the next 12 months, we will want this to be 100 milliseconds.
+
+## Tradeoff Analysis
+
+Include commentary on where the ideal candidate solution should sit in a tradeoff space, to give guidance how different candidate solutions will be compared. For example, stating that between two candidate solutions, the one that has the lower "cost measured in X" will be preferred.
 
 ## Disclaimer
 

@@ -7,13 +7,15 @@
   - @[product manager]
   - @[other person on the PRD 1]
   - @[other person on the PRD 2]
-- [PRD](link to PRD including commit hash)
+- [PRD (if applicable)](link to PRD including commit hash)
 - Target DD Approval Date: YYYY-MM-DD
 - Target Project Delivery Date: YYYY-MM-DD
 
 ## Executive Summary
 
-Provide the executive summary on your major proposed changes.
+Summarize clearly and concisely the main design decisions, proposed changes, and their impact.
+
+If this work doesn't have a PRD, list the basic requirements for the work.
 
 ## Timeline
 
@@ -65,24 +67,11 @@ Fill in bullets for each area that will be affected by this change.
 
 ## Test Plan
 
-Outline the big tests you want to run to validate the project.
+List key test scenarios or validation steps required to confirm the design meets all project requirements.
 
 ## Documentation Plan
 
 Identify changes or additions to the user documentation or protocol spec.
-
-<!--
-## Rejection Reason
-
-If the design is rejected, include a brief explanation of why.
-
-## Abandonment Reason
-
-If the design is abandoned mid-implementation, include a brief explanation of why.
-
-## Implementation Deviations
-
-If the design is implemented, include a brief explanation of deviations to the original design. -->
 
 ## Disclaimer
 
