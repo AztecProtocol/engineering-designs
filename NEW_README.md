@@ -22,6 +22,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 - Sometimes, the work prescribed by a DD is large (e.g. it takes over a week of engineering hours to fully build and test), or there are several interrelated designs that all pertain to a single "chunk of work" or "epic" or "product" (e.g. sequencer selection).
   - In these cases, the DD SHOULD have an associated Project Requirements Document (PRD).
   - If the DD does not have an associated PRD, it MUST articulate the basic requirements for the work.
+- If the requirements for a project/product are not clear, and engineering cannot quickly work out the requirements with the product/project owner, engineering SHOULD ask for a PRD to be created.
 - PRDs and DDs MUST be kept up to date via pull requests.
   - Note, making first drafts in other platforms (e.g. Google Docs or hackmd) is encouraged for rapid iteration.
 - Changes to the requirements in a PRD require re-approval by the individuals or groups specified in the original PRD.
