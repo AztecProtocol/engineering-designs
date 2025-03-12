@@ -1,4 +1,4 @@
-# Inactivity Leak Project Requirements Document
+# Detecting Slashable Validators: Project Requirements Document
 
 - Owner: @spalladino
 - Approvers:
@@ -57,3 +57,7 @@ $ aztec slash --slasher-client-address 0xabcd --private-key 0x1234 0x01 0x02
   - AS should then filter the resulting data based on how aggressive they want to be in slashing, using `jq` or a script.
 - An address that fulfilled all their duties but had no activity due to not being selected for a committee must not be selected to be slashed.
 - A validator selected for attestation must not be counted towards a missed attestation if there was no proposal seen for that slot.
+
+## Future work
+
+Slashing via CLI is a temporary measure so AS can quickly remove unreliable validators that are holding back the network. We know that we'll have to build a proper decentralized mechanism for executing slashing in the near future, but this is a stopgap solution that is low effort to implement, and builds on top of identifying the slashable validators which will be reused.
