@@ -23,7 +23,7 @@
 
 The act of producing blocks incurs a cost to the block builders:
 
-- The sequencer pay for publishing the block to the data availability layer and to perform some validity checks such as validating attestations.
+- The sequencer pays for publishing the block to the data availability layer and to perform some validity checks such as validating attestations.
 - The prover pays for producing the proof (proving) and then to publish the proof to the base-layer.
 
 We build the background on assuming that you are familiar with the following past design docs:
@@ -87,7 +87,7 @@ In short, as a prover, I wish to:
 
 > [!WARNING]
 > **Multi-proof commentary**   
-> With the nature of the multi-proofs splitting rewards between all submitters and only paying out after. We won't know if there is profit or not until ahead of time.
+> With the nature of the multi-proofs splitting rewards between all submitters and only paying out after. We won't know ahead of time if there is profit or not.
 
 # Requirements
 
