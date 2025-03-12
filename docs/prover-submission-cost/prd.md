@@ -8,13 +8,14 @@
 - Target PRD Approval Date: 2025-03-14
 - Target Delivery Deadline: 2025-03-31
 
-> [!NOTE] Keywords
+> [!NOTE]
+> **Keywords**   
 > The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
 
 # Background
 
-> [!NOTE] Key Terms
->
+> [!NOTE] 
+> **Key Terms**   
 > - **Multi-Proofs**: Scheme that allows redundancy in proof submission and shares payment between all submitters.
 > - **Mana**: The unit of work on the Aztec rollup
 > - **BaseFee**: The amount of fee asset to pay per _Mana_ to cover costs
@@ -69,7 +70,8 @@ As an end user, I want transaction fees to be predictable, transparent, and low,
 
 This is especially important during early network phases with low usage, when high fees might discourage me from continuing to use the network.
 
-> [!WARNING] Multi-proof overhead
+> [!WARNING]
+> **Multi-proof overhead**   
 > If the costs associated with submitting multiple proofs (M) are passed directly to users via the BaseFee, it may lead to significantly higher fees compared to centralized or single-proof setups. The additional application of the Congestion Multiplier on these inflated fees could further compound this issue, potentially causing users to abandon the network early on.
 
 ## Prover
@@ -83,7 +85,8 @@ In short, as a prover, I wish to:
 3. Submit epoch proofs to the base-layer for a share of the rewards
 4. Profit???
 
-> [!WARNING] Multi-proof commentary
+> [!WARNING]
+> **Multi-proof commentary**   
 > With the nature of the multi-proofs splitting rewards between all submitters and only paying out after. We won't know if there is profit or not until ahead of time.
 
 # Requirements
@@ -122,7 +125,8 @@ In short, as a prover, I wish to:
 - **Why**: Infinite inflation is not scalable.
 - **Where**: Common sense
 
-> [!NOTE] HELP
+> [!NOTE]
+> **HELP**  
 > What should **X** be @aminsammara
 
 # Handling Tradeoffs
