@@ -5,8 +5,8 @@
   - Product: @joeandrews, @aminsammara
   - Engineering: @just-mitch, @Maddiaa0
   - DevRel:
-- Target PRD Approval Date: 2025-03-14
-- Target Delivery Deadline: 2025-03-31
+- Target PRD Approval Date: 2025-03-21
+- Target Delivery Deadline: 2025-04-07
 
 > [!NOTE]
 > **Keywords**   
@@ -121,13 +121,9 @@ In short, as a prover, I wish to:
 
 ### Inflation Bounds
 
-- **What**: The inflation of the staking asset **MUST** be less than **X**
+- **What**: The inflation of the staking asset **MUST** be less than 20% yearly
 - **Why**: Infinite inflation is not scalable.
-- **Where**: Common sense
-
-> [!NOTE]
-> **HELP**  
-> What should **X** be @aminsammara
+- **Where**: Common economic sends to limit inflation + @aminsammara for number.
 
 # Handling Tradeoffs
 
