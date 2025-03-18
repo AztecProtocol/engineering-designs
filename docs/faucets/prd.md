@@ -3,7 +3,9 @@
 - Owner: @just-mitch
 - Approvers:
   - @aminsammara
+  - @rahul-kothari
   - @LHerskind
+  - @signorecello
 - Target PRD Approval Date: 2025-03-19
 - Target Project Delivery Date: 2025-03-28
 

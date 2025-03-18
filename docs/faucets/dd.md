@@ -2,18 +2,25 @@
 
 - Owner: @just-mitch
 - Approvers:
-  - @LHerskind
   - @aminsammara
-  - @zepedro
-- [PRD (if applicable)](link to PRD including commit hash)
+  - @rahul-kothari
+  - @LHerskind
+  - @signorecello
+- [PRD](https://github.com/AztecProtocol/engineering-designs/blob/b2e744c2ae9f5552e404024edd1a9e20f5e3ea28/docs/faucets/prd.md)
 - Target DD Approval Date: 2025-03-20
 - Target Project Delivery Date: 2025-03-28
 
 ## Executive Summary
 
-Make the owner of the fee asset a contract that mints a fixed amount to a specified address. Even though anyone may call this function, the ethereum block times and gas limits will then throttle the maximum amount fee asset that may be produced.
+Update the fee asset and staking asset to have "minter" roles.
 
-The discord bot should be augmented to allow someone to pass a recent root of the archive tree, and only then be added to the validator set.
+Deploy new "handler" contracts that have the minter role on their respective assets.
+
+The FeeAssetHandler will mint a fixed amount to any caller.
+
+The StakingAssetHandler will add an address to the validator set, when called by the owner.
+
+The discord bot should be augmented to allow someone to pass it a merkle proof of the archive tree, and only then be added to the validator set.
 
 ## Timeline
 
@@ -21,17 +28,18 @@ Outline the timeline for the project. E.g.
 
 - Core contract dev : 1-2 days
   - build fee asset handler
-  - build upgrade payload to set the fee asset owner to be the handler
+  - build staking asset handler
   - tests
 - discord bot dev : 1-2 days
-  - less time if there is already an aztec node it can use to verify challenge responses
 - run upgrade : <0.5 days
 
 Total: 3-5 days
 
 ## Introduction
 
-We need to limit the amount of fee asset tokens to avoid DOS at the transaction/p2p/throughput level of the network, and limit gate access to the validator set to avoid DOS due to bad validators.
+We are not concerned about the DOS risk of someone holding a large amount of fee asset and flooding the network with transactions: the node and p2p layer should be able to handle this; controlling the production of fee asset needs only to prevent infinite minting (and thus a DOS against the users of the network).
+
+We _are_ concerned about the DOS risk of someone adding a large number of bad validators to the set; we want to limit the rate at which validators can be added to the set, and make some reasonable effort to ensure they have access to an active aztec node.
 
 ## Interface
 
@@ -122,25 +130,23 @@ The handler's deployed address will need to be made known in discord.
 
 #### Choosing the mint amount
 
-We expect that a node can build L2 blocks at 4M mana/s.
+As mentioned above, we only need to prevent infinite minting (i.e. over 2^256).
 
-This means the maximum mana it can take down in 12 seconds is 48M mana.
+We can calculate the maximum mint amount based on the expected L1 block production rate, the expected L1 gas cost of a mint, and the amount of time we expect the handler to be live.
 
-Suppose that the mana base fee maintains an average value of 1e10.
+Assume the cost to mint is 5K gas.
 
-This means that we must not be minting more than 48e16 fee asset per L1 block.
+Then if a block were completely full of `mint` transactions, the maximum number of mints would be 38M / 5K = 7600.
 
-Suppose that a transaction to mint fee asset from the handler costs 100K gas.
+This means that we could be maximally minting 7600 / 12 = 633 times per second.
 
-The block gas limit on sepolia is 38M.
+Suppose that we expect the handler to be live for a maximum of 5 years.
 
-That means that if a block were full of `mint` transactions, the maximum number of mints would be 38M / 100K = 380.
+Then we have a maximum of 5 _ 365 _ 24 _ 60 _ 60 \* 633 ~= 1e11 mints.
 
-Thus, the max we could mint per transaction is 48e16 / 380 ~= 12e14.
+Thus, the maximum mint amount is (2^256 - 1) / 1e11 ~= 1e66.
 
-But since we're probably off by a factor of 100, **we'll set it to 12e12**. That should be more the enough for a user to get started, but not so much that someone could bring down the network with zero effort.
-
-We'll need to monitor the mana base fee and the networks _actual_ max mana consumption and update this accordingly.
+But we'll err on the side of caution and use 1e42.
 
 #### Alternative Design
 
