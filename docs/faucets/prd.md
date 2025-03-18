@@ -33,7 +33,10 @@ Control of this kind is necessary in testnet because there is no economic value 
 
 By controlling the fee asset, we can:
 
-- prevent the network from becoming too congested
+- prevent infinite minting, and thus a DOS against the potential users of the network
+
+> [!info]
+> Rate limiting the fee paying asset to control network congestion is not necessary or desirable, as we already have a mana limit mechanism for block construction. It is better to have users obtain a lot (but not infinite) of the fee asset, and thus use a lot of mana, so that they can perform transactions.
 
 By controlling the validator set, we can:
 
@@ -45,9 +48,6 @@ By controlling the validator set, we can:
 - anyone can mint whatever fee asset they want
   - we are one infinite mint from chaos
 - **we** need to **actively** mint funds and add to the validator set.
-
-> [!info]
-> We can likely limit the fee by just having a fixed amount per claim, and then have it low enough to need so many of them before we can actually overflow that it is not an issue in practice.
 
 ## Key Terms
 
@@ -101,28 +101,63 @@ Where: Fallout from Alice's and Dave's user story
 
 #### FUNC-02
 
-It SHOULD be possible for the rate of fee asset production to be updated.
+It MUST be possible to update amount of fee assets that users receive.
 
-Why: Allows us to be nimble in the face of too much/little activity
-Where: Anticipation of supply/demand shocks.
+Why: We acknowledge that the amount we initially give out may be too high or too low, and we need to be able to adjust it.
+Where: Anticipation of supply/demand shocks and potential DoS scenarios
 
 #### FUNC-03
 
-Users MUST be able to submit an L1 address and a "secret" for admission to the validator set. Producing the secret SHOULD be a one-liner for anyone with a fully synced Aztec node.
+Well-behaved nodes MUST use the lower value between the contract-specified mana target and their environment variable when building blocks.
+
+Why: Otherwise nodes could build blocks that would fail on L1
+Where: Observed deficiency in the current implementation
+
+#### FUNC-04
+
+It MUST be possible to update the mana target of the rollup.
+
+Why: Allows us to update the mana target of the rollup in response to changing conditions
+Where: Anticipation of supply/demand shocks and potential DoS scenarios
+
+#### FUNC-05
+
+Users MUST be able to submit an L1 address and complete a verification challenge for admission to the validator set. Producing the verification response SHOULD be a one-liner for anyone with a fully synced Aztec node.
 
 Why: Ensures at least a basic level of sybil resistance
 Where: Experience of validators joining the set
+
+#### FUNC-06
+
+We (Aztec Labs) MUST be able to add a user to the validator set outside of the faucet process.
+
+Why: We want to be able to add users to the validator set for testing purposes.
+Where: Experience of validators joining the set
+
+#### FUNC-07
+
+We (Aztec Labs) SHOULD be able to control the rate at which validators are added to the set.
+
+Why: to avoid mass validator joins.
+Where: Anticipation of people joining the set en masse when it is announced.
 
 ### Non-Functional Requirements (qualities the system has)
 
 #### QUAL-01
 
-It SHOULD be easy for us to remove a validator from the set that is not performing their job well.
+The fee asset minting process SHOULD be permissionless.
+
+Why: We want to make it easy for anyone to try out the network.
+Where: Take Alice's story above, and assume she doesn't want to talk to anyone at Aztec Labs to get her assets.
+
+#### QUAL-02
+
+It MUST be easy for us (Aztec Labs) to remove a validator from the set that is not performing their job well.
 
 Why: Ensure the health of the network.
 Where: Experience of validators joining the set.
 
-#### QUAL-02
+#### QUAL-03
 
 It SHOULD NOT be trivial for people to create an arbitrary number of validators.
 
@@ -140,7 +175,7 @@ Where: Experience of users bailing on anything mildly inconvenient.
 
 #### PERF-02
 
-Would-be validators SHOULD NOT need to wait more than 30 minutes to get added to the validator set (not necessarily the committee)
+Would-be validators SHOULD NOT need to wait more than 30 minutes to get added to the validator set (not necessarily the committee). The process SHOULD require under 5 minutes of active participation - ideally allowing validators to initiate the request and later return to find their node participating in the set.
 
 Why: There may still be some manual intervention to add validators to the set, but it should still be time-bound and quick.
 Where: Experience adding external validators to the set.

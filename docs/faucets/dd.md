@@ -93,15 +93,15 @@ interface IFeeAssetHandler {
 
 contract FeeAssetHandler is IFeeAssetHandler, Ownable {
 	IFeeAsset immutable FeeAsset;
-	uint256 mintAmount
+	uint256 mintAmount;
 
-	constructor(address _owner, address _feeAsset, uint256 _mintAmount) : Ownable(_owner) {
+	constructor(address _owner, address _feeAsset, uint256 _mintAmount) Ownable(_owner) {
 		FeeAsset = IFeeAsset(_feeAsset);
 		mintAmount = _mintAmount;
 	}
 
 	function mint(address _recipient) external {
-		FeeAsset.mint(_recipient, mintAmount)
+		FeeAsset.mint(_recipient, mintAmount);
 	}
 
 	function setMintAmount(uint256 _amount) external onlyOwner {
@@ -109,7 +109,7 @@ contract FeeAssetHandler is IFeeAssetHandler, Ownable {
 	}
 
 	function transferOwnershipOfFeeAsset(address _newOwner) external onlyOwner {
-		FeeAsset.transferOwnership(address)
+		FeeAsset.transferOwnership(_newOwner);
 	}
 }
 ```
