@@ -6,7 +6,7 @@
   - @rahul-kothari
   - @LHerskind
   - @signorecello
-- [PRD](https://github.com/AztecProtocol/engineering-designs/blob/b2e744c2ae9f5552e404024edd1a9e20f5e3ea28/docs/faucets/prd.md)
+- [PRD](https://github.com/AztecProtocol/engineering-designs/blob/11ff0c45015027554f13d37f2df85e84090a55a4/docs/faucets/prd.md)
 - Target DD Approval Date: 2025-03-20
 - Target Project Delivery Date: 2025-03-28
 
@@ -88,7 +88,50 @@ And this will result in their address getting added to the set.
 
 ## Implementation
 
+### TestERC20
+
+Both the fee and staking assets will be instances of `TestERC20`.
+
+We'll remove the `ownerOrFreeForAll` modifier from the `mint` function, and instead add a `minters` mapping.
+
+```solidity
+contract TestERC20 is ERC20, IMintableERC20, Ownable {
+
+  mapping(address => bool) public minters;
+
+  modifier onlyMinter() {
+    require(minters[msg.sender] || msg.sender == owner(), "Not authorized to mint");
+    _;
+  }
+
+	constructor(string memory _name, string memory _symbol, address _owner)
+    ERC20(_name, _symbol)
+    Ownable(_owner)
+  {
+    minters[_owner] = true;
+  }
+
+  function addMinter(address _minter) external onlyMinter {
+    require(_minter != address(0), "Invalid address");
+    minters[_minter] = true;
+  }
+
+	function removeMinter(address _minter) external onlyMinter {
+    require(_minter != owner(), "Cannot remove owner as minter");
+    minters[_minter] = false;
+  }
+
+  function mint(address _recipient, uint256 _amount) external onlyMinter {
+    _mint(_recipient, _amount);
+  }
+}
+```
+
 ### Fee Asset
+
+When the fee asset is deployed, the owner will be an EOA, held by Aztec Labs.
+
+### Fee Asset Handler
 
 For the fee asset, we will create a new contract `FeeAssetHandler`
 
@@ -96,37 +139,30 @@ For the fee asset, we will create a new contract `FeeAssetHandler`
 interface IFeeAssetHandler {
 	function mint(address _recipient) external;
 	function setMintAmount(uint256 _amount) external;
-	function transferOwnershipOfFeeAsset(address _newOwner) external;
 }
 
 contract FeeAssetHandler is IFeeAssetHandler, Ownable {
-	IFeeAsset immutable FeeAsset;
-	uint256 mintAmount;
+	IMintableERC20 public immutable FEE_ASSET;
+	uint256 public mintAmount;
 
 	constructor(address _owner, address _feeAsset, uint256 _mintAmount) Ownable(_owner) {
-		FeeAsset = IFeeAsset(_feeAsset);
+		FEE_ASSET = IMintableERC20(_feeAsset);
 		mintAmount = _mintAmount;
 	}
 
-	function mint(address _recipient) external {
-		FeeAsset.mint(_recipient, mintAmount);
+	function mint(address _recipient) external override {
+		FEE_ASSET.mint(_recipient, mintAmount);
 	}
 
-	function setMintAmount(uint256 _amount) external onlyOwner {
-	    mintAmount = _amount;
-	}
-
-	function transferOwnershipOfFeeAsset(address _newOwner) external onlyOwner {
-		FeeAsset.transferOwnership(_newOwner);
+	function setMintAmount(uint256 _amount) external override onlyOwner {
+    mintAmount = _amount;
 	}
 }
 ```
 
 We will manually deploy this contract. The owner will be the same as the current owner of the FeeAsset.
 
-Considering the FeeAsset is already deployed on Sepolia, the owner will just need to transfer ownership of the FeeAsset to this handler.
-
-The handler's deployed address will need to be made known in discord.
+The handler's deployed address will need to be made known in discord and other public channels/docs.
 
 #### Choosing the mint amount
 
@@ -142,7 +178,7 @@ This means that we could be maximally minting 7600 / 12 = 633 times per second.
 
 Suppose that we expect the handler to be live for a maximum of 5 years.
 
-Then we have a maximum of 5 _ 365 _ 24 _ 60 _ 60 \* 633 ~= 1e11 mints.
+Then we have a maximum of 5 \* 365 \* 24 \* 60 \* 60 \* 633 ~= 1e11 mints.
 
 Thus, the maximum mint amount is (2^256 - 1) / 1e11 ~= 1e66.
 
@@ -158,21 +194,77 @@ The downside is that that is significantly more infrastructure, and it doesn't n
 
 ### Staking Asset
 
-The discord bot needs an RPC for an aztec node. One may be found at the bottom of the page [here](https://console.cloud.google.com/kubernetes/statefulset/us-west1-a/aztec-gke-public/ignition-testnet/ignition-testnet-aztec-network-full-node/details?hl=en&inv=1&invt=AbsUPg&project=testnet-440309) under the "endpoints" of "exposing services".
+The staking asset will be deployed with the same owner as the fee asset. In addition, a `StakingAssetHandler` will be deployed, which will have the minter role on the staking asset.
 
-With this, the `/add-validator` command needs to be augmented to accept a block number and an archive membership path.
+### Staking Asset Handler
+
+```solidity
+interface IStakingAssetHandler {
+	function addValidator(address _attester, address _proposer) external;
+	function setRollup(address _rollup) external;
+	function setDepositAmount(uint256 _amount) external;
+	function setMinMintInterval(uint256 _interval) external;
+}
+
+contract StakingAssetHandler is IStakingAssetHandler, Ownable {
+	IMintableERC20 public immutable STAKING_ASSET;
+
+	uint256 public depositAmount;
+	uint256 public lastMintTimestamp;
+	uint256 public minMintInterval;
+	IStakingCore public rollup;
+
+	constructor(address _owner, address _stakingAsset, address _rollup, uint256 _depositAmount, uint256 _minMintInterval) Ownable(_owner) {
+		STAKING_ASSET = IMintableERC20(_stakingAsset);
+		depositAmount = _depositAmount;
+		rollup = IStakingCore(_rollup);
+		minMintInterval = _minMintInterval;
+	}
+
+	function addValidator(address _attester, address _proposer) external override onlyOwner {
+		require(block.timestamp - lastMintTimestamp >= minMintInterval, "Min mint interval not met");
+		lastMintTimestamp = block.timestamp;
+		STAKING_ASSET.mint(address(this), depositAmount);
+		rollup.deposit(_attester, _proposer, owner(), depositAmount);
+	}
+
+	function setRollup(address _rollup) external override onlyOwner {
+		rollup = IStakingCore(_rollup);
+	}
+
+	function setDepositAmount(uint256 _amount) external override onlyOwner {
+		depositAmount = _amount;
+	}
+
+	function setMinMintInterval(uint256 _interval) external override onlyOwner {
+		minMintInterval = _interval;
+	}
+
+}
+```
+
+The owner of the handler will be a different EOA, since it will be held by the discord bot.
+
+#### Upgrades
+
+The handler will need to be upgraded to the new rollup address when a new rollup is made canonical.
+
+This will be done by manually by the person on the Aztec Labs team managing the discord bot.
+
+### Discord Bot
+
+The `/add-validator` command needs to be augmented to accept a block number and an archive merkle proof.
 
 When this command is invoked, it should:
 
-1. Ensure the user does not have a "validator" already
-2. Query its aztec node for the specified block number
+1. Ensure the user does not have a "validator" badge already
+2. Query L1 for the specified block number
 3. Ensure that the timestamp associated with the block is from within the last 5 minutes
-4. Produce the membership path for the specified block
-5. Ensure it matches the path provided by the user
-6. Mint staking assets for itself
-7. Add the user's address to the validator set, specifying itself as the withdrawer
-8. Apply a new "validator" badge in discord to aid with sybil resistance (see below)
-9. Confirm to the user that they were added successfully
+4. Verify the merkle proof
+5. Mint staking assets for itself
+6. Add the user's address to the validator set, specifying itself as the withdrawer
+7. Apply a new "validator" badge in discord to aid with sybil resistance (see below)
+8. Confirm to the user that they were added successfully
 
 #### Risks
 
@@ -186,15 +278,40 @@ Separately, we could have just allowed this to remain a purely manual process, a
 
 That sounds error prone and doesn't sound like a good use of anyone's time, especially when there could be tens to hundreds of validators going through this process.
 
+### Sequencer Client
+
+The sequencer must be updated in its block building logic to ensure that it does not exceed the mana limit for a block as specified on L1.
+
+For now, it can simply query the rollup for `getManaLimit` before building each block; at mainnet, we will be able to move this call to startup, since the rollup will be immutable.
+
+In addition, it must have a new environment variable "MAX_BLOCK_MANA"; when building a block it should stop at the minimum of the contract-specified mana target and the environment variable.
+
+### Rollup
+
+The `ITestRollup` interface must be updated to include a new function `setManaTarget`.
+
+This function will be callable by the owner of the rollup, and will update the mana target for the rollup.
+
+### New deployment
+
+The fee/staking assets are already deployed on Sepolia.
+
+We will need to do a new deployment of the L1 contracts as part of our next upgrade (i.e. a new registry contract).
+
 ## Requirement Fulfillment
 
 - [x] FUNC-01: single cast command
 - [x] FUNC-02: part of the `FeeAssetHandler` interface
-- [/] FUNC-03: current implementation requires 2 commands of the user
-- [x] QUAL-01: withdrawer is set by discord bot
-- [x] QUAL-02: user will need to create infinite discord accounts
+- [x] FUNC-03: part of the sequencer client changes
+- [x] FUNC-04: part of the `ITestRollup` interface
+- [x] FUNC-05: part of discord and staking asset changes
+- [x] FUNC-06: Labs will have an EOA that is `minter` on the staking asset.
+- [x] FUNC-07: part of the `StakingAssetHandler` interface
+- [x] QUAL-01: anyone can mint fee asset through the `FeeAssetHandler`
+- [/] QUAL-02: we can easily remove anyone added through the `StakingAssetHandler`; all bets are off for validators added otherwise.
+- [x] QUAL-03: requiring a synced node and validator badges in discord should provide a reasonable level of sybil resistance
 - [x] PERF-01: should be under 24 seconds
-- [x] PERF-02: should be under 24 seconds
+- [x] PERF-02: running the commands should take under 5 minutes. interacting with the bot should be under 24 seconds.
 
 ## Change Set
 
@@ -220,7 +337,10 @@ Fill in bullets for each area that will be affected by this change.
 ## Test Plan
 
 - Forge tests with 100% coverage on the `FeeAssetHandler`
+- Forge tests with 100% coverage on the `StakingAssetHandler`
 - e2e test that the `bridge-erc20` utility works
+- e2e test that sequencer client respects the `MAX_BLOCK_MANA` environment variable
+- e2e test that the sequencer client respects the contract-specified mana target
 - Manual testing of adding a validator using the new flow on discord
 - Verify that a validator added via discord may be removed as expected
 - Verify that adding a validator grants a badge which prevents creation of another validator
