@@ -286,6 +286,12 @@ For now, it can simply query the rollup for `getManaLimit` before building each 
 
 In addition, it must have a new environment variable "MAX_BLOCK_MANA"; when building a block it should stop at the minimum of the contract-specified mana target and the environment variable.
 
+### P2P
+
+The mempools will need to be updated to not be unbounded in size.
+
+Simplest solution in the immediate term is to have the mempool reject any transactions that would cause the mempool to grow beyond some fixed size, set via an environment variable.
+
 ### Rollup
 
 The `ITestRollup` interface must be updated to include a new function `setManaTarget`.
