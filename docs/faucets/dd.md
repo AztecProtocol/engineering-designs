@@ -5,6 +5,7 @@
   - @aminsammara
   - @rahul-kothari
   - @LHerskind
+  - @PhilWindle
   - @signorecello
 - [PRD](https://github.com/AztecProtocol/engineering-designs/blob/11ff0c45015027554f13d37f2df85e84090a55a4/docs/faucets/prd.md)
 - Target DD Approval Date: 2025-03-20
