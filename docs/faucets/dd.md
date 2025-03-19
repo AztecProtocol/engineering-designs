@@ -47,6 +47,8 @@ Said differently, if users are able to obtain _any_ amount of fee asset, the nod
 
 Considering the node must be able to handle these attacks, we choose to be loose about the rate at which users can mint fee asset.
 
+Beyond all of that, there is already an inherent sybil resistance to someone flooding the network: each transaction requires a valid client-side proof, which requires non-trivial computational resources.
+
 We _are_ concerned about the DOS risk of someone adding a large number of bad validators to the set; we want to limit the rate at which validators can be added to the set, and make some reasonable effort to ensure they have access to an active aztec node.
 
 ## Interface
