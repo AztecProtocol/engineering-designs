@@ -62,9 +62,9 @@ For users who want to be a validator, they will first:
 
 ```
 curl -s -X POST -H 'Content-Type: application/json' -d \
-'{"jsonrpc":"2.0","method":"node_getBlockHeader","params":[],"id":67}' \
+'{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":67}' \
 "http://localhost:8080" | jq \
-".result.lastArchive.nextAvailableLeafIndex"
+".result.proven.number"
 ```
 
 That will give something like `21314`
@@ -86,6 +86,8 @@ Then, over in discord, they can:
 ```
 
 And this will result in their address getting added to the set.
+
+**Note:** Using the proven chain allows us to add validators even if the pending chain is stalled.
 
 ## Implementation
 
@@ -258,13 +260,13 @@ The `/add-validator` command needs to be augmented to accept a block number and 
 
 When this command is invoked, it should:
 
-1. Ensure the user does not have a "validator" badge already
-2. Query L1 for the specified block number
-3. Ensure that the timestamp associated with the block is from within the last 5 minutes
+1. Ensure the user has not added `X` validators already (using a mapping based on the user's discord ID)
+2. Query L1 for the proven tip of the chain
+3. Ensure that proven tip's block number matches the block number provided by the user
 4. Verify the merkle proof
 5. Mint staking assets for itself
-6. Add the user's address to the validator set, specifying itself as the withdrawer
-7. Apply a new "validator" badge in discord to aid with sybil resistance (see below)
+6. Add the user's address to the validator set, specifying the discord bot's address as the withdrawer
+7. Grant a new "validator" role in discord to the user and bump the user's validator count by 1
 8. Confirm to the user that they were added successfully
 
 #### Risks
@@ -316,7 +318,7 @@ We will need to do a new deployment of the L1 contracts as part of our next upgr
 - [x] FUNC-07: part of the `StakingAssetHandler` interface
 - [x] QUAL-01: anyone can mint fee asset through the `FeeAssetHandler`
 - [/] QUAL-02: we can easily remove anyone added through the `StakingAssetHandler`; all bets are off for validators added otherwise.
-- [x] QUAL-03: requiring a synced node and validator badges in discord should provide a reasonable level of sybil resistance
+- [x] QUAL-03: requiring a synced node and validator role/counts in discord should provide a reasonable level of sybil resistance
 - [x] PERF-01: should be under 24 seconds
 - [x] PERF-02: running the commands should take under 5 minutes. interacting with the bot should be under 24 seconds.
 
@@ -350,7 +352,8 @@ Fill in bullets for each area that will be affected by this change.
 - e2e test that the sequencer client respects the contract-specified mana target
 - Manual testing of adding a validator using the new flow on discord
 - Verify that a validator added via discord may be removed as expected
-- Verify that adding a validator grants a badge which prevents creation of another validator
+- Verify that adding a validator grants a "validator" role in discord
+- Verify that the discord bot enforces a configurable limit of validators per user
 
 ## Documentation Plan
 
