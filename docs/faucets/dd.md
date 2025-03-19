@@ -40,6 +40,13 @@ Total: 3-5 days
 
 We are not concerned about the DOS risk of someone holding a large amount of fee asset and flooding the network with transactions: the node and p2p layer should be able to handle this; controlling the production of fee asset needs only to prevent infinite minting (and thus a DOS against the users of the network).
 
+Said differently, if users are able to obtain _any_ amount of fee asset, the node and p2p layer must already be able to handle the following attacks:
+
+- User accrues a large amount of fee asset, then creates a large number of valid transations.
+- User creates a large number of transactions, which individually are valid, but invalidate each other.
+
+Considering the node must be able to handle these attacks, we choose to be loose about the rate at which users can mint fee asset.
+
 We _are_ concerned about the DOS risk of someone adding a large number of bad validators to the set; we want to limit the rate at which validators can be added to the set, and make some reasonable effort to ensure they have access to an active aztec node.
 
 ## Interface
@@ -179,13 +186,21 @@ Then if a block were completely full of `mint` transactions, the maximum number 
 
 This means that we could be maximally minting 7600 / 12 = 633 times per second.
 
-Suppose that we expect the handler to be live for a maximum of 5 years.
+Separately, the current amount of mana required for a public transfer is around 1e5 mana.
 
-Then we have a maximum of 5 \* 365 \* 24 \* 60 \* 60 \* 633 ~= 1e11 mints.
+If we suppose that the base fee is 100 fee asset per mana, then a public transfer will cost 1e7 fee asset.
 
-Thus, the maximum mint amount is (2^256 - 1) / 1e11 ~= 1e66.
+Suppose that a contract deployment costs 100x as much as a public transfer, so 1e9 fee asset.
 
-But we'll err on the side of caution and use 1e42.
+And suppose we want to allow a user to perform 1000 contract deployments with a single mint.
+
+Then they will need 1e12 fee asset in a single mint.
+
+If we mint at 633 mints per second, then the max possible rate of increase of fee asset is 1e12 \* 633 ~= 6e14 fee asset per second.
+
+So in order to hit an overflow, we would need 2^256 / 6e14 ~= 2e62 seconds, or about 6e54 years.
+
+We'll keep an eye on the base fee in the network and bump the mint amount if we were too conservative.
 
 #### Alternative Design
 
@@ -207,28 +222,61 @@ interface IStakingAssetHandler {
 	function setRollup(address _rollup) external;
 	function setDepositAmount(uint256 _amount) external;
 	function setMinMintInterval(uint256 _interval) external;
+	function setMaxDepositsPerMint(uint256 _maxDepositsPerMint) external;
+	function setWithdrawer(address _withdrawer) external;
 }
 
 contract StakingAssetHandler is IStakingAssetHandler, Ownable {
 	IMintableERC20 public immutable STAKING_ASSET;
 
+	mapping(address => bool) public canAddValidator;
+
 	uint256 public depositAmount;
 	uint256 public lastMintTimestamp;
 	uint256 public minMintInterval;
+	uint256 public maxDepositsPerMint;
 	IStakingCore public rollup;
+	address public withdrawer;
 
-	constructor(address _owner, address _stakingAsset, address _rollup, uint256 _depositAmount, uint256 _minMintInterval) Ownable(_owner) {
+	modifier onlyCanAddValidator() {
+		require(canAddValidator[msg.sender], "Not authorized to add validator");
+		_;
+	}
+
+	constructor(
+		address _owner,
+		address _stakingAsset,
+		address _rollup,
+		address _withdrawer,
+		uint256 _depositAmount,
+		uint256 _minMintInterval,
+		uint256 _maxDepositsPerMint,
+		address[] _canAddValidator
+	) Ownable(_owner) {
 		STAKING_ASSET = IMintableERC20(_stakingAsset);
 		depositAmount = _depositAmount;
 		rollup = IStakingCore(_rollup);
+		withdrawer = _withdrawer;
 		minMintInterval = _minMintInterval;
+		maxDepositsPerMint = _maxDepositsPerMint;
+		for (uint256 i = 0; i < _canAddValidator.length; i++) {
+			canAddValidator[_canAddValidator[i]] = true;
+		}
+		canAddValidator[owner()] = true;
 	}
 
-	function addValidator(address _attester, address _proposer) external override onlyOwner {
-		require(block.timestamp - lastMintTimestamp >= minMintInterval, "Min mint interval not met");
-		lastMintTimestamp = block.timestamp;
-		STAKING_ASSET.mint(address(this), depositAmount);
-		rollup.deposit(_attester, _proposer, owner(), depositAmount);
+	function addValidator(address _attester, address _proposer) external override onlyCanAddValidator {
+		bool needsMint = STAKING_ASSET.balanceOf(address(this)) < depositAmount;
+		bool canMint = block.timestamp - lastMintTimestamp >= minMintInterval;
+		require(!needsMint || canMint, "Minter is in cooldown");
+
+		if (needsMint) {
+			lastMintTimestamp = block.timestamp;
+			STAKING_ASSET.mint(address(this), depositAmount * maxDepositsPerMint);
+		}
+
+		STAKING_ASSET.approve(address(rollup), depositAmount);
+		rollup.deposit(_attester, _proposer, withdrawer, depositAmount);
 	}
 
 	function setRollup(address _rollup) external override onlyOwner {
@@ -243,10 +291,18 @@ contract StakingAssetHandler is IStakingAssetHandler, Ownable {
 		minMintInterval = _interval;
 	}
 
+	function setMaxDepositsPerMint(uint256 _maxDepositsPerMint) external override onlyOwner {
+		maxDepositsPerMint = _maxDepositsPerMint;
+	}
+
+	function setWithdrawer(address _withdrawer) external override onlyOwner {
+		withdrawer = _withdrawer;
+	}
 }
 ```
 
-The owner of the handler will be a different EOA, since it will be held by the discord bot.
+The owner of the handler will be the same as the owner of the staking asset.
+A separate EOA will be created for the bot, which will have the `canAddValidator` role.
 
 #### Upgrades
 
@@ -265,7 +321,7 @@ When this command is invoked, it should:
 3. Ensure that proven tip's block number matches the block number provided by the user
 4. Verify the merkle proof
 5. Mint staking assets for itself
-6. Add the user's address to the validator set, specifying the discord bot's address as the withdrawer
+6. Add the user's address to the validator set, specifying a configurable address as the withdrawer
 7. Grant a new "validator" role in discord to the user and bump the user's validator count by 1
 8. Confirm to the user that they were added successfully
 
@@ -285,15 +341,13 @@ That sounds error prone and doesn't sound like a good use of anyone's time, espe
 
 The sequencer must be updated in its block building logic to ensure that it does not exceed the mana limit for a block as specified on L1.
 
-For now, it can simply query the rollup for `getManaLimit` before building each block; at mainnet, we will be able to move this call to startup, since the rollup will be immutable.
-
-In addition, it must have a new environment variable "MAX_BLOCK_MANA"; when building a block it should stop at the minimum of the contract-specified mana target and the environment variable.
+This is out of scope for this design.
 
 ### P2P
 
 The mempools will need to be updated to not be unbounded in size.
 
-Simplest solution in the immediate term is to have the mempool reject any transactions that would cause the mempool to grow beyond some fixed size, set via an environment variable.
+This is out of scope for this design.
 
 ### Rollup
 
@@ -348,8 +402,6 @@ Fill in bullets for each area that will be affected by this change.
 - Forge tests with 100% coverage on the `FeeAssetHandler`
 - Forge tests with 100% coverage on the `StakingAssetHandler`
 - e2e test that the `bridge-erc20` utility works
-- e2e test that sequencer client respects the `MAX_BLOCK_MANA` environment variable
-- e2e test that the sequencer client respects the contract-specified mana target
 - Manual testing of adding a validator using the new flow on discord
 - Verify that a validator added via discord may be removed as expected
 - Verify that adding a validator grants a "validator" role in discord
