@@ -292,7 +292,7 @@ The information set out herein is for discussion purposes only and does not repr
 - Begin reading TxEffects data from the consensus layer - https://github.com/AztecProtocol/aztec-packages/issues/10056
 - Provide a way for nodes to sync the chain without a dependence on calldata - https://github.com/AztecProtocol/aztec-packages/issues/10057
     - Request Response for block data
-    - Sync from `snap` sync service - a publically hosted database (this can be checked against the calldata)
+    - Sync from `snap` sync service - a publicly hosted database (this can be checked against the calldata)
 - Remove `data` blob from the rollup - https://github.com/AztecProtocol/aztec-packages/issues/10058
 
 ## QUESTIONS
