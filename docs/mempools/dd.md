@@ -6,15 +6,16 @@ This addresses how to limit the total number of valid txs. It does **not** addre
 
 ## Tx validity
 
-A tx in Aztec requires the following checks to be valid. Static checks can be done just once, dynamic ones are done when the tx is received and again when the sequencer is building a block. If the tx fails validation during block building, it gets evicted (unless it failed due to _Gas fees over block base fee_).
+A tx in Aztec requires the following checks to be valid. Static checks can be done just once, dynamic ones are done when the tx is received and again when the sequencer is building a block. If the tx fails validation during block building, it gets evicted, unless it failed due to gas fees lower than the block base fee.
 
 ### Static
 
-- Chain id
+- L1 chain id and L2 version
 - Setup function
 - Correct public execution requests and logs
 - Minimum gas fees (base and priority)
 - Reasonable gas limit (currently missing)
+- Valid ClientIVC proof
 
 ### Dynamic
 
@@ -23,7 +24,7 @@ A tx in Aztec requires the following checks to be valid. Static checks can be do
 - Archive root exists (can become invalid after a reorg)
 - Fee juice balance for fee payer
 - Gas fees over current block base fee
-- Gas limit below current block target
+- Gas limit below current block limit
 
 ## Geth
 
@@ -67,16 +68,28 @@ We propose keeping the following indices for all txs:
 
 - priority fee
 - fee-payer
-- nullifier
+- nullifiers (indexes a tx by all of its nullifiers)
 - base fee
 - gas limit
 - max block number
 
-When adding a tx, in addition to running all static checks:
+When adding a tx, we first run the trivial checks:
+
+- Correct L1 chain id and L2 version
+- Public setup function is acceptable
+- Correct public execution requests and logs
+- Gas fees (base and priority) above a given minimum
+- Valid ClientIVC proof
+- Max block number for inclusion is in the future
+- Double spend (repeated nullifiers) against existing state
+- Gas limit is below the current block gas limit
+- Archive root exists
+
+And then:
 
 - We check if the current balance of the fee payer, minus the max cost of all pending txs for that fee payer, is enough to pay for this tx. If it is not, we try evicting other txs with a lower priority fee. If that works, and all other checks pass, we include the tx dropping the others.
-- We check if it shares a nullifier with any existing pending tx. If it pays more than all of the conflicting ones, and it passes all other checks, we include it and drop the other ones.
-- We check if the tx gas limit is below the current block gas limit, and its fees are above the current base fees. If not, we drop it. Note that we could save it for later in case fees drop in the future, but this means tracking two different pools (executable and non-executable, as geth does).
+- We check if it shares a nullifier with any existing pending tx (we already checked duplicates against current state at this point). If it pays more than all of the conflicting ones, and it passes all other checks, we include it and drop the other ones.
+- We check if the tx fees are above the current base fees. If not, we drop it. Note that we could save it for later in case fees drop in the future, but this means tracking two different pools (executable and non-executable, as geth does).
 - We check if we are below a configurable size/number of pending txs. If we are not, start dropping txs with lower priority fee (sorted by priority fee) until we get again below the threshold.
 - If we do add the tx, we index its max block number as the minimum of the tx's max-block-number and the current block number plus a configurable number. This allows us to evict txs after they'd been sitting in the pool for a very long time.
 
@@ -85,7 +98,6 @@ When a new block is mined:
 - We drop all txs that share nullifiers with nullifiers from the mined blocks
 - We update the balance of fee payers and drop txs that can no longer be paid
 - We drop all txs with a computed max-block-number equal or lower than the mined one
-- We drop all txs that no longer fit in a block due to gas limit, and that have a base fee lower than the new block's
 
 Note that we should not be dropping them, but rather pushing them to the side to reincorporate them in case of a reorg. But we will dismiss this for now.
 
