@@ -24,7 +24,7 @@
 The act of producing blocks incurs a cost to the block builders:
 
 - The sequencer pays for publishing the block to the data availability layer and to perform some validity checks such as validating attestations.
-- The prover pays for producing the proof (proving) and then to publish the proof to the base-layer.
+- The prover pays for producing the proof (proving) and then to publish and verify the proof to the base-layer.
 
 We build the background on assuming that you are familiar with the following past design docs:
 
@@ -131,4 +131,4 @@ When handling the tradeoffs, I believe we should step in the direction of "subsi
 
 For ignition there will be **no fees** since there are no transactions. If the provers cannot recoup their costs from the block rewards it is very limited who would be able **and** willing to participate.
 
-For alpha, it will also allow us to keep transaction fees low(er) while usage is low, making is easier for users to try the network.
+For alpha, it will also allow us to keep transaction fees low(er) while usage is low, making it easier for users to try the network.
