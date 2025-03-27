@@ -64,7 +64,7 @@ To recap, we need to consider:
 - Gas fees and limit vs current base fees and limits
 - Archive root (only on reorgs)
 
-We propose keeping the following indices for all txs:
+We propose keeping the following indices for all txs. These indices are implemented as mappings from the given keys to the tx identifier in the backing LMDB store:
 
 - priority fee
 - fee-payer
@@ -111,8 +111,8 @@ When building a block, for each tx we pick up:
 
 ## Alternative approaches
 
-We can rely heavily on the fact that spamming txs in Aztec is expensive due to the ClientIVC proofs, keep only a global limit on the total number/size of txs, and simply evict based on total mempool size using priority fees. This is much easier to implement than the above.
+We can rely heavily on the fact that spamming txs in Aztec is expensive due to the ClientIVC proofs, keep only a global limit on the total number/size of txs, and simply evict based on total mempool size using priority fees, plus re-checking on every block mined. This is much easier to implement than the above.
 
 An attacker can still spam txs with a shared set of nullifiers to flood the pool with just their txs, but if the priority fee is high enough (if it's too low, the attacker's txs get replaced by other txs), one of those txs will be picked up soon enough and invalidate the others; assuming we filter out the invalid ones fast enough, the sequencer eventually get to other valid txs in the pool. The main assumption is that an attacker cannot produce client proofs at a pace that lets them completely fill the mempool before the next block gets built.
 
-This approach still requires rejecting txs with an ineligible base fee or too large a gas limit, otherwise the attacker could flood the tx with non-executable txs.
+This approach still requires rejecting txs with an ineligible base fee or too large a gas limit, otherwise the attacker could flood the tx with non-executable txs. It also requires reviewing all txs on the mempool whenever a block is mined to drop them based on shared nullifiers, insufficient balance, or max-block-age.
