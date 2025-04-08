@@ -99,6 +99,12 @@ In short, as a prover, I wish to:
 - **Why**: To maintain fairness and economic incentive alignment between actors.
 - **Where**: Derived from the current imbalance (sequencer receives funds without bearing costs).
 
+### Consistent Proving
+
+- **What**: Actors that consistently produce proofs **SHOULD** receive bigger share of the fees that inconsistent actors
+- **Why**: To maintain consistency in block production and provide some minimum quality of service 
+- **Where**: Derived from concerns about potential abandonment during periods of low network utilization or initial adoption phases.
+
 ### Protection from Excessive Multi-Proof Costs
 
 - **What**: Transaction fees charged to users **SHOULD** increase at most sub-linearly due to the introduction of multi-proof submissions compared to a single-proof sequencer setup.
