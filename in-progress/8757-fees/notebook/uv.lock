@@ -1317,7 +1317,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/83/63/21480e8ecc218b9b1
 
 [[package]]
 name = "marimo"
-version = "0.12.8"
+version = "0.13.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -1338,9 +1338,9 @@ dependencies = [
     { name = "uvicorn" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/42/f5/3a7a8637b2c606b3dc66cb5887d0ab638ec29b3cc98931658994c2106d5a/marimo-0.12.8.tar.gz", hash = "sha256:d2d627924a32c73a9491f84e4358df8c83bbe0d4d35d38112f3020b1be32aef1", size = 10727118 }
+sdist = { url = "https://files.pythonhosted.org/packages/29/01/f26fda933290eaeab4a1a3f856221882c311b1ca3f755f6b4df5a4a1bd11/marimo-0.13.2.tar.gz", hash = "sha256:eaee97908b8f90ae53c1f0ddb34f75c9a29c97f683600402372287ba072e44e5", size = 10774675 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/eb/38/7894596a93c988c9506212ffc5005acf4a8f3877feebfe7598f317adc138/marimo-0.12.8-py3-none-any.whl", hash = "sha256:b4724d224d4bd9dffa4251d1b659a531c7419fe7eb6dea416763845094983f50", size = 11083695 },
+    { url = "https://files.pythonhosted.org/packages/9a/dd/d0127ed66be00796727a929158d8d15cec276364b414f49710dfef4ddbfb/marimo-0.13.2-py3-none-any.whl", hash = "sha256:173a0f4af6661407a43c3af40811c0e16ff41fd9ccae1b15cbfe52b5f3583c50", size = 11139962 },
 ]
 
 [[package]]
@@ -2398,7 +2398,7 @@ dependencies = [
 requires-dist = [
     { name = "eth-ape", extras = ["recommended-plugins"] },
     { name = "ipykernel", specifier = ">=6.29.5" },
-    { name = "marimo", specifier = ">=0.12.8" },
+    { name = "marimo", specifier = ">=0.13.2" },
     { name = "matplotlib", specifier = ">=3.9.2" },
     { name = "numpy", specifier = ">=1.26.4" },
     { name = "pydantic", specifier = ">=2.9.2" },

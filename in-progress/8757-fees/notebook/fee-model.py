@@ -825,8 +825,8 @@ def _(
 ):
     fee_model = FeeModel(
         mana_target=Uint256(int(1e8)),
-        l1_gas_per_block_proposed=Uint256(int(0.5e6)),
-        l1_gas_per_epoch_verified=Uint256(int(4e6)),
+        l1_gas_per_block_proposed=Uint256(int(0.15e6)),
+        l1_gas_per_epoch_verified=Uint256(int(1e6)),
         proving_cost_per_mana=Uint256(int(WEI_PER_MANA)),
         minimum_fee_asset_per_eth=Uint256(int(10e9)),
         l1_gas_oracle=L1GasOracle(
@@ -1144,7 +1144,15 @@ def _(FeeModel, fee_model):
 
 
 @app.cell
-def _(Uint256, blocks, dataclass, json, json_serializable, test_points):
+def _(
+    Uint256,
+    blocks,
+    dataclass,
+    fee_model,
+    json,
+    json_serializable,
+    test_points,
+):
     @json_serializable
     @dataclass
     class L1Metadata:
@@ -1165,6 +1173,7 @@ def _(Uint256, blocks, dataclass, json, json_serializable, test_points):
                 for x in blocks
             ],
             "points": [x.to_dict() for x in test_points],
+            "proving_cost": fee_model.proving_cost_per_mana.to_dict(),
         }
 
     def get_dump():
@@ -1237,86 +1246,6 @@ def _(ETH_FACTOR):
         AZTEC_MB_PER_SEC,
         AZTEC_TX_BANDWIDTH,
     )
-
-
-@app.cell
-def _(mo):
-    mo.md(
-        r"""
-        # Prover Shares (Update)
-
-        Every `prover` will have some value `x` that is stored for them specifically. The value is computed fairly simple. Every time an epoch passes, the activity score goes down by 1. Every block the prover produces increases their value with 2. Minimum value is 0.
-        """
-    )
-    return
-
-
-@app.cell
-def _(plt, random):
-    def plot_activity_score(p=0.75):
-        X = [i for i in range(50)]
-        Y = [0]
-
-        for x in X[1:]:
-            r = 2 if random.random() <= p else 0
-            Y.append(max(0, Y[-1] + r - 1))
-
-        fig, ax = plt.subplots(figsize=(12, 4))
-
-        ax.plot(X, Y)
-
-        ax.set_title(
-            "Activity Scores as function of time passing (epochs) and probability to produce proof"
-        )
-        ax.set_ylabel("Activity Score")
-        ax.set_xlabel("Epochs")
-
-        return ax
-
-    plot_activity_score()
-    return (plot_activity_score,)
-
-
-@app.cell
-def _(mo):
-    mo.md(
-        r"""
-        By then feeding this activity value as $x$ into the following formula, we compute their share.
-
-        $$
-        y(x) = \begin{cases}
-        	\max(k - a(x - h)^2, m), & \text{if } x \leq h \\
-        	k, & \text{if } x > h
-        \end{cases}
-        $$
-        """
-    )
-    return
-
-
-@app.cell
-def _(plt):
-    def prover_weigth(x, a=5, k=10000, h=50, min_multiplier=1000):
-        if x > h:
-            return k
-        else:
-            return max(k - a * (x - h) ** 2, min_multiplier)
-
-    def plot_prover_weigth():
-        X = [i for i in range(50)]
-        Y = [prover_weigth(x) for x in X]
-
-        fig, ax = plt.subplots(figsize=(12, 4))
-        ax.plot(X, Y)
-
-        ax.set_title("Share value as function of activity score")
-        ax.set_ylabel("Share")
-        ax.set_xlabel("Activity Score")
-
-        return ax
-
-    plot_prover_weigth()
-    return plot_prover_weigth, prover_weigth
 
 
 if __name__ == "__main__":
