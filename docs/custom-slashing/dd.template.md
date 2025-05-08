@@ -9,9 +9,23 @@
 
 ## Executive Summary
 
-The L1 contracts currently only "allow" slashing all validators in an epoch if the epoch is never proven.
+The `StakingLib` designates a "slasher" address which is able to slash arbitrary validators for arbitrary amounts.
 
-We want to provide a mechanism for slashing specific validators for not participating in consensus.
+The contract used as the slasher is currently `Slasher`, which takes directives from a `SlashingProposer`.
+
+The `SlashingProposer` is an instance of `EmpireBase`, which operates in "rounds" of `N` L2 slots, during which at least `M` proposers must vote for a specific contract address "payload" to be executed.
+
+The payload just calls "slash", with the list of validators to slash, and the amount to slash each.
+
+So the L1 contracts currently allow arbitrary slashing as long as the motion has support from `M/N` validators.
+
+In practice, however, there are only mechanisms built to create and vote for payloads to slash all validators in an epoch if the epoch is never proven, namely an out-of-protocol `SlashFactory` contract, and corresponding logic on the node to utilize it.
+
+We want to expand this `SlashFactory` to allow for "custom slashing", which would allow the node to programmatically create or vote for payloads to slash specific validators for specific amounts for specific offences.
+
+In addition, we will add corresponding logic to the node to utilize the new `SlashFactory` to slash validators for inactivity.
+
+Last, we will add an override, which may be set by the node operator, which will configure the node to vote for a particular payload no matter what.
 
 ## Requirements
 
@@ -25,48 +39,99 @@ The requirements with filled checkboxes are met by the design below.
   - How/where to vote/signal on L1
 - [x] Node operators SHOULD be able to configure their node to specify thresholds for what they consider "not participating".
 - [x] The "offence" that triggers the slash MAY be specified on L1.
-- [ ] The amount to be slashed MAY be configurable without deploying a new contract.
+- [x] The amount to be slashed MAY be configurable without deploying a new factory contract.
 - [ ] The threshold of number of validators (M/N) that need to signal/vote for the CustomSlashFactory payload MAY be configurable without deploying a new contract or a governance action.
 
-## Overview
+## L1 Changes
 
-Rename the existing `SlashFactory` contract to `EpochSlashFactory` to denote that it slashes all validators in an epoch. Make a new `CustomSlashFactory` contract which creates a payload to slash a provided list of validators for an explicit offence. The amounts to be slashed for each offence will be provided in the constructor of the `CustomSlashFactory` contract. There will only be one explicit offence right now: "missing attestations". Creating the payload via the `CustomSlashFactory` will emit an event with the payload address, and the validator addresses.
+We make no changes to the `Slasher` contract, or any other "in-protocol" contracts.
 
-Aztec nodes will listen for these events, and then check if the validator is bad committed the alleged offence. If so, they will vote/signal for the payload on L1.
+Refactor the `SlashFactory` to accept an array of validator addresses, amounts, and offences. I.e.
 
-## Details
+```solidity
+interface ISlashFactory {
+  enum Offense {
+    Unknown,
+    EpochPruned,
+    Inactivity
+  }
+
+  event SlashPayloadCreated(
+    address payloadAddress, address[] validators, uint256[] amounts, Offense[] offences
+  );
+
+  function createSlashPayload(
+    address[] memory _validators,
+    uint256[] memory _amounts,
+    Offense[] memory _offences
+  ) external returns (IPayload);
+}
+```
+
+Creating the payload via the `SlashFactory` will emit an event with the payload address, and the validator addresses/amounts/offences.
+
+Aztec nodes will listen for these events, and then check if the validator committed the alleged offence. If so, they will vote/signal for the payload on L1.
+
+## Node Changes
 
 The SlasherClient will remain the interface that the SequencerPublisher uses to adjust the transaction it sends to the forwarder contract.
 
 Internally, though, the SlasherClient will monitor two conditions:
 
-- an epoch was not proven, so slash all validators via the `EpochSlashFactory` contract (i.e. the current state, rename the L1 contract from `SlashFactory`)
-- a validator has missed X% (e.g. 90%) of attestations according to the Sentinel, so slash that validator via the `CustomSlashFactory` contract (this is new)
+- an epoch was not proven, so slash all validators (this exists today)
+- a validator has missed X% (e.g. 90%) of attestations according to the Sentinel, so slash that validator (this is new)
+- an override payload is set
 
 Validators will need to have a way to order the various slashing events they observe.
 
-Their first priority is to slash payloads from the `EpochSlashFactory`, sorted oldest to newest.
+The Aztec client will use the following heuristics to determine which payload to signal/vote for:
 
-Their second priority is to slash payloads from the `CustomSlashFactory` for the "missing attestations" offence, sorted oldest to newest, but folding together payloads until one is found that they disagree with.
+1. If there is an override payload, signal/vote for it.
+2. Check if the payload is older than a configurable TTL. If so, discard it.
+3. Sum the amounts of remaining slash proposals, so we have a `totalSlashAmount` for each payload.
+4. Sort the payloads by `totalSlashAmount`, largest to smallest.
+5. Pick the top payload that the validator agrees with (i.e. all the named validators committed the named offences), and signal/vote for it.
 
-They will vote to slash any validator that has missed Y% (e.g. 50%) of attestations according to the Sentinel; there are two percentages to be configured:
+This process should be done each time:
+
+- a new payload is created, as determined by watching the `SlashFactory` contract events
+- the proposer has an opportunity to signal/vote
+
+### Slashing for epoch pruning
+
+We will need to modify the logic around slashing for epoch pruning. Instead of specifying a particular epoch, we just specify all the validators within the epoch.
+
+### Slashing for inactivity
+
+Regarding the slash for "inactivity", nodes will vote to slash any validator that has missed Y% (e.g. 50%) of attestations according to the Sentinel; there are two percentages to be configured:
 
 - the percentage of attestations missed required to create a payload
 - the percentage of attestations missed required to signal/vote for the payload
 
-Node operators will configure their node to listen to the specific CustomSlashFactory contract and specify the percentage of attestations missed required to create a payload.
+Node operators will configure their node to listen to a specific SlashFactory contract (as they do today) and specify the percentage of attestations missed required to create a payload.
 
 This will be done via CLI arguments or environment variables.
+
+### New configuration
+
+- `SLASH_OVERRIDE_PAYLOAD`: the address of a payload to signal/vote for no matter what
+- `SLASH_PAYLOAD_TTL`: the maximum age of a payload to signal/vote for
+- `SLASH_PRUNE_CREATE`: whether to create a payload for epoch pruning
+- `SLASH_PRUNE_PENALTY`: the amount to slash each validator that was in an epoch that was pruned
+- `SLASH_PRUNE_SIGNAL`: whether to signal/vote for a payload for epoch pruning
+- `SLASH_INACTIVITY_CREATE_TARGET`: the percentage of attestations missed required to create a payload
+- `SLASH_INACTIVITY_CREATE_PENALTY`: the amount to slash each validator that is inactive
+- `SLASH_INACTIVITY_SIGNAL_TARGET`: the percentage of attestations missed required to signal/vote for the payload
 
 ## Notes
 
 The amount to slash should be high for testnet (e.g. the minimum stake amount). We can use a different amount for mainnet.
 
-The threshold of number of validators (M/N) that need to signal/vote for the CustomSlashFactory payload will be the same as the number of validators that need to signal/vote for the EpochSlashFactory payload.
+The threshold of number of validators (M/N) that need to signal/vote for the SlashFactory payload will be the same as the number of validators that need to signal/vote for any other slashing payload, i.e. this ratio is fixed at set per rollup.
 
-This requires that M/N validators are listening to the same CustomSlashFactory contract, and participating in the protocol.
+This requires that M/N validators are listening to the same SlashFactory contract, and participating in the protocol.
 
-If we do not have M/N validators participating, we will need to make a "propose with lock" on the governance to deploy a new rollup instance. If that is not palatable, we could update the staking lib to allow the governance (not just the slasher) to slash validators; then we could "propose with lock" to slash whatever validators governance decides.
+If we do not have M/N validators participating, someone will need to make a "propose with lock" on the governance to deploy a new rollup instance. If that is not palatable, we could update the staking lib to allow the governance (not just the slasher) to slash validators; then someone could "propose with lock" to slash whatever validators governance decides.
 
 ## Timeline
 
