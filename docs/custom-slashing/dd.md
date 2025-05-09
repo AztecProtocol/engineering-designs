@@ -53,18 +53,16 @@ interface ISlashFactory {
 
 
   event SlashPayloadCreated(
-    address payloadAddress, address[] validators, uint64[] amounts, uint256[] offences
+    address payloadAddress, address[] validators, uint256[] amounts, uint256[] offences
   );
 
   function createSlashPayload(
     address[] memory _validators,
-    uint64[] memory _amounts,
+    uint256[] memory _amounts,
     uint256[] memory _offences
   ) external returns (IPayload);
 }
 ```
-
-This implies a max slash of 2^64-1 for each validator.
 
 For now, the `offences` field will effectively be an enum, with the following possible values:
 
