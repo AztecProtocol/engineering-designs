@@ -50,23 +50,29 @@ Refactor the `SlashFactory` to accept an array of validator addresses, amounts, 
 
 ```solidity
 interface ISlashFactory {
-  enum Offense {
-    Unknown,
-    EpochPruned,
-    Inactivity
-  }
+
 
   event SlashPayloadCreated(
-    address payloadAddress, address[] validators, uint256[] amounts, Offense[] offences
+    address payloadAddress, address[] validators, uint64[] amounts, uint256[] offences
   );
 
   function createSlashPayload(
     address[] memory _validators,
-    uint256[] memory _amounts,
-    Offense[] memory _offences
+    uint64[] memory _amounts,
+    uint256[] memory _offences
   ) external returns (IPayload);
 }
 ```
+
+This implies a max slash of 2^64-1 for each validator.
+
+For now, the `offences` field will effectively be an enum, with the following possible values:
+
+- 0: unknown
+- 1: epoch pruned
+- 2: inactivity
+
+The use of `uint256` for offences rather than an explicit enum allows for future flexibility, e.g. adding more offences and interpreting them off-chain, or, by using `uint256` rather than `uint8`, using a hash/commitment to some external data/proof.
 
 Creating the payload via the `SlashFactory` will emit an event with the payload address, and the validator addresses/amounts/offences.
 
@@ -132,6 +138,8 @@ The threshold of number of validators (M/N) that need to signal/vote for the Sla
 This requires that M/N validators are listening to the same SlashFactory contract, and participating in the protocol.
 
 If we do not have M/N validators participating, someone will need to make a "propose with lock" on the governance to deploy a new rollup instance. If that is not palatable, we could update the staking lib to allow the governance (not just the slasher) to slash validators; then someone could "propose with lock" to slash whatever validators governance decides.
+
+In the future, we could also allow the slasher itself or governance to change who the slasher is.
 
 ## Timeline
 
