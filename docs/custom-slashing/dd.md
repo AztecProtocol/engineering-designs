@@ -64,6 +64,44 @@ interface ISlashFactory {
 }
 ```
 
+The core function in the `SlashFactory` will look like:
+
+```solidity
+  function createSlashPayload(
+    address[] memory _validators,
+    uint256[] memory _amounts,
+    uint256[] memory _offences
+  ) external override(ISlashFactory) returns (IPayload) {
+    require(
+      _validators.length == _amounts.length,
+      ISlashFactory.SlashPayloadAmountsLengthMismatch(_validators.length, _amounts.length)
+    );
+    require(
+      _validators.length == _offences.length,
+      ISlashFactory.SlashPayloadOffencesLengthMismatch(_validators.length, _offences.length)
+    );
+
+    uint256 currentHour = block.timestamp / 3600;
+    (address predictedAddress, bool isDeployed) =
+      getAddressAndIsDeployed(_validators, _amounts, _offences, currentHour);
+
+    if (isDeployed) {
+      return IPayload(predictedAddress);
+    }
+
+    // Use a salt so that validators don't create many payloads for the same slash.
+    // Include the current hour in the salt to allow repeat slashing.
+    // This implies you cannot create a new payload for the same slash until the next hour.
+    bytes32 salt = keccak256(abi.encodePacked(_validators, _amounts, _offences, currentHour));
+
+    // Don't need to pass _offences as they are not used in the payload.
+    SlashPayload payload = new SlashPayload{salt: salt}(_validators, VALIDATOR_SELECTION, _amounts);
+
+    emit SlashPayloadCreated(address(payload), _validators, _amounts, _offences);
+    return IPayload(address(payload));
+  }
+```
+
 For now, the `offences` field will effectively be an enum, with the following possible values:
 
 - 0: unknown
