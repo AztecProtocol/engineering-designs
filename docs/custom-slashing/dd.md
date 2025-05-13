@@ -21,11 +21,15 @@ So the L1 contracts currently allow arbitrary slashing as long as the motion has
 
 In practice, however, there are only mechanisms built to create and vote for payloads to slash all validators in an epoch if the epoch is never proven, namely an out-of-protocol `SlashFactory` contract, and corresponding logic on the node to utilize it.
 
-We want to expand this `SlashFactory` to allow for "custom slashing", which would allow the node to programmatically create or vote for payloads to slash specific validators for specific amounts for specific offences.
+We want to expand this `SlashFactory` to allow nodes to programmatically create and vote for payloads to slash specific validators for specific amounts for specific "verifiable offences".
 
-In addition, we will add corresponding logic to the node to utilize the new `SlashFactory` to slash validators for inactivity.
+Specifically, we will automatically slash in the following cases:
 
-Last, we will add an override, which may be set by the node operator, which will configure the node to vote for a particular payload no matter what.
+1. A block was proven, so slash all validators that did not attest to it.
+2. An epoch was valid but was not proven, so slash each proposer.
+3. A validator proposed a block that was invalid, so slash the validator.
+
+Last, we will add an override, which may be set by the node operator, which will configure the node to vote for a particular payload no matter what; this affords offline coordination to effect a slash.
 
 ## Requirements
 
@@ -40,6 +44,7 @@ The requirements with filled checkboxes are met by the design below.
 - [x] Node operators SHOULD be able to configure their node to specify thresholds for what they consider "not participating".
 - [x] The "offence" that triggers the slash MAY be specified on L1.
 - [x] The amount to be slashed MAY be configurable without deploying a new factory contract.
+- [x] The node MUST NOT trigger a slash unless it is certain that the validator was "faulty" (in its opinion).
 - [ ] The threshold of number of validators (M/N) that need to signal/vote for the CustomSlashFactory payload MAY be configurable without deploying a new contract or a governance action.
 
 ## L1 Changes
@@ -102,8 +107,9 @@ The core function in the `SlashFactory` will look like:
 For now, the `offences` field will effectively be an enum, with the following possible values:
 
 - 0: unknown
-- 1: epoch pruned
-- 2: inactivity
+- 1: proven block not attested to
+- 2: unproven valid epoch
+- 3: invalid block proposed
 
 The use of `uint256` for offences rather than an explicit enum allows for future flexibility, e.g. adding more offences and interpreting them off-chain, or, by using `uint256` rather than `uint8`, using a hash/commitment to some external data/proof.
 
@@ -113,54 +119,83 @@ Aztec nodes will listen for these events, and then check if the validator commit
 
 ## Node Changes
 
-The SlasherClient will remain the interface that the SequencerPublisher uses to adjust the transaction it sends to the forwarder contract.
+Most of the work is in the node.
 
-Internally, though, the SlasherClient will monitor two conditions:
+### SlasherClient
 
-- an epoch was not proven, so slash all validators (this exists today)
-- a validator has missed X% (e.g. 90%) of attestations according to the Sentinel, so slash that validator (this is new)
-- an override payload is set
+The SlasherClient will remain the interface that the SequencerPublisher uses to adjust the transaction it sends to the forwarder contract. That is, the SequencerPublisher will continue to call `SlasherClient.getSlashPayload` to get the address of the payload to signal/vote for.
+
+Its internal operations will be different, though.
+
+It will instantiate "Watchers", which will have the following responsibilities:
+
+- emit WANT_TO_SLASH events with the arguments to `createSlashPayload`
+- expose a function which takes a validator address, amount, and offence and returns whether it agrees with the slash
+
+The SlasherClient has the following responsibilities:
+
+- listen for WANT_TO_SLASH events and create a payload from the arguments
+- listen for the payload to be created and insert it into a priority queue
+- return the payload with the highest priority when `getSlashPayload` is called
+
+### Payload priority
 
 Validators will need to have a way to order the various slashing events they observe.
 
-The Aztec client will use the following heuristics to determine which payload to signal/vote for:
+Each time a new payload is observed on L1, the node will:
 
-1. If there is an override payload, signal/vote for it.
-2. Check if the payload is older than a configurable TTL. If so, discard it.
-3. Sum the amounts of remaining slash proposals, so we have a `totalSlashAmount` for each payload.
+1. Sum the amounts of new slash proposals, so we have a `totalSlashAmount` for each payload.
+2. Filter the payloads to only include those that the Watchers agree with.
+3. Insert the payload with metadata into a priority queue
 4. Sort the payloads by `totalSlashAmount`, largest to smallest.
-5. Pick the top payload that the validator agrees with (i.e. all the named validators committed the named offences), and signal/vote for it.
 
-This process should be done each time:
+Whenever `getSlashPayload` is called, the node will:
 
-- a new payload is created, as determined by watching the `SlashFactory` contract events
-- the proposer has an opportunity to signal/vote
+1. Check if there is an override payload. If so, signal/vote for it.
+2. Filter out payloads from the queue that are older than a configurable TTL.
+3. Return the first payload in the queue.
 
-### Slashing for epoch pruning
+### Proven block not attested to
 
-We will need to modify the logic around slashing for epoch pruning. Instead of specifying a particular epoch, we just specify all the validators within the epoch.
+The first slashing event to be implemented will be for the case where a validator did not attest to a proven block.
 
-### Slashing for inactivity
+This will be done by an `InactivityWatcher`, which will:
 
-Regarding the slash for "inactivity", nodes will vote to slash any validator that has missed Y% (e.g. 50%) of attestations according to the Sentinel; there are two percentages to be configured:
+- listen for L2 blocks `chain-proven` events emitted from the `L2BlockStream`
+- for each slot, call `Sentinel.processSlot` to get a map of validators and whether they voted
+- emit a `WANT_TO_SLASH` event for each validator that missed more than `SLASH_INACTIVITY_CREATE_TARGET` slots, slashing them for the amount specified in `SLASH_INACTIVITY_CREATE_PENALTY`
 
-- the percentage of attestations missed required to create a payload
-- the percentage of attestations missed required to signal/vote for the payload
+When asked, it will agree to slash any validator that missed more than `SLASH_INACTIVITY_SIGNAL_TARGET` slots.
 
-Node operators will configure their node to listen to a specific SlashFactory contract (as they do today) and specify the percentage of attestations missed required to create a payload.
+### A validator proposed an invalid block
 
-This will be done via CLI arguments or environment variables.
+This requires that full nodes have the ability to re-execute blocks.
+
+Further, when executing a block, we will store invalid blocks in a cache, and emit an `invalid-block` event.
+
+A `InvalidBlockWatcher` will take an executor as an argument, subscribe to the `invalid-block` event, and then emit a `WANT_TO_SLASH` event naming the proposer of the invalid block, slashing them for the amount specified in `SLASH_INVALID_BLOCK_PENALTY`.
+
+When asked, it will agree to slash any validator that proposed an invalid block which it sees in its cache of invalid blocks.
+
+### A valid epoch was not proven
+
+This requires that full nodes have the ability to re-execute blocks.
+
+A `ValidEpochUnprovenWatcher` will listen to `chain-pruned` events emitted by the `L2BlockStream`, and emit a `WANT_TO_SLASH` event for all validators that were in the epoch that was pruned IF there were no `invalid-block` events emitted for that epoch, slashing them for the amount specified in `SLASH_PRUNE_PENALTY`.
+
+When asked, it will agree to slash any validator that was in an epoch that was pruned and there were no `invalid-block` events emitted for that epoch.
 
 ### New configuration
 
-- `SLASH_OVERRIDE_PAYLOAD`: the address of a payload to signal/vote for no matter what
 - `SLASH_PAYLOAD_TTL`: the maximum age of a payload to signal/vote for
-- `SLASH_PRUNE_CREATE`: whether to create a payload for epoch pruning
+- `SLASH_OVERRIDE_PAYLOAD`: the address of a payload to signal/vote for no matter what
+- `SLASH_PRUNE_ENABLED`: whether to create a payload for epoch pruning
 - `SLASH_PRUNE_PENALTY`: the amount to slash each validator that was in an epoch that was pruned
-- `SLASH_PRUNE_SIGNAL`: whether to signal/vote for a payload for epoch pruning
 - `SLASH_INACTIVITY_CREATE_TARGET`: the percentage of attestations missed required to create a payload
-- `SLASH_INACTIVITY_CREATE_PENALTY`: the amount to slash each validator that is inactive
 - `SLASH_INACTIVITY_SIGNAL_TARGET`: the percentage of attestations missed required to signal/vote for the payload
+- `SLASH_INACTIVITY_CREATE_PENALTY`: the amount to slash each validator that is inactive
+- `SLASH_INVALID_BLOCK_ENABLED`: whether to signal/vote for a payload for invalid blocks
+- `SLASH_INVALID_BLOCK_PENALTY`: the amount to slash each validator that proposed an invalid block
 
 ## Notes
 
@@ -179,10 +214,14 @@ In the future, we could also allow the slasher itself or governance to change wh
 Outline the timeline for the project. E.g.
 
 - L1 contracts : 1 day
-- Refactor SlasherClient : 1 day
-- Review/Polish : 1-2 days
+- Refactor SlasherClient : 2 days
+- Implement ProvenBlockNotAttestedWatcher : 1-2 days
+- Implement Rexecute on Full Node : 2 days
+- Implement InvalidBlockWatcher : 1-2 days
+- Implement ValidEpochUnprovenWatcher : 1-2 days
+- Review/Polish : 2 days
 
-Total: 3-4 days
+Total: 10-12 days
 
 ## Disclaimer
 
