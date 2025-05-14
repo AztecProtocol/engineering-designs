@@ -25,9 +25,9 @@ We want to expand this `SlashFactory` to allow nodes to programmatically create 
 
 Specifically, we will automatically slash in the following cases:
 
-1. A block was proven, so slash all validators that did not attest to it.
-2. An epoch was valid but was not proven, so slash each proposer.
-3. A validator proposed a block that was invalid, so slash the validator.
+1. (liveness) A block was proven, so slash all validators that did not attest to it.
+2. (data availability and finality) An epoch was not proven and either i. the data is unavailable, or ii. the data is available and the epoch was valid, so slash each validator that was in the epoch's committee.
+3. (safety) A validator proposed a block that was invalid, so slash the validator.
 
 Last, we will add an override, which may be set by the node operator, which will configure the node to vote for a particular payload no matter what; this affords offline coordination to effect a slash.
 
