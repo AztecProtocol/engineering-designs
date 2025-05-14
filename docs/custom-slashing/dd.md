@@ -197,6 +197,79 @@ When asked, it will agree to slash any validator that was in an epoch that was p
 - `SLASH_INVALID_BLOCK_ENABLED`: whether to signal/vote for a payload for invalid blocks
 - `SLASH_INVALID_BLOCK_PENALTY`: the amount to slash each validator that proposed an invalid block
 
+## Full Node Re-execution
+
+There are two primary points in time where a full node would want to re-execute blocks:
+
+1. When a block is proposed on the p2p network and is gathering attestations.
+2. When a block been proposed to the L1 and is part of the pending chain.
+
+To slash all malicious validators, we only need to support the first case; we need to adjust the validator client to re-execute, even if the node is not in the committee for the block, and retain a cache of invalid blocks.
+
+To avoid slashing honest validators who built on a bad block which they blindly accepted/synced from the previous committee/L1, we need to support the second case.
+
+### A generic `BlockBuilder`
+
+We will build a new `BlockBuilder` class which is a component of the `AztecNode`.
+
+Its interface will be:
+
+```typescript
+interface GlobalContext {
+  chainId: Fr;
+  version: Fr;
+  blockNumber: Fr;
+  slotNumber: Fr;
+  timestamp: Fr;
+  coinbase: EthAddress;
+  feeRecipient: AztecAddress;
+  gasFees: GasFees;
+}
+
+interface BuiltBlockResult {
+  block: L2Block;
+  publicGas: Gas;
+  publicProcessorDuration: number;
+  numMsgs: number;
+  numTxs: number;
+  numFailedTxs: number;
+  blockBuildingTimer: Timer;
+  usedTxs: Tx[];
+}
+
+interface ExecutionOptions {}
+
+interface BlockBuilder {
+  gatherTransactions(txHashes: TxHash[]): Promise<Tx[]>;
+  executeTransactions(
+    txs: Tx[],
+    globals: GlobalContext,
+    options: ExecutionOptions
+  ): Promise<BuiltBlockResult>;
+}
+```
+
+`executeTransactions` will execute transactions against the current world state and archiver.
+
+The caller then may compare the results against whatever they expect (e.g. the state roots a peer sent, or that they downloaded from L1).
+
+We will then update the archiver to optionally take a `BlockBuilder` as an argument, and use this to validate blocks coming in on L1.
+
+Further, the Sequencer and Validator clients will accept a `BlockBuilder` as an argument, which they will use to build/re-execute blocks.
+
+Thus we have:
+
+1. Block comes in on p2p
+   1. validator is on committee
+      1. block is good, broadcast attestation
+      2. block is bad, add to invalid block cache
+   2. validator is not on committee
+      1. block is good, do nothing
+      2. block is bad, add to invalid block cache
+2. Block comes in on L1
+   1. block is good, add to state
+   2. block is bad, add to invalid block cache
+
 ## Notes
 
 The amount to slash should be high for testnet (e.g. the minimum stake amount). We can use a different amount for mainnet.
