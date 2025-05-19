@@ -166,7 +166,7 @@ This will be done by an `InactivityWatcher`, which will:
 - for each slot, call `Sentinel.processSlot` to get a map of validators and whether they voted
 - emit a `WANT_TO_SLASH` event for each validator that missed more than `SLASH_INACTIVITY_CREATE_TARGET` slots, slashing them for the amount specified in `SLASH_INACTIVITY_CREATE_PENALTY`
 
-When asked, it will agree to slash any validator that missed more than `SLASH_INACTIVITY_SIGNAL_TARGET` slots.
+When asked, it will agree to slash any validator that missed more than `SLASH_INACTIVITY_SIGNAL_TARGET` slots, so long as the amount is less than `SLASH_INACTIVITY_MAX_PENALTY`.
 
 ### A validator proposed an invalid block
 
@@ -176,7 +176,7 @@ Further, when executing a block, we will store invalid blocks in a cache, and em
 
 A `InvalidBlockWatcher` will take an executor as an argument, subscribe to the `invalid-block` event, and then emit a `WANT_TO_SLASH` event naming the proposer of the invalid block, slashing them for the amount specified in `SLASH_INVALID_BLOCK_PENALTY`.
 
-When asked, it will agree to slash any validator that proposed an invalid block which it sees in its cache of invalid blocks.
+When asked, it will agree to slash any validator that proposed an invalid block which it sees in its cache of invalid blocks, as long as the amount is less than `SLASH_INVALID_BLOCK_MAX_PENALTY`.
 
 ### A valid epoch was not proven
 
@@ -184,7 +184,7 @@ This requires that full nodes have the ability to re-execute blocks.
 
 A `ValidEpochUnprovenWatcher` will listen to `chain-pruned` events emitted by the `L2BlockStream`, and emit a `WANT_TO_SLASH` event for all validators that were in the epoch that was pruned IF there were no `invalid-block` events emitted for that epoch, slashing them for the amount specified in `SLASH_PRUNE_PENALTY`.
 
-When asked, it will agree to slash any validator that was in an epoch that was pruned and there were no `invalid-block` events emitted for that epoch.
+When asked, it will agree to slash any validator that was in an epoch that was pruned and there were no `invalid-block` events emitted for that epoch, as long as the amount is less than `SLASH_PRUNE_MAX_PENALTY`.
 
 ### New configuration
 
@@ -192,11 +192,14 @@ When asked, it will agree to slash any validator that was in an epoch that was p
 - `SLASH_OVERRIDE_PAYLOAD`: the address of a payload to signal/vote for no matter what
 - `SLASH_PRUNE_ENABLED`: whether to create a payload for epoch pruning
 - `SLASH_PRUNE_PENALTY`: the amount to slash each validator that was in an epoch that was pruned
+- `SLASH_PRUNE_MAX_PENALTY`: the maximum amount to slash each validator that was in an epoch that was pruned
+- `SLASH_INACTIVITY_ENABLED`: whether to signal/vote for a payload for inactivity
 - `SLASH_INACTIVITY_CREATE_TARGET`: the percentage of attestations missed required to create a payload
 - `SLASH_INACTIVITY_SIGNAL_TARGET`: the percentage of attestations missed required to signal/vote for the payload
 - `SLASH_INACTIVITY_CREATE_PENALTY`: the amount to slash each validator that is inactive
 - `SLASH_INVALID_BLOCK_ENABLED`: whether to signal/vote for a payload for invalid blocks
 - `SLASH_INVALID_BLOCK_PENALTY`: the amount to slash each validator that proposed an invalid block
+- `SLASH_INVALID_BLOCK_MAX_PENALTY`: the maximum amount to slash each validator that proposed an invalid block
 
 ## Full Node Re-execution
 
