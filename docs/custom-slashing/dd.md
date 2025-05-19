@@ -4,6 +4,7 @@
 - Approvers:
   - @LHerskind
   - @Maddiaa0
+  - @aminsammara
 - Target DD Approval Date: 2025-05-09
 - Target Project Delivery Date: 2025-05-16
 
@@ -13,11 +14,11 @@ The `StakingLib` designates a "slasher" address which is able to slash arbitrary
 
 The contract used as the slasher is currently `Slasher`, which takes directives from a `SlashingProposer`.
 
-The `SlashingProposer` is an instance of `EmpireBase`, which operates in "rounds" of `N` L2 slots, during which at least `M` proposers must vote for a specific contract address "payload" to be executed.
+The `SlashingProposer` is an instance of `EmpireBase`, which operates in "rounds" of `M` L2 slots, during which at least `N` proposers must vote for a specific contract address "payload" to be executed.
 
 The payload just calls "slash", with the list of validators to slash, and the amount to slash each.
 
-So the L1 contracts currently allow arbitrary slashing as long as the motion has support from `M/N` validators.
+So the L1 contracts currently allow arbitrary slashing as long as the motion has support from `N/M` validators.
 
 In practice, however, there are only mechanisms built to create and vote for payloads to slash all validators in an epoch if the epoch is never proven, namely an out-of-protocol `SlashFactory` contract, and corresponding logic on the node to utilize it.
 
@@ -45,7 +46,7 @@ The requirements with filled checkboxes are met by the design below.
 - [x] The "offence" that triggers the slash MAY be specified on L1.
 - [x] The amount to be slashed MAY be configurable without deploying a new factory contract.
 - [x] The node MUST NOT trigger a slash unless it is certain that the validator was "faulty" (in its opinion).
-- [ ] The threshold of number of validators (M/N) that need to signal/vote for the CustomSlashFactory payload MAY be configurable without deploying a new contract or a governance action.
+- [ ] The threshold of number of validators (N/M) that need to signal/vote for the CustomSlashFactory payload MAY be configurable without deploying a new contract or a governance action.
 
 ## L1 Changes
 
