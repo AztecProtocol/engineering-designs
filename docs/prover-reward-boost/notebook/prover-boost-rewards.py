@@ -122,7 +122,7 @@ def _(mo):
 
     $$
     y(x) = \begin{cases}
-    	\max(k - a(x - h)^2, m), & \text{if } x \leq h \\
+    	\max(k - a(h - x)^2, m), & \text{if } x \leq h \\
     	k, & \text{if } x > h
     \end{cases}
     $$
@@ -157,7 +157,7 @@ def _(a, h, k, plt, precision):
         if x > h:
             return int(k)
         else:
-            return max(int(k) - int(a) * int(x - h) ** 2, int(m))
+            return max(int(k) - int(a) * int(h - x) ** 2, int(m))
 
 
     def generate_data(a, k, h, m):

@@ -62,7 +62,7 @@ By then feeding this activity value as $x$ into the following formula, we comput
 
 $$
 y(x) = \begin{cases}
-	\max(k - a(x - h)^2, m), & \text{if } x \leq h \\
+	\max(k - a(h-x)^2, m), & \text{if } x \leq h \\
 	k, & \text{if } x > h
 \end{cases}
 $$
