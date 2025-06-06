@@ -68,7 +68,6 @@ The transaction can only be included if the specified max fee per mana is greate
 - `L2_SLOTS_PER_L2_EPOCH` - the number of L2 slots in each L2 epoch (e.g. 32)
 - `L1_GAS_PER_BLOCK_PROPOSAL` - the amount of L1 gas required to propose an L2 block on L1 (e.g. 0.2e6)
 - `L1_GAS_PER_EPOCH_VERIFICATION` - the amount of L1 gas required to verify an L2 epoch on L1 (e.g. 1e6)
-- `MAXIMUM_FEE_PER_EPOCH_PROOF_QUOTE` - the maximum basis point fee a prover can submit for an epoch proof quote (e.g. 9000)
 - `MINIMUM_L2_SLOTS_PER_UNDERLYING_BASE_FEE_ORACLE_UPDATE` - the minimum number of L2 slots between updates to the underlying base fee oracle (e.g. 4)
 - `MINIMUM_FEE_ASSET_PER_ETH` - the minimum price of the fee asset in eth (e.g. 10)
 - `MAXIMUM_FEE_ASSET_PER_ETH_PERCENT_CHANGE_PER_L2_SLOT` - the maximum percentage increase in the price of the fee asset per block (e.g. 1%)
