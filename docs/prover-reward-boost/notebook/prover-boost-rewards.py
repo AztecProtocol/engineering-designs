@@ -32,7 +32,7 @@ def _(mo, precision):
     Every `prover` will have some value `x` that is stored for them specifically reflecting their recent activity. 
     The value is computed fairly simply. 
     Every time an epoch passes, the activity score goes down by 1. 
-    Every block the prover produces increases their value with 2. 
+    Every block the prover produces increases their value with some "proof_increase" value. 
     The value is bounded to be between `0` and `upper`.
 
     We use `upper` to limit the score in order to constrain how long a boost is maintained after the actor stops proving.
@@ -59,6 +59,17 @@ def _(mo):
         value=50,
     )
 
+    proof_increase = mo.ui.slider(
+        label="Increase per proof",
+        start=1,
+        stop=5,
+        step=0.125,
+        show_value=True,
+        full_width=True,
+        value=2,
+    )
+
+
     proof_probability = mo.ui.slider(
         label="Probably of proof production (%)",
         start=0,
@@ -68,18 +79,18 @@ def _(mo):
         value=75,
     )
 
-    mo.hstack([upper_limit, proof_probability])
-    return proof_probability, upper_limit
+    mo.hstack([upper_limit, proof_increase, proof_probability])
+    return proof_increase, proof_probability, upper_limit
 
 
 @app.cell
-def _(plt, proof_probability, random, upper_limit):
-    def plot_activity_score(upper_limit=50, p=0.75):
+def _(plt, proof_increase, proof_probability, random, upper_limit):
+    def plot_activity_score(upper_limit=50, p=0.75, proof_increase=2):
         X = [i for i in range(upper_limit * 2)]
         Y = [0]
 
         for x in X[1:]:
-            r = 1.5 if random.random() <= p else 0
+            r = proof_increase if random.random() <= p else 0
             Y.append(min(max(0, Y[-1] + r - 1), upper_limit))
 
         fig, ax = plt.subplots(figsize=(12, 4))
@@ -87,7 +98,7 @@ def _(plt, proof_probability, random, upper_limit):
         ax.plot(X, Y)
 
         ax.set_title(
-            f"Activity Scores as function of time passing (epochs) and probability to produce proof ({upper_limit}, {p:.2%})"
+            f"Activity Scores as function of time passing (epochs) and probability to produce proof ({upper_limit}, {p:.2%}, {proof_increase})"
         )
         ax.set_ylabel("Activity Score")
         ax.set_xlabel("Epochs")
@@ -96,7 +107,9 @@ def _(plt, proof_probability, random, upper_limit):
 
 
     plot_activity_score(
-        upper_limit=upper_limit.value, p=proof_probability.value / 100
+        upper_limit=upper_limit.value,
+        p=proof_probability.value / 100,
+        proof_increase=proof_increase.value,
     )
     return
 

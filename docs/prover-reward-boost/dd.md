@@ -13,7 +13,7 @@
 
 To incentivize consistent proving, we "boost" the share of rewards going to consistent provers based on their activity.
 
-Basic requirement: Provers that consistently prove blocks should be rewarded.
+Basic requirement: Provers that consistently prove blocks should be rewarded more than provers that sporadically prove blocks.
 
 ## Timeline
 
@@ -27,7 +27,7 @@ Total: 2 days + 🤷
 We want people to prove consistently.
 This work pay people proving consistently a bigger share of rewards.
 
-Assumes that there will be more than 1 prover. 
+Assumes that there will be more than 1 prover.
 Otherwise the share don't matter.
 
 ## Interface
@@ -39,14 +39,14 @@ No user will interact directly with this, it is merely an accounting update behi
 Please consult the interactive `marimo` notebook for this, that is probably much simpler. Same text as here is also in there.
 
 Currently a prover have `1` share of the reward.
-To support boosting, we alter this such that a prover will instead have that their number of shares depends on their prior actions. 
+To support boosting, we alter this such that a prover will instead have that their number of shares depends on their prior actions.
 
 To do so, we will first introduce an "activity score" and then a method to derive the number of shares from that it.
 
-Every `prover` will have some value `x` that is stored for them specifically reflecting their recent activity. 
-The value is computed fairly simply. 
-Every time an epoch passes, the activity score goes down by 1. 
-Every block the prover produces increases their value with 2. 
+Every `prover` will have some value `x` that is stored for them specifically reflecting their recent activity.
+The value is computed fairly simply.
+Every time an epoch passes, the activity score goes down by 1.
+Every block the prover produces increases their value with 2.
 The value is bounded to be between `0` and `upper`.
 
 We use `upper` to limit the score in order to constrain how long a boost is maintained after the actor stops proving.
@@ -73,6 +73,35 @@ Note, that setting $h$ to be equal the `upper` limit that we supplied earlier is
 
 ![](./images/shares.png)
 
+---
+
+The practical implementation will update the `SubEpochRewards` struct, `EpochProofLib::handleRewardsAndFees` and `RewardLib::claimProverRewards`.
+
+```solidity
+// Old
+struct SubEpochRewards {
+  uint256 summedCount;
+  mapping(address prover => bool proofSubmitted) hasSubmitted;
+}
+
+// New
+struct SubEpochRewards {
+  uint256 summedShares;
+  mapping(address prover => uint256 shares) proverShares;
+}
+```
+
+`EpochProofLib::handleRewardsAndFees`:
+Instead of storing `bool` with `hasSubmitted` we store the `proverShares`, and increase the `summedShares` instead `summedCount`.
+
+`RewardLib::claimProverRewards`:
+Hence we don't have `hasSubmitted` anymore, we will simply alter the accumulation as:
+
+```solidity
+SubEpochRewards storage es = e.subEpoch[e.longestProvenLength];
+accumulatedRewards += (es.proverShares[msg.sender] * e.rewards / es.summedShares);
+```
+
 ## Change Set
 
 Fill in bullets for each area that will be affected by this change.
@@ -95,11 +124,11 @@ Fill in bullets for each area that will be affected by this change.
 
 ## Test Plan
 
-List key test scenarios or validation steps required to confirm the design meets all project requirements.
+The `marimo` doc is generating test data that can be used to ensure that the math makes sense.
 
 ## Documentation Plan
 
-Identify changes or additions to the user documentation or protocol spec.
+You are looking at it.
 
 ## Disclaimer
 
