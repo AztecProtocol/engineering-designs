@@ -9,13 +9,138 @@ def _():
     import marimo as mo
     import matplotlib.pyplot as plt
     import random
-    return mo, plt, random
+    import numpy as np
+
+    from pydantic import StrictInt, field_validator, Field
+    from pydantic.dataclasses import dataclass
+    from dataclasses import fields
+    return StrictInt, dataclass, field_validator, mo, np, plt, random
 
 
 @app.cell
 def _():
     precision = int(1e5)
     return (precision,)
+
+
+@app.cell(hide_code=True)
+def _(StrictInt, dataclass, field_validator):
+    def bounded_int(min_value: int, max_value: int):
+        """
+        Decorator for creating bounded integer types with validation
+        Inclusive of min_value, exclusive of max_value
+        """
+
+        def decorator(cls):
+            @dataclass
+            class BoundedInt:
+                value: StrictInt
+
+                @field_validator("value")
+                def check_range(cls, v):
+                    if not (min_value <= v < max_value):
+                        raise ValueError(
+                            f"Value don't satisfy {min_value} <= {v} <= {max_value}"
+                        )
+                    return v
+
+                def to_dict(self) -> int:
+                    # Custom serialization to return just the integer value
+                    return self.value
+
+                def __eq__(self, other):
+                    if isinstance(other, BoundedInt):
+                        return self.value == other.value
+                    return False
+
+                def __ne__(self, other):
+                    return not self.__eq__(other)
+
+                def __gt__(self, other):
+                    return self.value > other.value
+
+                def __ge__(self, other):
+                    return self.value >= other.value
+
+                def __lt__(self, other):
+                    return self.value < other.value
+
+                def __le__(self, other):
+                    return self.value <= other.value
+
+                def __abs__(self):
+                    return BoundedInt(value=abs(self.value))
+
+                def __neg__(self):
+                    return BoundedInt(value=-self.value)
+
+                def __add__(self, other):
+                    if isinstance(other, BoundedInt):
+                        result = self.value + other.value
+                        if result > max_value:
+                            raise OverflowError("Integer overflow")
+                        return BoundedInt(value=result)
+                    else:
+                        raise TypeError(
+                            f"Unsupported operand type for +: '{cls.__name__}' and '{type(other)}'"
+                        )
+
+                def __sub__(self, other):
+                    if isinstance(other, BoundedInt):
+                        result = self.value - other.value
+                        if result < min_value:
+                            raise ValueError("Integer underflow")
+                        return BoundedInt(value=result)
+                    else:
+                        raise TypeError(
+                            f"Unsupported operand type for -: '{cls.__name__}' and '{type(other)}'"
+                        )
+
+                def __mul__(self, other):
+                    if isinstance(other, BoundedInt):
+                        result = self.value * other.value
+                        if result > max_value:
+                            raise OverflowError("Integer overflow")
+                        return BoundedInt(value=result)
+                    else:
+                        raise TypeError(
+                            f"Unsupported operand type for *: '{cls.__name__}' and '{type(other)}'"
+                        )
+
+                def __truediv__(self, other):
+                    if isinstance(other, BoundedInt):
+                        if other.value == 0:
+                            raise ZeroDivisionError("Division by zero")
+                        return BoundedInt(value=self.value // other.value)
+                    else:
+                        raise TypeError(
+                            f"Unsupported operand type for /: '{cls.__name__}' and '{type(other)}'"
+                        )
+
+                def mul_div(self, other, denominator, round_up=False):
+                    temp = self.value * other.value
+                    result = temp // denominator.value
+                    if round_up and temp % denominator.value != 0:
+                        result += 1
+                    return BoundedInt(value=result)
+
+            # Copy the class name and update annotations
+            BoundedInt.__name__ = cls.__name__
+            BoundedInt.__qualname__ = cls.__qualname__
+            return BoundedInt
+
+        return decorator
+
+
+    @bounded_int(min_value=0, max_value=2**256 - 1)
+    class Uint256:
+        pass
+
+
+    @bounded_int(min_value=-(2**255), max_value=2**255 - 1)
+    class Int256:
+        pass
+    return (Uint256,)
 
 
 @app.cell
@@ -32,8 +157,12 @@ def _(mo, precision):
     Every `prover` will have some value `x` that is stored for them specifically reflecting their recent activity. 
     The value is computed fairly simply. 
     Every time an epoch passes, the activity score goes down by 1. 
-    Every block the prover produces increases their value with some "proof_increase" value. 
-    The value is bounded to be between `0` and `upper`.
+    Every block the prover produces increases their value with some "proof_increase" value.
+    The values are bounded to be between `0` and `upper`, and we apply this "clamp" after the subtraction and again after the addition. 
+
+    $$
+    \min(\max(0, curr - 1) + increase, upper)
+    $$
 
     We use `upper` to limit the score in order to constrain how long a boost is maintained after the actor stops proving.
 
@@ -51,7 +180,7 @@ def _(mo, precision):
 @app.cell
 def _(mo):
     upper_limit = mo.ui.slider(
-        label="Activity Score Upper Limit",
+        label="Activity Score Upper Limit ($h$)",
         start=0,
         stop=500,
         show_value=True,
@@ -60,7 +189,7 @@ def _(mo):
     )
 
     proof_increase = mo.ui.slider(
-        label="Increase per proof",
+        label="Increase per proof ($pi$)",
         start=1,
         stop=5,
         step=0.125,
@@ -84,18 +213,41 @@ def _(mo):
 
 
 @app.cell
-def _(plt, proof_increase, proof_probability, random, upper_limit):
+def _(
+    Uint256,
+    mo,
+    plt,
+    precision,
+    proof_increase,
+    proof_probability,
+    random,
+    upper_limit,
+):
     def plot_activity_score(upper_limit=50, p=0.75, proof_increase=2):
-        X = [i for i in range(upper_limit * 2)]
-        Y = [0]
+        config = {
+            "h": Uint256(int(upper_limit * precision)),
+            "pi": Uint256(int(proof_increase * precision)),
+        }
+
+        X = [Uint256(i) for i in range(upper_limit * 2)]
+        is_proven = [False]
+        Y = [Uint256(0)]
+        one = Uint256(precision)
 
         for x in X[1:]:
-            r = proof_increase if random.random() <= p else 0
-            Y.append(min(max(0, Y[-1] + r - 1), upper_limit))
+            a = Y[-1] - one if Y[-1] > one else Uint256(0)
+            mark = random.random() <= p
+            r = config["pi"] if mark else Uint256(0)
+
+            Y.append(min(a + r, config["h"]))
+            is_proven.append(mark)
 
         fig, ax = plt.subplots(figsize=(12, 4))
 
-        ax.plot(X, Y)
+        X_r = [x.value for x in X]
+        Y_r = [y.value / precision for y in Y]
+
+        ax.plot(X_r, Y_r)
 
         ax.set_title(
             f"Activity Scores as function of time passing (epochs) and probability to produce proof ({upper_limit}, {p:.2%}, {proof_increase})"
@@ -103,7 +255,9 @@ def _(plt, proof_increase, proof_probability, random, upper_limit):
         ax.set_ylabel("Activity Score")
         ax.set_xlabel("Epochs")
 
-        return ax
+        data = {"config": config, "is_proven": is_proven, "activity_score": Y}
+
+        return mo.vstack([ax, data])
 
 
     plot_activity_score(
@@ -136,42 +290,44 @@ def _(mo):
 
 
 @app.cell
-def _(mo, precision):
-    a = mo.ui.number(label="$a$", start=0, full_width=True, value=5000, step=500)
-
-    k = mo.ui.number(
-        label="$k$", start=precision, full_width=True, value=precision * 10
-    )
-
-    h = mo.ui.slider(
-        label="$h$", start=0, stop=500, show_value=True, full_width=True, value=50
-    )
-
-    mo.hstack([a, k, h])
-    return a, h, k
+def _(mo):
+    a = mo.ui.number(label="$a$", start=0, value=0.05, step=0.00125)
+    k = mo.ui.number(label="$k$", start=1, value=10)
+    mo.hstack([a, k])
+    return a, k
 
 
 @app.cell
-def _(a, h, k, plt, precision):
+def _(Uint256, a, k, mo, np, plt, precision, proof_increase, upper_limit):
     def prover_weigth(x, a, k, h, m):
         if x > h:
-            return int(k)
+            return k
         else:
-            return max(int(k) - int(a) * int(h - x) ** 2, int(m))
-
-
-    def generate_data(a, k, h, m):
-        X = [i for i in range(h + 10)]
-        Y = [prover_weigth(x, a, k, h, m) for x in X]
-
-        return X, Y
+            lhs = k
+            rhs = a * (h - x) * (h - x) / (Uint256(precision**2))
+            if lhs < rhs:
+                return m
+            return max(lhs - rhs, m)
 
 
     def plot_prover_weigth(a, k, h, m):
-        X, Y = generate_data(a, k, h, m)
+        c = {
+            "a": Uint256(int(a * precision)),
+            "k": Uint256(int(k * precision)),
+            "h": Uint256(int(h * precision)),
+            "m": Uint256(int(m * precision)),
+        }
+
+        step = proof_increase.value - 1
+
+        X = [Uint256(int(i * precision)) for i in np.arange(0, h + 10, step)]
+        Y = [prover_weigth(x, c["a"], c["k"], c["h"], c["m"]) for x in X]
+
+        X_r = [x.value / precision for x in X]
+        Y_r = [y.value / precision for y in Y]
 
         fig, ax = plt.subplots(figsize=(12, 4))
-        ax.plot(X, Y)
+        ax.plot(X_r, Y_r)
 
         ax.set_title(
             f"Shares as function of activity score (a:{a}, k:{k}, h:{h}, m:{m})"
@@ -179,41 +335,18 @@ def _(a, h, k, plt, precision):
         ax.set_ylabel("Shares")
         ax.set_xlabel("Activity Score")
 
-        return ax
+        c["pi"] = Uint256(int(proof_increase.value * precision))
+        data = {"config": c, "activity_score": X, "shares": Y}
+
+        return mo.vstack([ax, data])
 
 
     plot_prover_weigth(
         a=a.value,
         k=k.value,
-        h=h.value,
-        m=precision,
+        h=upper_limit.value,
+        m=1,
     )
-    return (generate_data,)
-
-
-@app.cell
-def _(mo):
-    mo.md(
-        r"""
-    # Test Data
-
-    We generate test data that we can use in foundry to ensure that out maths align.
-    """
-    )
-    return
-
-
-@app.cell
-def _(a, generate_data, h, k, precision):
-    def generate_json_output(a, k, h, m):
-        X, Y = generate_data(a, k, h, m)
-
-        data = {"config": {"a": a, "k": k, "h": h, "m": m}, "xs": X, "ys": Y}
-
-        return data
-
-
-    generate_json_output(a.value, k.value, h.value, precision)
     return
 
 
