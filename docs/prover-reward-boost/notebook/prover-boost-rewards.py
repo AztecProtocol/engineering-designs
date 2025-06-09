@@ -14,7 +14,8 @@ def _():
     from pydantic import StrictInt, field_validator, Field
     from pydantic.dataclasses import dataclass
     from dataclasses import fields
-    return StrictInt, dataclass, field_validator, mo, np, plt, random
+    import json
+    return StrictInt, dataclass, field_validator, json, mo, np, plt, random
 
 
 @app.cell
@@ -215,6 +216,7 @@ def _(mo):
 @app.cell
 def _(
     Uint256,
+    json,
     mo,
     plt,
     precision,
@@ -255,7 +257,13 @@ def _(
         ax.set_ylabel("Activity Score")
         ax.set_xlabel("Epochs")
 
-        data = {"config": config, "is_proven": is_proven, "activity_score": Y}
+        data = json.dumps(
+            {
+                "config": {k: v.to_dict() for k, v in config.items()},
+                "is_proven": is_proven,
+                "activity_score": [y.to_dict() for y in Y],
+            }
+        )
 
         return mo.vstack([ax, data])
 
@@ -336,7 +344,12 @@ def _(Uint256, a, k, mo, np, plt, precision, proof_increase, upper_limit):
         ax.set_xlabel("Activity Score")
 
         c["pi"] = Uint256(int(proof_increase.value * precision))
-        data = {"config": c, "activity_score": X, "shares": Y}
+
+        data = {
+            "config": {k: v.to_dict() for k, v in c.items()},
+            "activity_score": [x.to_dict() for x in X],
+            "shares": [y.to_dict() for y in Y],
+        }
 
         return mo.vstack([ax, data])
 
