@@ -116,3 +116,13 @@ Using the mapping generated using the Block Tx Request/Response message exchange
 
 Only making a single request to a peer with a limited number of transactions prevents a node from simply requesting all available transactions from the first peer to respond. Instead we should aim to spread the load as much as possible.
 
+## Protections
+
+Nodes will wish to protect themselves from malicious or faulty peers through peer-scoring. Punishments should be applied for:
+
+1. Providing invalid transactions.
+2. Providing transactions that do not match the requested block hash.
+3. Making `BlockTxRequest` requests for block proposals that do not exist, accounting for the fact that you may be slightly behind/ahead of the peer.
+4. Making too many requests in a given period of time.
+5. Making duplicate requests for transactions.
+
