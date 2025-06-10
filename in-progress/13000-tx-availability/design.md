@@ -85,6 +85,7 @@ Provers are assumed to be organisations with access to considerable hardware res
 1. Run multiple full nodes in addition to the prover node.
 2. Configure every node with a very large transaction pool size, significantly reducing the transaction eviction rate.
 3. Configure every node to have a high peer count, increasing the likelihood of request/response success.
+4. Configure every node to have a higher gossipsub degree, perhaps D = 12, increasing the likelihood of gossip success.
 
 ### Centralised transaction storage for provers
 
