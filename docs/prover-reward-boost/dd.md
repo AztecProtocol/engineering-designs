@@ -43,11 +43,11 @@ To support boosting, we alter this such that a prover will instead have that the
 
 To do so, we will first introduce an "activity score" and then a method to derive the number of shares from that it.
 
-Every `prover` will have some value `x` that is stored for them specifically reflecting their recent activity. 
-The value is computed fairly simply. 
-Every time an epoch passes, the activity score goes down by 1. 
-Every block the prover produces increases their value with some "proof_increase" value.
-The values are bounded to be between `0` and `upper`, and we apply this "clamp" after the subtraction and again after the addition. 
+Every `prover` will have some value `x` that is stored for them specifically reflecting their recent activity.
+The value is computed fairly simply.
+Every time an epoch passes, the activity score goes down by 1.
+For every epoch where the prover publishes a proof their score increases with some "proof_increase" value.
+The values are bounded to be between `0` and `upper`, and we apply this "clamp" after the subtraction and again after the addition:
 
 $$
 \min(\max(0, curr - 1) + increase, upper)
