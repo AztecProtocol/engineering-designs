@@ -188,18 +188,19 @@ When asked, it will agree to slash any validator that was in an epoch that was p
 
 ### New configuration
 
-- `SLASH_PAYLOAD_TTL`: the maximum age of a payload to signal/vote for
+- `SLASH_PAYLOAD_TTL_SECONDS`: the maximum age of a payload to signal/vote for
 - `SLASH_OVERRIDE_PAYLOAD`: the address of a payload to signal/vote for no matter what
 - `SLASH_PRUNE_ENABLED`: whether to create a payload for epoch pruning
 - `SLASH_PRUNE_PENALTY`: the amount to slash each validator that was in an epoch that was pruned
 - `SLASH_PRUNE_MAX_PENALTY`: the maximum amount to slash each validator that was in an epoch that was pruned
-- `SLASH_INACTIVITY_ENABLED`: whether to signal/vote for a payload for inactivity
-- `SLASH_INACTIVITY_CREATE_TARGET`: the percentage of attestations missed required to create a payload
-- `SLASH_INACTIVITY_SIGNAL_TARGET`: the percentage of attestations missed required to signal/vote for the payload
-- `SLASH_INACTIVITY_CREATE_PENALTY`: the amount to slash each validator that is inactive
 - `SLASH_INVALID_BLOCK_ENABLED`: whether to signal/vote for a payload for invalid blocks
 - `SLASH_INVALID_BLOCK_PENALTY`: the amount to slash each validator that proposed an invalid block
 - `SLASH_INVALID_BLOCK_MAX_PENALTY`: the maximum amount to slash each validator that proposed an invalid block
+- `SLASH_INACTIVITY_ENABLED`: whether to signal/vote for a payload for inactivity
+- `SLASH_INACTIVITY_CREATE_TARGET_PERCENTAGE`: the percentage of attestations missed required to create a payload
+- `SLASH_INACTIVITY_SIGNAL_TARGET_PERCENTAGE`: the percentage of attestations missed required to signal/vote for the payload
+- `SLASH_INACTIVITY_CREATE_PENALTY`: the amount to slash each validator that is inactive
+- `SLASH_INACTIVITY_MAX_PENALTY`: the maximum amount to slash each validator that is inactive
 
 ## Full Node Re-execution
 
