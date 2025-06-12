@@ -98,13 +98,19 @@ The frequent exchange of these messages enables nodes to build up mappings of wh
 
 ### Tx Request/Response
 
-Transactions are requested in batches using the `TxRequest` message.
+Transactions are requested in batches using the `TxRequest` message. Additionally, `TxRequests` messages are used to request transactions from multiple blocks in a single request.
 
 ```
 type TxRequest = {
   slotNumber: number,
   blockHash: Buffer, // 32 byte hash of the proposed block
   txIndices: Buffer, // BitVector indicating which txs from the proposal are requested
+}
+```
+
+```
+type TxRequests = {
+  requests: TxRequest[]
 }
 ```
 
