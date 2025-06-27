@@ -1,6 +1,8 @@
+
+
 import marimo
 
-__generated_with = "0.12.8"
+__generated_with = "0.13.2"
 app = marimo.App(width="medium", app_title="Fee Model")
 
 
@@ -23,9 +25,7 @@ def _():
     from dataclasses import fields
     from copy import deepcopy
     import marimo as mo
-
     return (
-        ClassVar,
         Field,
         List,
         Optional,
@@ -38,7 +38,6 @@ def _():
         math,
         mo,
         networks,
-        np,
         os,
         pickle,
         plt,
@@ -76,7 +75,6 @@ def _(deepcopy, fields):
 
         cls.to_dict = to_dict
         return cls
-
     return (json_serializable,)
 
 
@@ -188,15 +186,16 @@ def _(StrictInt, dataclass, field_validator):
 
         return decorator
 
+
     @bounded_int(min_value=0, max_value=2**256 - 1)
     class Uint256:
         pass
 
+
     @bounded_int(min_value=-(2**255), max_value=2**255 - 1)
     class Int256:
         pass
-
-    return Int256, Uint256, bounded_int
+    return Int256, Uint256
 
 
 @app.cell
@@ -205,6 +204,7 @@ def _(Uint256):
     BLOB_BASE_FEE_UPDATE_FRACTION = Uint256(3338477)
     BLOB_SIZE_IN_FIELDS = Uint256(4096)
     GAS_PER_BLOB = Uint256(2**17)
+
 
     def fake_exponential(
         factor: Uint256, numerator: Uint256, denominator: Uint256
@@ -245,6 +245,7 @@ def _(Uint256):
             i += Uint256(1)
         return output / denominator
 
+
     # Small check to see if the fake exponential is working as intended
     a = Uint256(5415357955)
     b = Uint256(2611772262)
@@ -254,14 +255,7 @@ def _(Uint256):
     assert d == e, f"Expected {d} to be {e}"
     return (
         BLOB_BASE_FEE_UPDATE_FRACTION,
-        BLOB_SIZE_IN_FIELDS,
-        GAS_PER_BLOB,
         MIN_BASE_FEE_PER_BLOB_GAS,
-        a,
-        b,
-        c,
-        d,
-        e,
         fake_exponential,
     )
 
@@ -302,6 +296,7 @@ def _(
         base_fee: Uint256
         excess_blob_gas: Uint256
 
+
     def get_l1_block_sub(block_number: int) -> L1BlockSub:
         block = networks.provider.web3.eth.get_block(block_number)
         blob_fee = fake_exponential(
@@ -316,6 +311,7 @@ def _(
             excess_blob_gas=Uint256(block.excessBlobGas),
             timestamp=Uint256(block.timestamp),
         )
+
 
     @mo.cache
     def get_blocks(start_number: int, number_of_blocks: int):
@@ -337,6 +333,7 @@ def _(
             pickle.dump(blocks, f)
         return blocks
 
+
     # You should not change these unless you have access to the endpoint in the `ape-config.yaml` file.
     # This is because we are using the `ape` library to fetch the data from the Ethereum node, or just
     # fetching the data from a pickle file otherwise if we already have it.
@@ -345,14 +342,7 @@ def _(
     blocks_to_pull = 2000
 
     blocks = get_blocks(block_start_number, blocks_to_pull)
-    return (
-        L1BlockSub,
-        block_start_number,
-        blocks,
-        blocks_to_pull,
-        get_blocks,
-        get_l1_block_sub,
-    )
+    return (blocks,)
 
 
 @app.cell
@@ -360,9 +350,13 @@ def _(blocks, plt):
     block_numbers = [b.number.value for b in blocks]
     plt.figure(figsize=(12, 6))
     plt.plot(
-        block_numbers, [b.blob_fee.value for b in blocks], label="Blob Gas Price (wei)"
+        block_numbers,
+        [b.blob_fee.value for b in blocks],
+        label="Blob Gas Price (wei)",
     )
-    plt.plot(block_numbers, [b.base_fee.value for b in blocks], label="Base Fee (wei)")
+    plt.plot(
+        block_numbers, [b.base_fee.value for b in blocks], label="Base Fee (wei)"
+    )
     plt.xlabel("Block Number")
     plt.ylabel("Fee (wei)")
     plt.title("Blob Gas Price and Base Fee over Recent Blocks")
@@ -418,6 +412,7 @@ def _(
         def size_in_fields(self) -> Uint256:
             return Uint256(math.ceil(self.size_in_bytes().value / 32))
 
+
     @json_serializable
     @dataclass
     class BlockHeader:
@@ -428,6 +423,7 @@ def _(
         mana_spent: Uint256
         blobs_needed: Uint256
         size_in_fields: Uint256
+
 
     @dataclass
     class Block:
@@ -458,11 +454,13 @@ def _(
                 size_in_fields=self.size_in_fields(),
             )
 
+
     @json_serializable
     @dataclass
     class L1Fees:
         blob_fee: Uint256
         base_fee: Uint256
+
 
     @json_serializable
     @dataclass
@@ -485,15 +483,22 @@ def _(
                 self.pre = self.post
                 self.post = fees
                 # This value should at the earliest be equal to the slot_of_change + LIFETIME.
-                assert slot_number + self.LATENCY <= self.slot_of_change + self.LIFETIME
+                assert (
+                    slot_number + self.LATENCY
+                    <= self.slot_of_change + self.LIFETIME
+                )
                 self.slot_of_change = slot_number + self.LATENCY
+
 
     @json_serializable
     @dataclass
     class FeeHeader:
         excess_mana: Uint256 = Field(default_factory=lambda: Uint256(0))
         mana_used: Uint256 = Field(default_factory=lambda: Uint256(0))
-        fee_asset_price_numerator: Uint256 = Field(default_factory=lambda: Uint256(0))
+        fee_asset_price_numerator: Uint256 = Field(
+            default_factory=lambda: Uint256(0)
+        )
+
 
     @json_serializable
     @dataclass
@@ -503,10 +508,12 @@ def _(
         congestion_cost: Uint256
         congestion_multiplier: Uint256
 
+
     @json_serializable
     @dataclass
     class OracleInput:
         fee_asset_price_modifier: Int256
+
 
     @dataclass
     class FeeModel:
@@ -563,13 +570,12 @@ def _(
         ) -> Uint256:
             l1_fees = self.current_l1_fees()
 
-            l1_gas = self.l1_gas_per_block_proposed + (
-                block.blobs_needed() if block else Uint256(3)
-            ) * Uint256(50_000)
+            l1_gas = self.l1_gas_per_block_proposed
             execution = l1_gas * l1_fees.base_fee
 
             blob_gas = (
-                (block.blobs_needed() if block else Uint256(3)) * FeeModel.GAS_PER_BLOB
+                (block.blobs_needed() if block else Uint256(3))
+                * FeeModel.GAS_PER_BLOB
                 if real
                 else (
                     block.size_in_fields() * Uint256(32)
@@ -613,13 +619,17 @@ def _(
             prover_cost = self.compute_prover_costs()
 
             congestion_multiplier = fake_exponential(
-                Uint256(int(1e9)), self.calc_excess_mana(), self.fee_update_fraction()
+                Uint256(int(1e9)),
+                self.calc_excess_mana(),
+                self.fee_update_fraction(),
             )
 
             total = sequencer_cost + prover_cost
 
             congestion_cost = (
-                total * congestion_multiplier / FeeModel.CONGESTION_MULTIPLIER_DIVISOR
+                total
+                * congestion_multiplier
+                / FeeModel.CONGESTION_MULTIPLIER_DIVISOR
             ) - total
 
             # With precision of 1e9
@@ -680,17 +690,20 @@ def _(
             """
             assert (
                 block is None or block.slot_number == self.current_slot_number()
-            ), f"invalid slot number {block.slot_number} != {self.current_slot_number()}"
+            ), (
+                f"invalid slot number {block.slot_number} != {self.current_slot_number()}"
+            )
 
-            assert block is None or block.mana_spent() <= self.mana_target * Uint256(
-                2
+            assert (
+                block is None or block.mana_spent() <= self.mana_target * Uint256(2)
             ), "invalid block size"
 
             fee_asset_price_modifier = (
                 oracle_input.fee_asset_price_modifier if oracle_input else Int256(0)
             )
             assert fee_asset_price_modifier is None or (
-                abs(fee_asset_price_modifier) <= FeeModel.MAX_FEE_ASSET_PRICE_MODIFIER
+                abs(fee_asset_price_modifier)
+                <= FeeModel.MAX_FEE_ASSET_PRICE_MODIFIER
             ), "invalid fee asset price modifier"
 
             parent_fee_header = self.fee_headers[-1]
@@ -706,7 +719,6 @@ def _(
                 ),
             )
             self.fee_headers.append(new_header)
-
     return (
         Block,
         BlockHeader,
@@ -762,15 +774,10 @@ def _(Uint256):
     print(f"WEI PER MANA: {WEI_PER_MANA:.2f}")
     print(f"GWEI PER MANA / 1e9: {WEI_PER_MANA / 1e9:.2f} gwei")
 
-    print(f"The cost: {2638 * MANA_PER_BASE_TX.value * WEI_PER_MANA / 1e18:.2f} USD")
-    return (
-        MANA_PER_BASE_TX,
-        USD_PER_BASE_TX,
-        USD_PER_ETH,
-        USD_PER_MANA,
-        USD_PER_WEI,
-        WEI_PER_MANA,
+    print(
+        f"The cost: {2638 * MANA_PER_BASE_TX.value * WEI_PER_MANA / 1e18:.2f} USD"
     )
+    return MANA_PER_BASE_TX, WEI_PER_MANA
 
 
 @app.cell
@@ -794,6 +801,7 @@ def _(
         l1_fee_oracle_output: L1Fees  # value_at(now)
         l1_gas_oracle_values: L1GasOracle
 
+
     @json_serializable
     @dataclass
     class TestPoint:
@@ -802,7 +810,6 @@ def _(
         fee_header: FeeHeader
         oracle_input: OracleInput
         outputs: TestPointOutputs
-
     return TestPoint, TestPointOutputs
 
 
@@ -825,7 +832,7 @@ def _(
 ):
     fee_model = FeeModel(
         mana_target=Uint256(int(1e8)),
-        l1_gas_per_block_proposed=Uint256(int(0.15e6)),
+        l1_gas_per_block_proposed=Uint256(int(0.3e6)),
         l1_gas_per_epoch_verified=Uint256(int(1e6)),
         proving_cost_per_mana=Uint256(int(WEI_PER_MANA)),
         minimum_fee_asset_per_eth=Uint256(int(10e9)),
@@ -841,6 +848,7 @@ def _(
         current_timestamp=blocks[0].timestamp,
     )
 
+
     def generate_random_with_min(
         mean: Uint256, std_dev: Uint256, min_value: Uint256
     ) -> Uint256:
@@ -848,6 +856,7 @@ def _(
             value = int(random.gauss(mean.value, std_dev.value))
             if value >= min_value.value:
                 return Uint256(value)
+
 
     MEMPOOL_SIZE = 5000
 
@@ -897,7 +906,9 @@ def _(
             ):
                 count += 1
                 mana_spent_tx = generate_random_with_min(
-                    MANA_PER_BASE_TX * Uint256(2), Uint256(500_000), MANA_PER_BASE_TX
+                    MANA_PER_BASE_TX * Uint256(2),
+                    Uint256(500_000),
+                    MANA_PER_BASE_TX,
                 )
                 within_bounds = (
                     mana_spent_tx + mana_spent_block
@@ -951,31 +962,7 @@ def _(
             )
 
             l2_blocks.append(block)
-    return (
-        MEMPOOL_SIZE,
-        acceptable_mana_base_fee,
-        block,
-        cost,
-        cost_in_fee_asset,
-        count,
-        fee_asset_price_at_execution,
-        fee_model,
-        generate_random_with_min,
-        is_fee_acceptable,
-        l1_block,
-        l2_blocks,
-        last_slot,
-        mana_base_fee,
-        mana_planned_for_block,
-        mana_spent_block,
-        mana_spent_tx,
-        oracle_input,
-        real_cost,
-        slot_number,
-        test_points,
-        txs,
-        within_bounds,
-    )
+    return fee_model, l2_blocks, test_points
 
 
 @app.cell(hide_code=True)
@@ -987,7 +974,6 @@ def _(mo):
 @app.cell
 def _(block_numbers, blocks, l2_blocks, plt, test_points):
     def create_plots():
-
         fig, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(
             5, 1, figsize=(12, 12), sharex=True
         )
@@ -1027,7 +1013,9 @@ def _(block_numbers, blocks, l2_blocks, plt, test_points):
 
         act = ax2
 
-        act.plot(aztec_l1_block_numbers, sequencer_costs, label="Sequencer cost (wei)")
+        act.plot(
+            aztec_l1_block_numbers, sequencer_costs, label="Sequencer cost (wei)"
+        )
         act.plot(aztec_l1_block_numbers, prover_costs, label="Prover cost (wei)")
 
         act.set_ylabel("Mana BaseFee (wei)")
@@ -1036,14 +1024,17 @@ def _(block_numbers, blocks, l2_blocks, plt, test_points):
         act.grid(True)
 
         real_costs = [
-            sequencer_costs[i] + prover_costs[i] for i in range(len(sequencer_costs))
+            sequencer_costs[i] + prover_costs[i]
+            for i in range(len(sequencer_costs))
         ]
         total_costs = [
             real_costs[i] + congestion_costs[i] for i in range(len(sequencer_costs))
         ]
 
         act = ax3
-        act.fill_between(aztec_l1_block_numbers, 0, real_costs, label="Real cost (wei)")
+        act.fill_between(
+            aztec_l1_block_numbers, 0, real_costs, label="Real cost (wei)"
+        )
         act.fill_between(
             aztec_l1_block_numbers,
             real_costs,
@@ -1063,7 +1054,9 @@ def _(block_numbers, blocks, l2_blocks, plt, test_points):
             for i in range(len(real_costs))
         ]
         act = ax4
-        act.fill_between(aztec_l1_block_numbers, 0, real_costs, label="Real cost (wei)")
+        act.fill_between(
+            aztec_l1_block_numbers, 0, real_costs, label="Real cost (wei)"
+        )
         act.fill_between(
             aztec_l1_block_numbers,
             real_costs,
@@ -1105,8 +1098,9 @@ def _(block_numbers, blocks, l2_blocks, plt, test_points):
 
         return ax1, ax2, ax3, ax4, ax5
 
+
     create_plots()
-    return (create_plots,)
+    return
 
 
 @app.cell(hide_code=True)
@@ -1139,8 +1133,9 @@ def _(FeeModel, fee_model):
         uint256 internal constant FEE_ASSET_PRICE_UPDATE_FRACTION = {fee_model.fee_asset_price_update_fraction().to_dict()};
         """
 
+
     get_solidity_code()
-    return (get_solidity_code,)
+    return
 
 
 @app.cell
@@ -1161,6 +1156,7 @@ def _(
         blob_fee: Uint256
         base_fee: Uint256
 
+
     def get_json():
         return {
             "l1_metadata": [
@@ -1176,12 +1172,14 @@ def _(
             "proving_cost": fee_model.proving_cost_per_mana.to_dict(),
         }
 
+
     def get_dump():
         return json.dumps(get_json())
 
+
     # Create a json object that we can throw at foundry tests
     get_dump()
-    return L1Metadata, get_dump, get_json
+    return
 
 
 @app.cell(hide_code=True)
@@ -1204,12 +1202,14 @@ def _():
     ETH_BLOCK_BANDWIDTH = ETH_TX_BANDWIDTH * 15
 
     ETH_MB_PER_SEC = ETH_BLOCK_BANDWIDTH / 1024 / 1024
-    print(f"Tx Bandwidth: {ETH_MB_PER_SEC:.2f} MB/s -> {ETH_MB_PER_SEC * 8:.2f} mbit/s")
+    print(
+        f"Tx Bandwidth: {ETH_MB_PER_SEC:.2f} MB/s -> {ETH_MB_PER_SEC * 8:.2f} mbit/s"
+    )
 
     ETH_FACTOR = 3.5 / ETH_MB_PER_SEC
 
     print(f"ETH_FACTOR: {ETH_FACTOR:.2f}")
-    return ETH_BLOCK_BANDWIDTH, ETH_FACTOR, ETH_MB_PER_SEC, ETH_TX_BANDWIDTH
+    return (ETH_FACTOR,)
 
 
 @app.cell(hide_code=True)
@@ -1240,12 +1240,7 @@ def _(ETH_FACTOR):
     print(
         f"Bandwidth with assumed AZTEC_FACTOR: {AZTEC_MB_PER_SEC * 8 * ASSUMED_AZTEC_FACTOR:.2f} mbit/s"
     )
-    return (
-        ASSUMED_AZTEC_FACTOR,
-        AZTEC_BLOCK_BANDWIDTH,
-        AZTEC_MB_PER_SEC,
-        AZTEC_TX_BANDWIDTH,
-    )
+    return
 
 
 if __name__ == "__main__":
