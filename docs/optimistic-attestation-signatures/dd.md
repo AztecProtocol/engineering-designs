@@ -125,19 +125,19 @@ Considering we need to do only a single `ECRECOVER`, we can estimate the gas for
 
 ### `submitProof`
 
-In addition to verifying the rollup validity proof, `submitProof` also needs to check the validity of attestations in the last block in the epoch.
+In addition to verifying the rollup validity proof, `submitProof` also needs to check the validity of attestations in the last block in the epoch (see "Proving" and "How do provers verify the attestations from the last block in the epoch" above).
 
 ```
-submitProof(currentArgs, attestations)
+submitProof(currentArgs, attestationsOrAddresses)
   let block = storage.blocks[currentArgs.endBlock]
   let storedAttestationHash = block.attestationsHash
-  require(storedAttestationHash === hash(attestations))
+  require(storedAttestationHash === hash(attestationsOrAddresses))
 
   let slotNumber = block.slotNumber
   let committeeCommitment = getCommitteeCommitmentAtSlot(slotNumber)
 
   let digest = block.proposalDigest
-  let recoveredCommittee = [ecrecover(attestation, digest) if attestation is signature else attestation for attestation in attestations]
+  let recoveredCommittee = [ecrecover(attestation, digest) if attestation is signature else attestation for attestation in attestationsOrAddresses]
   require(committeeCommitment == digest(recoveredCommittee))
 ```
 
