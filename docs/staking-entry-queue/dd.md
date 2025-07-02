@@ -41,6 +41,8 @@ This can be problematic for the following reasons:
 
 It is better to allow a more gradual transition, rather than shock the system.
 
+On the other hand, we do not want to allow anyone to start validating until there is a sufficiently large validator set size.
+
 ## Interface
 
 Users are the would-be and current validators of the aztec network.
@@ -65,11 +67,17 @@ When would-be validators call `deposit`, they will enter a queue maintained by t
 
 Validators in the queue do not participate in block production, and will not be sampled during committee selection.
 
-When _anyone_ calls `flushEntryQueue` for a given epoch `e`, then up to `N` validators will be dequeued and added to the validator set, and be eligible to serve on the committee for epoch `e`.
+When _anyone_ calls `flushEntryQueue` in a given epoch `e`, then up to `N` validators will be dequeued and added to the validator set, and be eligible to serve on the committee for epoch `e+2`.
 
-_NOTE_: we will restrict it such that `flushEntryQueue` may only be called once for epoch `e`, and only during epoch `e-1`.
+_NOTE_: we will restrict it such that `flushEntryQueue` may only be called once per epoch.
 
-_NOTE_: we currently setup epochs 1 full epoch in advance, so in the first slot in epoch `e-1` we can setup epoch `e`. So in most cases, it will be that the queue is drained during epoch `e-1`, and the new validators may appear in the committee for epoch `e`, and that will be know effectively at the outset of epoch `e-1`. If no one is calling `setupEpoch` though for multiple epochs, there could be a build up of new validators that could be eligible, all in the same epoch.
+### Caveat on bootstrapping
+
+If the number of validators in the rollup is less than `M`, and the number of validators in the queue is also less than `M`, then `flushEntryQueue` will revert.
+
+If the number of validators in the rollup is less than `M`, and the number of validators in the queue is greater or equal to `M`, then `flushEntryQueue` will dequeue `M` validators.
+
+If the number of validators in the rollup is greater or equal to `M`, then then up to `N` validators will be dequeued (normal operation).
 
 ### Selection of `N`
 
