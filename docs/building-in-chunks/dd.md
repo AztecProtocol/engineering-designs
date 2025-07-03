@@ -314,8 +314,6 @@ So conservative estimate to get all of the above to production is ~3 person-mont
 
 # Better economic guarantees
 
-Without stronger L2 guarantees, it is questionable how useful it is for users to be able to rely on (much less submit transactions against) a chunk that has not landed on L1.
-
 To bring the economic guarantee of the committee to the chunk, we would need to be able to slash the committee if a chunk receives attestations but does not land on L1.
 
 To do this, we would need to relax the requirement a block/chunk built by the leader in slot 1, must land on L1 in slot 1, and may be submitted by someone other than the proposer.
