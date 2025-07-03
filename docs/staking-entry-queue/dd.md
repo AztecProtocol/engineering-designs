@@ -67,29 +67,93 @@ When would-be validators call `deposit`, they will enter a queue maintained by t
 
 Validators in the queue do not participate in block production, and will not be sampled during committee selection.
 
-When _anyone_ calls `flushEntryQueue` in a given epoch `e`, then up to `N` validators will be dequeued and added to the validator set, and be eligible to serve on the committee for epoch `e+2`.
+We will restrict it such that `flushEntryQueue` may only be called once per epoch.
 
-_NOTE_: we will restrict it such that `flushEntryQueue` may only be called once per epoch.
+When _anyone_ calls `flushEntryQueue` in a given epoch `e`, the rollup will call `getEntryQueueFlushSize` to determine how many validators may be dequeued.
 
-### Caveat on bootstrapping
+## getEntryQueueFlushSize
 
-If the number of validators in the rollup is less than `M`, and the number of validators in the queue is also less than `M`, then `flushEntryQueue` will revert.
+If the number of validators in the rollup is 0, and the number of validators in the queue is less than `bootstrapValidatorSetSize`,
+then `getEntryQueueFlushSize` will return 0.
 
-If the number of validators in the rollup is less than `M`, and the number of validators in the queue is greater or equal to `M`, then `flushEntryQueue` will dequeue `M` validators.
+If the number of validators in the rollup is 0, and the number of validators in the queue is greater than or equal to `bootstrapValidatorSetSize`,
+then `getEntryQueueFlushSize` will return `bootstrapFlushSize`.
 
-If the number of validators in the rollup is greater or equal to `M`, then then up to `N` validators will be dequeued (normal operation).
+If the number of validators in the rollup is greater than 0 and less than `bootstrapValidatorSetSize`, then `getEntryQueueFlushSize` will return `bootstrapFlushSize`.
 
-### Selection of `N`
+If the number of validators in the rollup is greater than or equal to `bootstrapValidatorSetSize`, then `getEntryQueueFlushSize` will return Max( `normalFlushSizeMin`, `activeAttesterCount` / `normalFlushSizeQuotient`).
 
-See the notebook for details.
+Thus, values for the following must be set:
 
+```solidity
+struct StakingQueueConfig {
+  uint256 bootstrapValidatorSetSize;
+  uint256 bootstrapFlushSize;
+  uint256 normalFlushSizeMin;
+  uint256 normalFlushSizeQuotient;
+}
 ```
-cd notebook
-uv sync
-uv run marimo edit sample.py
+
+NOTE: We will NEVER flush more than `MAX_QUEUE_FLUSH_SIZE` validators, which will be hardcoded to `150`: it is applied as a Max at the end of every calculation.
+This is to prevent a situation where flushing the queue would exceed the block gas limit.
+
+As such, the implementation of `getEntryQueueFlushSize` looks as follows:
+
+```solidity
+    uint256 activeAttesterCount = getAttesterCountAtTime(Timestamp.wrap(block.timestamp));
+    uint256 queueSize = store.entryQueue.length();
+
+    // Only if there is bootstrap values configured will we look into boostrap or growth phases.
+    if (config.bootstrapValidatorSetSize > 0) {
+      // If bootstrap:
+      if (activeAttesterCount == 0 && queueSize < config.bootstrapValidatorSetSize) {
+        return 0;
+      }
+
+      // If growth:
+      if (activeAttesterCount < config.bootstrapValidatorSetSize) {
+        return Math.min(config.bootstrapFlushSize, StakingQueueLib.MAX_QUEUE_FLUSH_SIZE);
+      }
+    }
+
+    return Math.min(
+      Math.max(activeAttesterCount / config.normalFlushSizeQuotient, config.normalFlushSizeMin),
+      StakingQueueLib.MAX_QUEUE_FLUSH_SIZE
+    );
 ```
 
-Suggestion is to allow up to `max(4, num_existing_validators // 20)` new validators into the set per epoch
+## flushEntryQueue
+
+Accepts a `uint256 _maxAddableValidators`, and will dequeue up to that many, and deposit them into the GSE. The only trick here is that if the deposit into GSE fails due to out-of-gas, the entire transaction needs to revert.
+
+```solidity
+    uint256 queueLength = store.entryQueue.length();
+    uint256 numToDequeue = Math.min(_maxAddableValidators, queueLength);
+    store.stakingAsset.approve(address(store.gse), amount * numToDequeue);
+    for (uint256 i = 0; i < numToDequeue; i++) {
+      DepositArgs memory args = store.entryQueue.dequeue();
+      (bool success, bytes memory data) = address(store.gse).call(
+        abi.encodeWithSelector(
+          IStakingCore.deposit.selector, args.attester, args.withdrawer, args.onCanonical
+        )
+      );
+      if (success) {
+        emit IStakingCore.Deposit(args.attester, args.withdrawer, amount);
+      } else {
+        // If the deposit fails, we generally ignore it, since we need to continue dequeuing to prevent DoS.
+        // However, if the data is empty, we can assume that the deposit failed due to out of gas, since
+        // we are only calling trusted contracts as part of gse.deposit.
+        // When this happens, we need to revert the whole transaction, else it is possible to
+        // empty the queue without making any deposits: e.g. the deposit always runs OOG, but
+        // we have enough gas to refund/dequeue.
+        require(data.length > 0, Errors.Staking__DepositOutOfGas());
+        store.stakingAsset.transfer(args.withdrawer, amount);
+        emit IStakingCore.FailedDeposit(args.attester, args.withdrawer);
+      }
+    }
+    store.stakingAsset.approve(address(store.gse), 0);
+  }
+```
 
 ---
 
