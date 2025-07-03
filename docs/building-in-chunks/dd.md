@@ -91,13 +91,13 @@ sequenceDiagram
 
 ## Some known issues
 
-It is currently unknown how long it will actually take to get blob transactions include; leaders give themselves very little time to build blocks, as they want to submit their transaction as early in their slot as possible to give the greatest chance for inclusion.
+It is currently unknown how long it will actually take to get blob transactions included in L1. Furthermore, there's a tension between waiting until the last viable moment for sending the L1 tx, so the proposer has more time to include more L2 txs in the block, and sending the L1 tx as early as possible in the L2 slot, to maximize chances for inclusion.
 
 The load places on the p2p system is also quite bursty: it is not until the leader has fully executed their block and sent around their proposal that replicas have any idea what transactions need including, and it is not guaranteed that they have those transactions ahead of time, so they must aggressively request the transactions from their peers.
 
 The first guarantee exposed to the user is the block proposal on L1, which is roughly the duration of a slot (presently 36 seconds). This means that on average, a user must wait around 36 + 18 = 54 seconds, since they will have likely submitted in the middle of slot `n`, for inclusion in slot `n+1`. This guarantee is quite strong- if the block is not finalized, then the currently suggested slashing parameters would slash the entire committee for 17% of their deposit. If it costs $10K to be a validator, and there are 48 validators in the committee, that is an ~$80K guarantee.
 
-It is also the case that if a leader builds their block and doesn't submit it to L1 for any reason, that work was wasted.
+It is also the case that if a leader builds their block and doesn't submit it to L1 for any reason, that work was wasted as the proposer does not accrue any fees. This means we could provide a user with a slightly earlier softer confirmation of inclusion for their tx, when all attestations are collected but before the block lands in L1, since the proposer is incentivized that the block makes it to L1.
 
 # Building in Chunks
 
@@ -116,7 +116,7 @@ The leader may choose how to break up their proposal into chunks- it may be base
 
 When replicas receive the first chunk, they create a fork of world state, retrieve the associated transactions, and execute them, then _persist this fork_; they apply subsequent chunks against it. When a chunk marked as "final" is received, they produce an aggregate proposal, which is _identical_ to what would be produced if the leader had sent everything in one large chunk (i.e. the status quo), and broadcast their signature over this aggregated proposal.
 
-This is good as it stands because it would reduce how bursty the demands on p2p are, as CPU and network load is spread more evenly over the slot, which is **expected to have knock-on benefits for system throughput**.
+This is good as it stands because it would reduce how bursty the demands on p2p are, as CPU and network load is spread more evenly over the slot, which is **expected to have knock-on benefits for system throughput**. In particular, if chunks are propagated frequently enough, validators could be executing chunk N as the proposer is simultaneously preparing and executing chunk N+1, leading to more effective compute time available in the slot. In an extreme, we could see this as the proposer "streaming" the tx hashes to be included in the block to the validators.
 
 In addition, since the final signatures are the same, **it requires no changes to L1**.
 
@@ -249,13 +249,13 @@ This creates two new properties:
 - a new point of guarantee about the transaction availability from the viewpoint of the committee
 - any individual chunk may be submitted by the proposer, which reduces the operational risk on the part of the proposer associated with "trying to get one last chunk"
 
+The tradeoff here is more noise on the p2p layer, as we are gossiping attestations for each chunk, instead of only for the last one.
+
 In this case, the guarantee is slightly stronger:
 
 "If a transaction appears in a chunk for a slot, and `2f+1` attestations for that chunk have been observed, then the committee has the transaction data and the transaction is valid from the perspective of the committee within the context of the block being built, and the leader _could_ submit the block to L1. If a block is added to L1 for that slot, the transaction will appear in the block, or else a correct proposer forgoes the fees/rewards for that block, and a malicious proposer may additionally be slashed".
 
-## Rough design
-
-Building on above, this requires changes to the chunk that is gossiped. A special "final" chunk is no longer needed, and each validator would produce a proposal attestation aggregated from each chunk it receives. P2P needs to track attestations per chunk now (rather than per slot), and the seqeuencer needs to hang on to each aggregate block, such that when it hits its deadline for submission, it can select the biggest block for which it has sufficient attestations.
+Building on above, this requires changes to the chunk that is gossiped. A special "final" chunk is no longer needed, and each validator would produce a proposal attestation aggregated from each chunk it receives. P2P needs to track attestations per chunk now (rather than per slot), and the sequencer needs to hang on to each aggregate block, such that when it hits its deadline for submission, it can select the biggest block for which it has sufficient attestations.
 
 The node also would need to be aggregating on its P2P layer for chunks, such that the status can be properly served.
 
@@ -267,17 +267,15 @@ So final estimate comes to 10-17 days x 1.5 = 15-25 days so ~5 weeks to producti
 
 # Improving "app latency"
 
-A KPI which is distinct from "user perceived latency", is the delay between when Transaction B can build on Transaction A.
+A KPI which is distinct from "user perceived latency", is the delay between when Transaction B can build on the state root resulting from Transaction A.
 
-Presently, this delay is exactly the time between blocks; even with chunks, this is not improved, since although a user might receive a certificate that a transaction is in a chunk, the archiver will not serve that resulting state until it lands on L1 as a block.
+Presently, this delay is exactly the time between blocks; even with chunks described above, this is not improved, since although a user might receive a certificate that a transaction is in a chunk, the archiver will not serve that resulting state until it lands on L1 as a block.
 
 It is be possible to update the archiver to store an "intra-slot chain", which only includes L2 guarantees, and allow users to submit transactions against this.
 
 This could also improve system throughput, as committee members have effectively "built ahead" of L1: their archive is already up-to-date when the block lands on L1, so they do not need to spend time at the beginning of their slot downloading and applying state diffs.
 
-## Rough design
-
-Expanding on the above, The archive needs to be integrated into the block builder, and subscribe to `onChunkEmitted` events.
+Expanding on the above, the archiver needs to be integrated into the block builder, and subscribe to `onChunkEmitted` events.
 
 Further, the archiver needs to be notified when a particular chunk has sufficient attestations to be submitted to L1.
 
@@ -288,13 +286,31 @@ Thus we refactor the archiver to store multiple tips:
 - chunk submitted (i.e. pending chain)
 - chunk proven (i.e. proven chain)
 
-Users may direct transaction submissions against a particular tip.
+Users may direct transaction submissions against a particular tip by specifying a state root correspondent to **a chunk**.
 
-It is unclear at this time whether this requires changes to L1 or circuits. Optimistically, it does not.
+In effect then, chunks would supersede L2 blocks, and one `propose` to the rollup contract would accept a range of chunks. Similarly, nodes would need to be able to extract all of the chunks from a `propose`.
+
+This could likely be done without _major_ changes to circuits/blobs.
+
+As the blobs just contain a list of transaction effects, if the CALLDATA contained a list of chunks with state roots, then in the naive case, a node could:
+
+- see the expected state root of chunk 1
+- apply effects until the resulting state root matches
+- then it knows that was chunk 1, move on to reconstructing chunk 2
+
+Changes _would_ arise in circuits due to us no longer being able to assume that an epoch has 32 blocks. To that end, we would likely need to place a cap on both the rollup instance and in the circuits on the number of chunks per block. This would drive up the cost to prove an epoch, as we have multiplied the max number of "block" root rollups that need to be proven.
 
 ## Timeline
 
-Likely adds 1 week to confirm feasibility without L1/cirucit changes, then 2 weeks for refactoring and expanding the archiver, and dealing with the edge cases of managing/pruning multiple tips.
+Assuming the circuit/blob changes are minor, and the L1 changes are not larger than expected
+
+- 1-2 weeks confirm scope of L1/circuit changes and properly design.
+- 2-3 weeks for refactoring and expanding the archiver
+- 1-2 weeks for L1 changes
+
+Total: 4-7 weeks x 1.5 = 6-10 weeks to production.
+
+So conservative estimate to get all of the above to production is ~3 person-months.
 
 # Better economic guarantees
 
@@ -312,7 +328,7 @@ On the other hand, there is no incentive for any "honest but rational" replica t
 
 This is not a good candidate to inject a slashing rule over, since it will result in massively wasted work as multiple validators all try to propose the same/different chunks.
 
-We arrive then at granting the ability for leaders to submit chunks from prior slots, as long as there was consensus on L2 that the chunk was valid. This could look something like the following. Leaders aggregate the signatures from the committee over each chunk, and distribute that set of signatures for each chunk once the two thirds plus one signatures are obtained. The replicas would emit a signature over this set of signatures attesting to their receipt of the set. Once a replica sees _one third plus one_ committee members receipt signatures over this set, they "lock" on the respective chunk, and refuse to build on any other, unless L1 forces them to. This would prevent any chunk not building on this checkpoint from landing on L1, since there is at least one honest node locked on it.
+We arrive then at granting the ability for leaders to submit chunks from prior slots, as long as there was consensus on L2 that the chunk was valid. We would likely use an implementation of tendermint or hotstuff-2 to accomplish this.
 
 In this way, we can slash all the _proposers_ in a committee (i.e. 32) if a checkpoint is locked, but not published, bringing the guarantee of the chunks to ~$54K, and their latency arbitrarily low (as low as the time to (re)execute a _single_ transaction, and collect signatures).
 
@@ -322,7 +338,7 @@ The guarantee then is something like:
 
 ## Timeline
 
-Probably 3-6 person-months
+Probably 3-6 person-months in addition to the above
 
 ## Disclaimer
 
