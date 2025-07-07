@@ -70,7 +70,7 @@ While the cheapest option is not to post attestations at all, and require these 
 
 Two options remain: posting them to calldata or to blobs. The flow in both cases is similar: proposers post attestations in either of them, and store in L1 a commitment to them (we can also modify the block hash to include a commitment to a set of attestations, to avoid an extra `SSTORE`, but this is a larger change). On block proposal, we check that the hash corresponds to the data posted. On (in)validation, the caller re-posts the attestations to L1, which get re-hashed and compared against the stored commitment, and then verified.
 
-Calldata for a 48-sized committee is `(48 * 2/3 * 65) + (48 * 1/3 * 20) = 2400` bytes, or `38400` gas (note that after [EIP7623](https://eips.ethereum.org/EIPS/eip-7623) this could shoot up to `96k` depending on execution gas). This can be saved in favor of moving the attestations to blocks.
+Calldata for a 48-sized committee is `(48 * 2/3 * 65) + (48 * 1/3 * 20) = 2400` bytes, or `38400` gas (note that after [EIP7623](https://eips.ethereum.org/EIPS/eip-7623) this could shoot up to `96k` depending on execution gas). This can be saved in favor of moving the attestations to blobs.
 
 While posting on blobs is cheaper, it is more complex. As @iAmMichaelConnor points out:
 
@@ -84,7 +84,7 @@ While posting on blobs is cheaper, it is more complex. As @iAmMichaelConnor poin
 > - It's not something that's easy to iterate on.
 > - It'll be hard to update the circuits to put block proposal stuff in that fist blob.
 
-Given these cons, I'd push for posting to CALLDATA.
+An alternative to the above is compressing them using BLS. For each `propose` sent, we send an aggregate BLS signature (4 words) plus a bitmap of signers. These can be hashed together and stored in a single EVM storage slot, and potentially hashed with other fields as well (see "Optimizations" below). Assuming no additional SSTORE cost, this is an extra 176 bytes of calldata (`7k` gas at 40 gas per slot), plus a negligible extra for the hashing.
 
 ### Do we accept a proven epoch with intermediate blocks that contain missing attestations?
 
@@ -142,6 +142,10 @@ submitProof(currentArgs, attestationsOrAddresses)
 ```
 
 We estimate additional gas costs to be `160k` (current cost for verification), plus `4200` for the two SLOAD operations (`attestationsHash` and `committeeCommitment`), and `38400` for the extra calldata, for a total of about `200k` gas.
+
+If we used BLS signature aggregation, then we need to send as CALLDATA the 48 pubkeys for the committee members plus a bitmap of signers, so we can reconstruct both the committee hash and the aggregated pubkey, which is roughly 48 words (`1536` bytes, `61k` gas at 40 gas per slot, or `24k` at 16 gas per slot). The verification itself requires two `SLOAD`s (`4200`), a hash-to-curve (`20k` gas), 33 ECADDs (`5k`), and two pairings (`124k` gas). Total is about `214k` gas, which gets paid once per epoch.
+
+Amortized across the entire epoch, assuming 32-slot epochs, this means an extra `7k` gas per proposal
 
 ### Optimizations
 
