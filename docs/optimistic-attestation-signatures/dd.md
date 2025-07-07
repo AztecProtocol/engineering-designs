@@ -143,7 +143,7 @@ submitProof(currentArgs, attestationsOrAddresses)
 
 We estimate additional gas costs to be `160k` (current cost for verification), plus `4200` for the two SLOAD operations (`attestationsHash` and `committeeCommitment`), and `38400` for the extra calldata, for a total of about `200k` gas.
 
-If we used BLS signature aggregation, then we need to send as CALLDATA the 48 pubkeys for the committee members plus a bitmap of signers, so we can reconstruct both the committee hash and the aggregated pubkey, which is roughly 48 words (`1536` bytes, `61k` gas at 40 gas per slot, or `24k` at 16 gas per slot). The verification itself requires two `SLOAD`s (`4200`), a hash-to-curve (`20k` gas), 33 ECADDs (`5k`), and two pairings (`124k` gas). Total is about `214k` gas, which gets paid once per epoch.
+If we used BLS signature aggregation, then we need to send as CALLDATA the 48 pubkeys for the committee members plus a bitmap of signers, so we can reconstruct both the committee hash and the aggregated pubkey, which is roughly 48 words (`1536` bytes, `61k` gas at 40 gas per slot, or `24k` at 16 gas per slot). The verification itself requires two `SLOAD`s (`4200`), a hash-to-curve (`20k` gas), 33 ECADDs (`5k`), and two pairings (`124k` gas). See also [this post](https://hackmd.io/7B4nfNShSY2Cjln-9ViQrA) on bringing this cost further down. Total is about `214k` gas, which gets paid once per epoch.
 
 Amortized across the entire epoch, assuming 32-slot epochs, this means an extra `7k` gas per proposal
 
