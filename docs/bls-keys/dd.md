@@ -12,10 +12,13 @@ We have identified potential gas savings from aggregating signatures, both for L
 The requirements for the signing scheme and curve are:
 
 - An aggregated signature should be small (no more than 512 bits ideally) for a 48-validator committee.
-- The cost of computing an aggregate key and verifying an aggregate signature should not be too expensive in the EVM (no more than 300k gas ideally, as this gets run once every epoch for block proposals). This implies that each individual public key should be small as well, since it will have to be read from storage.
+- The cost of computing an aggregate key and verifying an aggregate signature should not be too expensive in the EVM (no more than 300k gas ideally). Note that, since the committee changes once per epoch, we need to compute a new aggregate key every epoch.
+- Each individual public key should be small as well, since it will have to be read from storage for computing the committee commitment.
 - At the moment, we do not require verifying these signatures on a rollup circuit, but this _may_ change in the future, so it should not be prohibitively expensive.
 
-We propose that a BLS aggregate signature over the [BLS12-381](https://eth2book.info/latest/part2/building_blocks/bls12-381/) curve fits the bill. Public keys are 48 bytes long, aggregated signatures are 96 bytes long, and L1 verification should be doable in under the target gas (@LHerskind [estimated it](https://colab.research.google.com/drive/1gXbNXLuQZw_1n7PhkRVlTGFl69iIjkNE?authuser=1#scrollTo=7h8tC7BEUr5D) at ~200k gas).
+We propose that a BLS aggregate signature over the [BLS12-381](https://eth2book.info/latest/part2/building_blocks/bls12-381/) curve fits the bill. Public keys are 48 bytes long, aggregated signatures are 96 bytes long, and L1 verification should be doable in under the target gas:
+
+> We need to send as CALLDATA the 48 pubkeys for the committee members plus a bitmap of signers, so we can reconstruct both the committee hash and the aggregated pubkey, which is roughly 48 words (`1536` bytes, `61k` gas at 40 gas per slot, or `24k` at 16 gas per slot). The verification itself requires two `SLOAD`s (`4200`), a hash-to-curve (`20k` gas), 33 ECADDs (`5k`), and two pairings (`124k` gas). Total is about `214k` gas, which gets paid once per epoch.
 
 ## Data types
 
@@ -45,9 +48,9 @@ All GSE functions that return a set of attester addresses now require an additio
 When registering a new key, we first need to validate that it is a correct public key in the curve. Then, as described in [this article](https://www.zellic.io/blog/bls-signature-versatility/#the-pitfall-of-multi-signatures), we need to guard against rogue key attacks. We have two options for that:
 
 1. Require a proof of possession, validated along with the key during registration
-2. Use a modified aggregate public key
+2. Use a modified aggregate public key, which should only require 2 scalar multiplications
 
-Given the second option has not been implemented (at least based on the article linked above), and that it may involve higher gas costs for generating the aggregate public key (which happens on every epoch) as opposed to the one-time registration cost, the first option seems the best.
+While the 2nd approach has not been implemented according to the article linked above, it sounds simple enough and the additional gas cost is low.
 
 ## Open questions
 
@@ -67,11 +70,9 @@ To favor failing fast, I prefer validating in the queue, assuming we are certain
 
 As discussed above in the Security Considerations section, we need to decide between requiring a proof of possession or using a modified aggregate public key.
 
-Given existing implementations and gas costs, I vote for the proof of possession.
-
 ### How do we generate the BLS private key for validators?
 
-We could derive the BLS private key from their ECDSA private key, potentially from having them sign a given message so we do not need direct access to the ECDSA private key. This means that validators do not need to store two separate private keys.
+We could derive the BLS private key from their ECDSA private key, potentially from having them sign a given message so we do not need direct access to the ECDSA private key. This means that validators do not need to store two separate private keys. Note that this requires **deterministic** ECDSA signatures, which not every hardware wallet supports.
 
 We need to validate whether this is feasible and secure.
 
@@ -91,6 +92,11 @@ Doing this would require:
 - Having a way for validators to update their "validation keys", so they can register the keys for the new family when needed (see "Should we support rotation" above).
 
 Given the additional complexity, I vote for not doing this and choosing a single key family.
+
+## See also
+
+- @LHerskind's notebook [BLS signature investigation](https://colab.research.google.com/drive/1gXbNXLuQZw_1n7PhkRVlTGFl69iIjkNE (uses bn254)
+- @kobigurk notes on [Optimized BLS multisignatures on EVM](https://hackmd.io/7B4nfNShSY2Cjln-9ViQrA)
 
 ## Disclaimer
 
