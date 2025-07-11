@@ -20,7 +20,7 @@ We will:
 
 To properly test a decentralized system, we need the ability to spin up networks with different topologies such as the number of nodes, validators, provers, pxes.
 
-Additionally, we need to test under simulated stress/attack conditions.
+Additionally, we need to test under simulated stress and attack conditions.
 
 Further, we need to be able to deploy these networks in a repeatable and automated way.
 
@@ -33,7 +33,7 @@ This allows us to define a network configuration in a helm chart and deploy it t
 K8s is also easy to use in CI via [kind](https://kind.sigs.k8s.io/).
 
 > kind is a tool for running local Kubernetes clusters using Docker container “nodes”.
-> kind was primarily designed for testing Kubernetes itself, but may be used for local development or CI.
+> kind was primarily designed for testing Kubernetes itself, but it may be used for local development or CI.
 
 Further, we can use [chaos mesh](https://chaos-mesh.org/) to simulate network conditions such as node failures, latency, etc.
 
