@@ -22,7 +22,7 @@ So the L1 contracts currently allow arbitrary slashing as long as the motion has
 
 In practice, however, there are only mechanisms built to create and vote for payloads to slash all validators in an epoch if the epoch is never proven, namely an out-of-protocol `SlashFactory` contract, and corresponding logic on the node to utilize it.
 
-We want to expand this `SlashFactory` to allow nodes to programmatically create and vote for payloads to slash specific validators for specific amounts for specific "verifiable offences".
+We want to expand this `SlashFactory` to allow nodes to programmatically create and vote for payloads to slash specific validators for specific amounts for specific "verifiable offenses".
 
 Specifically, we will automatically slash in the following cases:
 
@@ -43,7 +43,7 @@ The requirements with filled checkboxes are met by the design below.
   - If it agrees with the slash
   - How/where to vote/signal on L1
 - [x] Node operators SHOULD be able to configure their node to specify thresholds for what they consider "not participating".
-- [x] The "offence" that triggers the slash MAY be specified on L1.
+- [x] The "offense" that triggers the slash MAY be specified on L1.
 - [x] The amount to be slashed MAY be configurable without deploying a new factory contract.
 - [x] The node MUST NOT trigger a slash unless it is certain that the validator was "faulty" (in its opinion).
 - [ ] The threshold of number of validators (N/M) that need to signal/vote for the CustomSlashFactory payload MAY be configurable without deploying a new contract or a governance action.
@@ -52,21 +52,27 @@ The requirements with filled checkboxes are met by the design below.
 
 We make no changes to the `Slasher` contract, or any other "in-protocol" contracts.
 
-Refactor the `SlashFactory` to accept an array of validator addresses, amounts, and offences. I.e.
+Refactor the `SlashFactory` to accept an array of validator addresses, amounts, and offenses. I.e.
 
 ```solidity
 interface ISlashFactory {
-
-
   event SlashPayloadCreated(
-    address payloadAddress, address[] validators, uint256[] amounts, uint256[] offences
+    address payloadAddress, address[] validators, uint96[] amounts, uint256[] offenses
   );
+
+  error SlashPayloadAmountsLengthMismatch(uint256 expected, uint256 actual);
+  error SlashPayloadOffensesLengthMismatch(uint256 expected, uint256 actual);
 
   function createSlashPayload(
     address[] memory _validators,
-    uint256[] memory _amounts,
-    uint256[] memory _offences
+    uint96[] memory _amounts,
+    uint256[] memory _offenses
   ) external returns (IPayload);
+
+  function getAddressAndIsDeployed(address[] memory _validators, uint96[] memory _amounts)
+    external
+    view
+    returns (address, bytes32, bool);
 }
 ```
 
@@ -75,48 +81,50 @@ The core function in the `SlashFactory` will look like:
 ```solidity
   function createSlashPayload(
     address[] memory _validators,
-    uint256[] memory _amounts,
-    uint256[] memory _offences
+    uint96[] memory _amounts,
+    uint256[] memory _offenses
   ) external override(ISlashFactory) returns (IPayload) {
     require(
       _validators.length == _amounts.length,
       ISlashFactory.SlashPayloadAmountsLengthMismatch(_validators.length, _amounts.length)
     );
     require(
-      _validators.length == _offences.length,
-      ISlashFactory.SlashPayloadOffencesLengthMismatch(_validators.length, _offences.length)
+      _validators.length == _offenses.length,
+      ISlashFactory.SlashPayloadOffensesLengthMismatch(_validators.length, _offenses.length)
     );
 
-    (address predictedAddress, bool isDeployed) =
-      getAddressAndIsDeployed(_validators, _amounts, _offences);
+    (address predictedAddress, bytes32 salt, bool isDeployed) =
+      getAddressAndIsDeployed(_validators, _amounts);
 
     if (isDeployed) {
       return IPayload(predictedAddress);
     }
 
-    // Use a salt so that validators don't create many payloads for the same slash.
-    bytes32 salt = keccak256(abi.encodePacked(_validators, _amounts, _offences));
+    // _offenses are not used in the SlashPayload constructor, only in the event.
+    SlashPayload payload = new SlashPayload{salt: salt}(_validators, _amounts, VALIDATOR_SELECTION);
 
-    // Don't need to pass _offences as they are not used in the payload.
-    SlashPayload payload = new SlashPayload{salt: salt}(_validators, VALIDATOR_SELECTION, _amounts);
-
-    emit SlashPayloadCreated(address(payload), _validators, _amounts, _offences);
+    emit SlashPayloadCreated(address(payload), _validators, _amounts, _offenses);
     return IPayload(address(payload));
   }
 ```
 
-For now, the `offences` field will effectively be an enum, with the following possible values:
+For now, the `offencss` field will effectively be an enum, with the following possible values:
 
-- 0: unknown
-- 1: proven block not attested to
-- 2: unproven valid epoch
-- 3: invalid block proposed
+```ts
+export enum Offense {
+  UNKNOWN = 0,
+  DATA_WITHHOLDING = 1,
+  VALID_EPOCH_PRUNED = 2,
+  INACTIVITY = 3,
+  INVALID_BLOCK = 4,
+}
+```
 
-The use of `uint256` for offences rather than an explicit enum allows for future flexibility, e.g. adding more offences and interpreting them off-chain, or, by using `uint256` rather than `uint8`, using a hash/commitment to some external data/proof.
+The use of `uint256` for offenses rather than an explicit enum allows for future flexibility, e.g. adding more offenses and interpreting them off-chain, or, by using `uint256` rather than `uint8`, using a hash/commitment to some external data/proof.
 
-Creating the payload via the `SlashFactory` will emit an event with the payload address, and the validator addresses/amounts/offences.
+Creating the payload via the `SlashFactory` will emit an event with the payload address, and the validator addresses/amounts/offenses.
 
-Aztec nodes will listen for these events, and then check if the validator committed the alleged offence. If so, they will vote/signal for the payload on L1.
+Aztec nodes will listen for these events, and then check if the validator committed the alleged offense. If so, they will vote/signal for the payload on L1.
 
 ## Node Changes
 
@@ -128,10 +136,10 @@ The SlasherClient will remain the interface that the SequencerPublisher uses to 
 
 Its internal operations will be different, though.
 
-It will instantiate "Watchers", which will have the following responsibilities:
+It will contain "Watchers", which will have the following responsibilities:
 
 - emit WANT_TO_SLASH events with the arguments to `createSlashPayload`
-- expose a function which takes a validator address, amount, and offence and returns whether it agrees with the slash
+- expose a function which takes a validator address, amount, and offense and returns whether it agrees with the slash
 
 The SlasherClient has the following responsibilities:
 
@@ -160,7 +168,7 @@ Whenever `getSlashPayload` is called, the node will:
 
 The first slashing event to be implemented will be for the case where a validator did not attest to a proven block.
 
-This will be done by an `InactivityWatcher`, which will:
+This will be done by an `Sentinel`, which will `implement Watcher`:
 
 - listen for L2 blocks `chain-proven` events emitted from the `L2BlockStream`
 - for each slot, call `Sentinel.processSlot` to get a map of validators and whether they voted
@@ -170,47 +178,38 @@ When asked, it will agree to slash any validator that missed more than `SLASH_IN
 
 ### A validator proposed an invalid block
 
-This requires that full nodes have the ability to re-execute blocks.
+The `ValidatorClient` will `implement Watcher`.
 
-Further, when executing a block, we will store invalid blocks in a cache, and emit an `invalid-block` event.
-
-A `InvalidBlockWatcher` will take an executor as an argument, subscribe to the `invalid-block` event, and then emit a `WANT_TO_SLASH` event naming the proposer of the invalid block, slashing them for the amount specified in `SLASH_INVALID_BLOCK_PENALTY`.
+When re-executing a block, it will store the proposer of the invalid blocks in a cache, and emit a `WANT_TO_SLASH` event naming the proposer of the invalid block, slashing them for the amount specified in `SLASH_INVALID_BLOCK_PENALTY`.
 
 When asked, it will agree to slash any validator that proposed an invalid block which it sees in its cache of invalid blocks, as long as the amount is less than `SLASH_INVALID_BLOCK_MAX_PENALTY`.
 
 ### A valid epoch was not proven
 
-This requires that full nodes have the ability to re-execute blocks.
+A `EpochPruneWatcher implements Watcher` will be created.
 
-A `ValidEpochUnprovenWatcher` will listen to `chain-pruned` events emitted by the `L2BlockStream`, and emit a `WANT_TO_SLASH` event for all validators that were in the epoch that was pruned IF there were no `invalid-block` events emitted for that epoch, slashing them for the amount specified in `SLASH_PRUNE_PENALTY`.
+It will listen to `chain-pruned` events emitted by the `L2BlockStream`, and emit a `WANT_TO_SLASH` event for the amount specified in `SLASH_PRUNE_PENALTY` for all validators that were in the epoch that was pruned if either:
 
-When asked, it will agree to slash any validator that was in an epoch that was pruned and there were no `invalid-block` events emitted for that epoch, as long as the amount is less than `SLASH_PRUNE_MAX_PENALTY`.
+- the data for the epoch is unavailable
+- the epoch _could_ have been proven
+
+It will keep a cache of the committees that it emitted for, and agree to slash anyone in one such committee for an amount not more than `SLASH_PRUNE_MAX_PENALTY`.
 
 ### New configuration
 
 - `SLASH_PAYLOAD_TTL`: the maximum age of a payload to signal/vote for
-- `SLASH_OVERRIDE_PAYLOAD`: the address of a payload to signal/vote for no matter what
+- `SLASH_OVERRIDE_PAYLOAD`: the address of a payload to signal/vote for no matter what (until it is executed)
 - `SLASH_PRUNE_ENABLED`: whether to create a payload for epoch pruning
 - `SLASH_PRUNE_PENALTY`: the amount to slash each validator that was in an epoch that was pruned
 - `SLASH_PRUNE_MAX_PENALTY`: the maximum amount to slash each validator that was in an epoch that was pruned
 - `SLASH_INACTIVITY_ENABLED`: whether to signal/vote for a payload for inactivity
-- `SLASH_INACTIVITY_CREATE_TARGET`: the percentage of attestations missed required to create a payload
-- `SLASH_INACTIVITY_SIGNAL_TARGET`: the percentage of attestations missed required to signal/vote for the payload
+- `SLASH_INACTIVITY_CREATE_TARGET_PERCENTAGE`: the percentage of attestations missed required to create a payload
+- `SLASH_INACTIVITY_SIGNAL_TARGET_PERCENTAGE`: the percentage of attestations missed required to signal/vote for the payload
 - `SLASH_INACTIVITY_CREATE_PENALTY`: the amount to slash each validator that is inactive
+- `SLASH_INACTIVITY_MAX_PENALTY`: the maximum amount to slash each validator that is inactive
 - `SLASH_INVALID_BLOCK_ENABLED`: whether to signal/vote for a payload for invalid blocks
 - `SLASH_INVALID_BLOCK_PENALTY`: the amount to slash each validator that proposed an invalid block
 - `SLASH_INVALID_BLOCK_MAX_PENALTY`: the maximum amount to slash each validator that proposed an invalid block
-
-## Full Node Re-execution
-
-There are two primary points in time where a full node would want to re-execute blocks:
-
-1. When a block is proposed on the p2p network and is gathering attestations.
-2. When a block been proposed to the L1 and is part of the pending chain.
-
-To slash all malicious validators, we only need to support the first case; we need to adjust the validator client to re-execute, even if the node is not in the committee for the block, and retain a cache of invalid blocks.
-
-To avoid slashing honest validators who built on a bad block which they blindly accepted/synced from the previous committee/L1, we need to support the second case.
 
 ### A generic `BlockBuilder`
 
@@ -219,60 +218,40 @@ We will build a new `BlockBuilder` class which is a component of the `AztecNode`
 Its interface will be:
 
 ```typescript
-interface GlobalContext {
-  chainId: Fr;
-  version: Fr;
-  blockNumber: Fr;
-  slotNumber: Fr;
-  timestamp: Fr;
-  coinbase: EthAddress;
-  feeRecipient: AztecAddress;
-  gasFees: GasFees;
-}
-
-interface BuiltBlockResult {
+export interface BuildBlockResult {
   block: L2Block;
   publicGas: Gas;
   publicProcessorDuration: number;
   numMsgs: number;
   numTxs: number;
-  numFailedTxs: number;
+  failedTxs: FailedTx[];
   blockBuildingTimer: Timer;
   usedTxs: Tx[];
 }
 
-interface ExecutionOptions {}
+export interface IFullNodeBlockBuilder {
+  getConfig(): {
+    l1GenesisTime: bigint;
+    slotDuration: number;
+    l1ChainId: number;
+    rollupVersion: number;
+  };
 
-interface BlockBuilder {
-  gatherTransactions(txHashes: TxHash[]): Promise<Tx[]>;
-  executeTransactions(
-    txs: Tx[],
-    globals: GlobalContext,
-    options: ExecutionOptions
-  ): Promise<BuiltBlockResult>;
+  buildBlock(
+    txs: Iterable<Tx> | AsyncIterable<Tx>,
+    l1ToL2Messages: Fr[],
+    globalVariables: GlobalVariables,
+    options: PublicProcessorLimits,
+    fork?: MerkleTreeWriteOperations
+  ): Promise<BuildBlockResult>;
+
+  getFork(blockNumber: number): Promise<MerkleTreeWriteOperations>;
 }
 ```
 
-`executeTransactions` will execute transactions against the current world state and archiver.
-
 The caller then may compare the results against whatever they expect (e.g. the state roots a peer sent, or that they downloaded from L1).
 
-We will then update the archiver to optionally take a `BlockBuilder` as an argument, and use this to validate blocks coming in on L1.
-
-Further, the Sequencer and Validator clients will accept a `BlockBuilder` as an argument, which they will use to build/re-execute blocks.
-
-Thus we have:
-
-1. Block comes in on p2p
-   1. validator is on committee
-      1. block is good, broadcast attestation
-      2. block is bad, add to invalid block cache
-   2. validator is not on committee
-      1. block is good, do nothing
-      2. block is bad, add to invalid block cache
-2. Block comes in on L1
-   1. block is good, add to state
-   2. block is bad, add to invalid block cache
+The EpochPruneWatcher, Sequencer and Validator clients will accept a `BlockBuilder` as an argument, which they will use to build/re-execute blocks.
 
 ## Notes
 
