@@ -25,7 +25,7 @@ As we are moving away from a model of sequencing and proving a single block at a
 
 ## Current Implementation 
 
-In order to understand the changes being presented in this design, it is necessary to understand the current implementations and how they fail to meet our requirements. We will not describe the operations of append only or indexed tress here, that is covered in our documentation. We will however look at how they are implemented at a high level in our world state.
+In order to understand the changes being presented in this design, it is necessary to understand the current implementations and how they fail to meet our requirements. We will not describe the operations of append only or indexed trees here, that is covered in our documentation. We will however look at how they are implemented at a high level in our world state.
 
 Every tree instance is represented by 3 stores of state,
 
@@ -33,7 +33,7 @@ Every tree instance is represented by 3 stores of state,
 2. Uncommitted state - an in-memory cache of updated nodes overlaying the committed store also referenced by node index.
 3. Snapshotted state - the historical values of every populated node, structured to minimize space consumption at the expense of node retrieval speed. Reading this tree requires 'walking' down from the root at a given block number.
 
-The idea behind this structure is that sequencers are the only actor interested in uncommitted state. It represents the state of their pending block and they update the uncommitted state as part of building that block. Once a block has been published to L1, its state is committed and the uncommmitted state is destroyed. After each block is committed, the historical tree is traversed in a BFS manner checking for differences in each node. If a node is the same as previously, the search does not continue to its children. Modified nodes are updated in the snapshot tree.
+The idea behind this structure is that sequencers are the only actor interested in uncommitted state. It represents the state of their pending block and they update the uncommitted state as part of building that block. Once a block has been published to L1, its state is committed and the uncommitted state is destroyed. After each block is committed, the historical tree is traversed in a BFS manner checking for differences in each node. If a node is the same as previously, the search does not continue to its children. Modified nodes are updated in the snapshot tree.
 
 Clients only read committed or snapshotted state, they have no need to read uncommitted state.
 
@@ -57,17 +57,17 @@ Reading the sibling path for leaf 3 at block 2 is performed by traversing the tr
 
 ![image](./historic-hash-path.png)
 
-This system of content addressing is used for snapshotting both append-only and indexed trees. Block 3 updated leaf 0, which could only happen in an indexed tree and it should be clear that the same method of hash path retrievel works in this case. It enables us to serve merkle membership requests for any block in time whilst only storing the changes that occur with each block.
+This system of content addressing is used for snapshotting both append-only and indexed trees. Block 3 updated leaf 0, which could only happen in an indexed tree and it should be clear that the same method of hash path retrieval works in this case. It enables us to serve merkle membership requests for any block in time whilst only storing the changes that occur with each block.
 
-Despite this method of only storing changes with each block. Historical trees will still require a signifcant amount of data and as it stands there is no ability to prune the history meaning nodes either store all history or no history.
+Despite this method of only storing changes with each block. Historical trees will still require a significant amount of data and as it stands there is no ability to prune the history meaning nodes either store all history or no history.
 
 ## Updates to Block Building
 
-Though still in the design stages, we are moving towards a system of block-building where there will inevitably be 2 chains. The first being a `finalized` chain that is considered immutable. The second will have less certainty over its finality, meaning we have to consider its state updates to be susceptible to re-org or rolling back. We will refer to this as the `pending` chain. It is likely that the pending chain will become `finalized` in batches as large rollups are produced. That is to say that it it unlikely blocks will be finalized individually but as so-called `epochs` of say 32 blocks.
+Though still in the design stages, we are moving towards a system of block-building where there will inevitably be 2 chains. The first being a `finalized` chain that is considered immutable. The second will have less certainty over its finality, meaning we have to consider its state updates to be susceptible to re-org or rolling back. We will refer to this as the `pending` chain. It is likely that the pending chain will become `finalized` in batches as large rollups are produced. That is to say that it is unlikely blocks will be finalized individually but as so-called `epochs` of say 32 blocks.
 
 ## Images
 
-Taking the 3-stage (uncommitted, committed, snapshotted) state architecture outlined above, we can make the concept generic and introduce the term `image` representing a cahe of 'pending' state accumulated through a selection of blocks on top of the `finalized` chain state. The world state module will create an `image` for every tree at every block on the pending chain as it is read from L1. Additionally, images can be requested on demand for block-building activities and later destroyed. Images that extend beyond the previous pending epoch will not duplicate the state of that epoch. Instead they will reference the image at the tip of that epoch. All images will reference the `finalized` store.
+Taking the 3-stage (uncommitted, committed, snapshotted) state architecture outlined above, we can make the concept generic and introduce the term `image` representing a cache of 'pending' state accumulated through a selection of blocks on top of the `finalized` chain state. The world state module will create an `image` for every tree at every block on the pending chain as it is read from L1. Additionally, images can be requested on demand for block-building activities and later destroyed. Images that extend beyond the previous pending epoch will not duplicate the state of that epoch. Instead they will reference the image at the tip of that epoch. All images will reference the `finalized` store.
 
 The process by which data is read and or written is very similar to the current system of committed/uncommitted state. Writes go into the image's cache of updates. Reads will first check the cache before deferring to the finalized store.
 
@@ -82,7 +82,7 @@ The reasoning behind this structure is:
 3. The block updates cache could be either in memory or persisted in a database. Based on the configuration of the node and what it is used for.
 4. The 'view' of the world state provided by an image is exactly as it was for that block, meaning historic state requests can be served against blocks on the pending chain.
 5. Block building participants can request multiple images for the purpose of e.g. simulating multiple different block permutations or proving multiple blocks concurrently if the chosen proving coordination protocol permits.
-6. For images extending beyond the previous epoch, the referencing of the tip of the previous epoch is to ensure that the block updates database for any image does not grow larger than 1 epoch and it is effecitvely 'reset' upon finalization of an epoch.
+6. For images extending beyond the previous epoch, the referencing of the tip of the previous epoch is to ensure that the block updates database for any image does not grow larger than 1 epoch and it is effectively 'reset' upon finalization of an epoch.
 7. Re-orgs become trivial. The world state simply destroys the current set of images of the pending chain.
 
 ## The Commit Process
@@ -103,12 +103,12 @@ The system of images described above offers a way to provide clients of the worl
 Indexed trees are more complicated than append-only as they support updates anywhere within the tree. To facilitate pruning we propose a method of reference counting on the nodes of the snapshot tree. The following diagrams demonstrate this process. We start with the 3 block example given earlier in this design. The difference is that we append another piece of information to the value of a node, the number of times it is **explicitly** referenced in a snapshot.
 
 1. Block 1 stores 5 nodes as before but each now contains a reference count of 1, representing the number of times that node is explicitly used by a snapshot. This reference count is shown as an additional field in the concatenation of fields in the node's value.
-2. Block 2 stores a further 4 nodes, each with a reference count of 1. Crucially however, as part of the snapshotting process the node with value 0x6195 (the green parent) is visited and deemed to not have changed. This node has it's reference count increased to 2. The children of this node are not visited, as that would require traversing the entire tree and is not necessary. The children are said to be **implicitly** referenced by the snapshot at block 2 through their parent. Note, the reference count is increased in block 2, I have left the count as 1 under block 1 in the diagram to demonstrate the change in value but of course there is only 1 copy of the node so it is this value that is increased.
+2. Block 2 stores a further 4 nodes, each with a reference count of 1. Crucially however, as part of the snapshotting process the node with value 0x6195 (the green parent) is visited and deemed to not have changed. This node has its reference count increased to 2. The children of this node are not visited, as that would require traversing the entire tree and is not necessary. The children are said to be **implicitly** referenced by the snapshot at block 2 through their parent. Note, the reference count is increased in block 2, I have left the count as 1 under block 1 in the diagram to demonstrate the change in value but of course there is only 1 copy of the node so it is this value that is increased.
 3. Block 3 stores a further 4 nodes. In this update, the leaf at index 1 has its reference count updated to 2.
 
 ![reference counting](./reference-counting.png)
 
-We now have sufficient information to prune snapshots beyond a configured historical window. We will demonstrate with our 3 block example by only keeping a 2 block history (priuning block 1) and adding a further block. After the update to the tree for block 3, the tree is traversed from the root of block 1 and the following rules applied to each node:
+We now have sufficient information to prune snapshots beyond a configured historical window. We will demonstrate with our 3 block example by only keeping a 2 block history (pruning block 1) and adding a further block. After the update to the tree for block 3, the tree is traversed from the root of block 1 and the following rules applied to each node:
 
 1. Reduce the reference count by 1.
 2. If the count is now 0, remove the node and move onto the node's children.
@@ -129,7 +129,7 @@ We now add block 4, which updates leaf 0 again. Whilst this might not be likely 
 
 ### Snapshotting Append Only Trees
 
-We have seperated the snapshotting of append only trees into its own section as we propose a completely different approach. We won't snapshot them at all! By their very nature, simply storing an index of the size of the tree after every additional block, it is possible to reconstruct the state of the tree at any point in its history. We will demonstrate how this works. Consider the following append only tree after 3 blocks of leaves have been added. The index at the bottom shows that the tree was at size 2 after 1 block, size 3 after 2 blocks and size 5 after 3 blocks. We want to query the tree as it was at block 2 so only considering the green leaves, not those coloured yellow.
+We have separated the snapshotting of append only trees into its own section as we propose a completely different approach. We won't snapshot them at all! By their very nature, simply storing an index of the size of the tree after every additional block, it is possible to reconstruct the state of the tree at any point in its history. We will demonstrate how this works. Consider the following append only tree after 3 blocks of leaves have been added. The index at the bottom shows that the tree was at size 2 after 1 block, size 3 after 2 blocks and size 5 after 3 blocks. We want to query the tree as it was at block 2 so only considering the green leaves, not those coloured yellow.
 
 ![append only tree](./append-only-tree.png)
 
@@ -164,7 +164,7 @@ fr getNodeValue(uint32_t level, index_t index, uint32_t blockHeight) {
 } 
 ```
 
-Now that we have a way of computing the value of any node at any previous block height we can serve requests for historic state directly from the `current` state. We are swapping a significant reduction in storage for an increase in compute to regenerate point-in-time state. This trade-off seems benficial however now that the underlying native merkle tree design affords us the ability to perform these operations concurrently across multiple cores.
+Now that we have a way of computing the value of any node at any previous block height we can serve requests for historic state directly from the `current` state. We are swapping a significant reduction in storage for an increase in compute to regenerate point-in-time state. This trade-off seems beneficial however now that the underlying native merkle tree design affords us the ability to perform these operations concurrently across multiple cores.
 
 ## Change Set
 
