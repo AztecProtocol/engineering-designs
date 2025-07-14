@@ -94,7 +94,9 @@ class ChunkHeader {
 }
 ```
 
-This means that it's possible to prove that an event was emitted by providing all `TxEffect`s in a given chunk, showing that they correspond to the blob sponge initial and end states, and showing that the resulting chunk header is part of the archive tree. As an optimizations, we could avoid having to provide every single `TxEffect` if we hash them individually before adding them to the sponge, so a proof only requires the `TxEffect` that contains the event we want to prove, the hash of all other tx effects in the chunk, the chunk header, and archive tree sibling path.
+This means that it's possible for an app to prove that an event was emitted by providing all `TxEffect`s in a given chunk, showing that they correspond to the blob sponge initial and end states, and showing that the resulting chunk header is part of the archive tree.
+
+> We contemplated just including the blob commitments of a checkpoint in each chunk header of that checkpoint, to enable constant-size membership proofs of logs, but a BLS12-381 KZG commitment would be many millions of constraints to open inside a circuit. Leveraging the sponge should mean we can use cheap poseidon2 to prove membership. It would still be a lot of poseidon2 hashing, though, because we'd have to hash every single tx effect of every single tx, in order to go from the start sponge to the end sponge of a chunk. In fact, because we don't know how many blobs a single chunk may use, it's possible that a single chunk might use all 6 blobs of a checkpoint. Then the distance between the start and end sponges would be 6*4096=25k fields. So any circuit that wishes to do such a membership proof will need to use that upper bound and always do that amount of hashing. That's roughly 24576/3*75=614k constraints. Uh oh. That's not great for proving membership of a log in a chunk. 
 
 #### Optimizing blob data
 
