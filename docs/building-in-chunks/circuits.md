@@ -63,7 +63,19 @@ class StateReference {
 
 #### Committing to `TxEffects`
 
-However, we still need a commitment to the contents of a chunk. Each `TxEffect` has several fields that are entered into the world state tree (nullifiers, note hashes, etc), so these are committed to as part of the chunk header state reference. But the `TxEffect` contains fields that are not committed into world state: logs and l2-to-l1 messages. So we still need to commit to them as part of the block hash. To do this, we can leverage the blob Poseidon sponge, which hashes all tx effects across a block, and include the start and end state of the sponge in the chunk header. This guarantees that the chunkhash is a commitment to all effects in that chunk.
+However, we still want a chunk header to be a commitment to the _entire_ contents of a chunk. Each `TxEffect` has several fields that are entered into the world state tree (nullifiers, note hashes, etc), and these are rightly committed to as part of the chunk header state reference. But the `TxEffect` contains fields that (in the above iteration of a chunk header design) are not being committed into world state: logs and l2-to-l1 messages. To commit to those fields, we can leverage the blob Poseidon sponge, which hashes all tx effects across a block, and include the start and end state of the sponge in the chunk header. This guarantees that the chunkhash is a commitment to all effects in that chunk.
+
+
+
+So we have:
+- L1 -> L2 messages: committed to within the chunk header's state reference.
+    - To prove that a particular L1->L2 message was included (made available) in a particular chunk number, an app can read from the chunk number in which the messages were first inserted.
+    - See the "L1-to-L2 messaging" section below, for how we choose which chunk should contain this data. (Spoiler: probably the first chunk of the checkpoint).
+- L2 -> L1 messages:
+    - To prove that a particular L2->L1 message came from a particular chunk number, a circuit would have to reference the start and end sponges that we're proposing would be committed to as part of the chunk header. See below for concerns that this isn't very efficient.
+    - We could also feasibly compute a mini `out_hash` for just the chunk, in the base rollup (using poseidon2 instead of sha256), and include that in the chunk header? 
+- Logs:
+    - To prove that a particular L2->L1 message came from a particular chunk number, a circuit would have to reference the start and end sponges that we're proposing would be committed to as part of the chunk header. See below for concerns that this isn't very efficient.
 
 ```ts
 class ChunkHeader {
