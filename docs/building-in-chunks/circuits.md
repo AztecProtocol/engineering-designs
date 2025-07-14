@@ -29,7 +29,7 @@ Given _chunks_ are the new _blocks_, the archive tree now contains _chunk header
 
 ### Slots and timestamps
 
-We keep the current definition of L2 slot as the timestamp range reserved for a given proposer, which means that now a single L2 slot can have multiple chunks (blocks). All chunks within a given checkpoint will have the same timestamp.
+We keep the current definition of L2 slot as the timestamp range reserved for a given proposer, which means that now a single L2 slot can have multiple chunks (blocks). All chunks within a given checkpoint have a timestamp within that range, chosen by the proposer. Attestors should only attest to proposals with a timestamp within the time of the previous chunk (or slot start for the first chunk in the checkpoint) and the current time.
 
 ### Blob layout
 
@@ -40,16 +40,17 @@ Since each _checkpoint_ will contain multiple _chunks_, these have to be embedde
 Each _chunk_ header has the same format as a _block_ header today, except for the `ContentCommitment`. Today, the `ContentCommitment` contains the `inHash` and `outHash` (hashes of cross-chain messages) and the `blobHash`. These fields are only used for coordination to L1, so semantically they now belong to a _checkpoint_ and can be removed from the `ChunkHeader`.
 
 ```ts
+/** First design for ChunkHeader (not final) */
 class ChunkHeader {
-  /** Snapshot of archive before the block is applied. */
+  /** Snapshot of archive before the chunk is applied. */
   lastArchive: AppendOnlyTreeSnapshot;
   /** State reference. */
   state: StateReference;
-  /** Global variables of an L2 block. */
+  /** Global variables of an L2 chunk. */
   globalVariables: GlobalVariables;
-  /** Total fees in the block, computed by the root rollup circuit */
+  /** Total fees in the chunk, computed by the root rollup circuit */
   totalFees: Fr;
-  /** Total mana used in the block, computed by the root rollup circuit */
+  /** Total mana used in the chunk, computed by the root rollup circuit */
   totalManaUsed: Fr;
 }
 
@@ -63,33 +64,32 @@ class StateReference {
 
 #### Committing to `TxEffects`
 
-However, we still want a chunk header to be a commitment to the _entire_ contents of a chunk. Each `TxEffect` has several fields that are entered into the world state tree (nullifiers, note hashes, etc), and these are rightly committed to as part of the chunk header state reference. But the `TxEffect` contains fields that (in the above iteration of a chunk header design) are not being committed into world state: logs and l2-to-l1 messages. To commit to those fields, we can leverage the blob Poseidon sponge, which hashes all tx effects across a block, and include the start and end state of the sponge in the chunk header. This guarantees that the chunkhash is a commitment to all effects in that chunk.
-
-
+However, we still want a chunk header to be a commitment to the _entire_ contents of a chunk. Each `TxEffect` has several fields that are entered into the world state tree (nullifiers, note hashes, etc), and these are rightly committed to as part of the chunk header state reference. But the `TxEffect` contains fields that (in the above iteration of a chunk header design) are not being committed into world state: logs and l2-to-l1 messages. To commit to those fields, we can leverage the blob Poseidon sponge, which hashes all tx effects across a block, and include the start and end state of the sponge in the chunk header. This guarantees that the chunk hash is a commitment to all effects in that chunk.
 
 So we have:
+
 - L1 -> L2 messages: committed to within the chunk header's state reference.
-    - To prove that a particular L1->L2 message was included (made available) in a particular chunk number, an app can read from the chunk number in which the messages were first inserted.
-    - See the "L1-to-L2 messaging" section below, for how we choose which chunk should contain this data. (Spoiler: probably the first chunk of the checkpoint).
+  - To prove that a particular L1->L2 message was included (made available) in a particular chunk number, an app can read from the chunk number in which the messages were first inserted.
+  - See the "L1-to-L2 messaging" section below, for how we choose which chunk should contain this data. (Spoiler: probably the first chunk of the checkpoint).
 - L2 -> L1 messages:
-    - To prove that a particular L2->L1 message came from a particular chunk number, a circuit would have to reference the start and end sponges that we're proposing would be committed to as part of the chunk header. See below for concerns that this isn't very efficient.
-    - We could also feasibly compute a mini `out_hash` for just the chunk, in the base rollup (using poseidon2 instead of sha256), and include that in the chunk header? 
+  - To prove that a particular L2->L1 message came from a particular chunk number, a circuit would have to reference the start and end sponges that we're proposing would be committed to as part of the chunk header. See below for concerns that this isn't very efficient.
+  - We could also feasibly compute a mini `out_hash` for just the chunk, in the base rollup (using poseidon2 instead of sha256), and include that in the chunk header?
 - Logs:
-    - To prove that a particular L2->L1 message came from a particular chunk number, a circuit would have to reference the start and end sponges that we're proposing would be committed to as part of the chunk header. See below for concerns that this isn't very efficient.
+  - To prove that a particular L2->L1 message came from a particular chunk number, a circuit would have to reference the start and end sponges that we're proposing would be committed to as part of the chunk header. See below for concerns that this isn't very efficient.
 
 ```ts
 class ChunkHeader {
-  /** Start and end state of the blob sponge. */
+  /** Start and end state of the blob sponge. We hash the start and end sponges into a single field each. */
   blobSponge: [Fr, Fr];
-  /** Snapshot of archive before the block is applied. */
+  /** Snapshot of archive before the chunk is applied. */
   lastArchive: AppendOnlyTreeSnapshot;
   /** State reference. */
   state: StateReference;
-  /** Global variables of an L2 block. */
+  /** Global variables of an L2 chunk. */
   globalVariables: GlobalVariables;
-  /** Total fees in the block, computed by the root rollup circuit */
+  /** Total fees in the chunk, computed by the root rollup circuit */
   totalFees: Fr;
-  /** Total mana used in the block, computed by the root rollup circuit */
+  /** Total mana used in the chunk, computed by the root rollup circuit */
   totalManaUsed: Fr;
 }
 ```
@@ -181,11 +181,11 @@ The main change for L1 contracts is that `propose` now advances the current bloc
 
 Should we ever want to decouple L2 block production from L1 checkpointing, there are a few changes needed to the design above. For clarity, by decoupling L2 blocks from L1 checkpointing, we mean having L2 produce blocks, and at some point an entity groups some of them into a checkpoint and pushes them to L1, but L2 can keep advancing independent of L1. In other words, L2 liveness should not depend on L1 availability (though its finality most definitely should).
 
-Since we do not know _when_ a chunk will make it to L1, we cannot know in which blob it will land, so we cannot know its `blobSponge` start and end state. One option here would be to just keep a rolling hash of `TxEffects` which gets permanently accumulated and is never reset, so when the network decides to aggregate a few chunks into a checkpoint, the blob verification circuits need to account for a non-zero initial sponge (I need to check feasibility of this).
+Since we do not know _when_ a chunk will make it to L1, we cannot know in which blob it will land, so we cannot know its `blobSponge` start and end state. One option here would be to just keep a rolling hash of `TxEffects` which gets permanently accumulated and is never reset, so when the network decides to aggregate a few chunks into a checkpoint, the blob verification circuits need to account for a non-zero initial sponge, and check that it matches the end of the previous.
 
 Another change needed is around the `Inbox`, or L1-to-L2 messages. To avoid linking L1-to-L2 messaging to L1 checkpointing, we can define time ranges (similar to L2 slots today), such that all L1-to-L2 messages sent in that time range are grouped into a tree and expected to be inserted at a given L2 timestamp.
 
-Additionally, we'd need to have the L2 timestamp evolve independently from L1. We'd also need mechanisms for fluctuating fees without having to go through L1.
+Additionally, we'd need mechanisms for fluctuating fees without having to go through L1.
 
 ## See also
 
