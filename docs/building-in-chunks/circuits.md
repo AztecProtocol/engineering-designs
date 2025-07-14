@@ -171,6 +171,8 @@ Assuming we keep the same strategy for consuming messages from the `Inbox` on ev
 
 Depending on how we handle attestations for chunks, if we want the proposer to have the flexibility to decide on the fly which chunk will be the last one in the checkpoint, it's possible the proposer does not know which will be the last chunk. So it seems safer to update the L1-to-L2 message tree in the first chunk of a checkpoint.
 
+> Aside: If the proposer had flexibility to decide on the fly which chunk will be the last one in the checkpoint, then that would make it harder for the next proposer to begin building their block.
+
 ### L1 changes
 
 The main change for L1 contracts is that `propose` now advances the current block number by more than `1`. The rollup contract will need to store both the latest archive tree root, determined by the latest chunk included in the latest checkpoint, and the latest checkpoint hash. Since the checkpoint hash contains the latest archive tree root, it's possible we can just store the last checkpoint hash.
