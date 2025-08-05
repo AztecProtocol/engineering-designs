@@ -38,8 +38,8 @@ type KeyStore = {
   validators?: ValidatorKeyStore[];
   /** One or more accounts used for creating slash payloads on L1. Does not create slash payloads if not set. */
   slasher?: EthAccounts;
-  /** Default url for the remote signer for all accounts in this file. */
-  remoteSigner?: Url;
+  /** Default config for the remote signer for all accounts in this file. */
+  remoteSigner?: EthRemoteSignerConfig;
   /** Prover configuration. Only one prover configuration is allowed. */
   prover?: ProverKeyStore;
 };
@@ -65,9 +65,9 @@ type ValidatorKeyStore = {
    */
   feeRecipient: AztecAddress;
   /**
-   * Default url for the remote signer for all accounts in this block.
+   * Default remote signer for all accounts in this block.
    */
-  remoteSigner?: Url;
+  remoteSigner?: EthRemoteSignerConfig;
 };
 
 type ProverKeyStore =
@@ -80,15 +80,43 @@ type ProverKeyStore =
   | EthAccount;
 
 /** One or more L1 accounts */
-type EthAccounts = EthAccount | EthAccount[];
+type EthAccounts = EthAccount | EthAccount[] | EthMnemonicConfig;
 
-/** An L1 account is either a private key or a remote signer configuration */
-type EthAccount = EthPrivateKey | EthRemoteSignerConfig;
+/** A mnemonic can be used to define a set of accounts */
+type EthMnemonicConfig = {
+  mnemonic: string;
+  addressIndex?: number;
+  accountIndex?: number;
+  addressCount?: number;
+  accountCount?: number;
+};
 
-/** A remote signer config can be set as just the address, in which case the signer url is sourced from the default set in the parent node. */
+/** An L1 account is a private key, a remote signer configuration, or a standard json key store file */
+type EthAccount =
+  | EthPrivateKey
+  | EthRemoteSignerAccount
+  | EthJsonKeyFileV3Config;
+
+/** A remote signer is configured as an URL to connect to, and optionally a client certificate to use for auth */
 type EthRemoteSignerConfig =
-  | { remoteSigner: Url; address: EthAddress }
-  | EthAddress;
+  | Url
+  | { remoteSignerUrl: Url; certPath?: string; certPass?: string };
+
+/**
+ * A remote signer account config is equal to the remote signer config, but requires an address to be specified.
+ * If only the address is set, then the default remote signer config from the parent config is used.
+ */
+type EthRemoteSignerAccount =
+  | EthAddress
+  | {
+      address: EthAddress;
+      remoteSignerUrl: Url;
+      certPath?: string;
+      certPass?: string;
+    };
+
+/** A json keystore config points to a local file with the encrypted private key, and may require a password for decrypting it */
+type EthJsonKeyFileV3Config = { path: string; password?: string };
 
 /** A private key is a 32-byte 0x-prefixed hex */
 type EthPrivateKey = Hex<32>;
@@ -100,9 +128,30 @@ type EthAddress = Hex<20>;
 type AztecAddress = Hex<32>;
 ```
 
+### Mnemonic
+
+The `EthMnemonicConfig` accepts a seed phrase and by default derives the private key at `m/44'/60'/0'/0/0` based on [BIP44](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki). Setting a different address or account index change the corresponding level, and setting a different count generates multiple keys starting on the specified index.
+
+| Address Index | Address Count | Account Index | Account Count | Resulting Derivation Paths                                                     |
+| ------------- | ------------- | ------------- | ------------- | ------------------------------------------------------------------------------ |
+|               |               |               |               | `m/44'/60'/0'/0/0`                                                             |
+| 3             |               |               |               | `m/44'/60'/0'/0/3`                                                             |
+|               |               | 5             |               | `m/44'/60'/5'/0/0`                                                             |
+| 3             |               | 5             |               | `m/44'/60'/5'/0/3`                                                             |
+| 3             | 2             | 5             |               | `m/44'/60'/5'/0/3`, `m/44'/60'/5'/0/4`                                         |
+| 3             | 2             | 5             | 2             | `m/44'/60'/5'/0/3`, `m/44'/60'/5'/0/4`, `m/44'/60'/6'/0/3`, `m/44'/60'/6'/0/4` |
+
+### Remote signer
+
+The remote signer defines a [Web3Signer](https://docs.web3signer.consensys.io/) endpoint where the node sends requests for signing a transaction or a message. The signer is configured as a URL to connect to, and optionally a path to a client certificate file needed for authentication, along with the password for decrypting the certificate file.
+
+### Json V3
+
+The JsonV3 keyfile is a standard for storing encrypted ethereum private keys. The `EthJsonKeyFileV3Config` allows defining a path to a JsonV3 keyfile along with the password needed for decrypting it. The path may be a directory, in which case all json files within the directory are loaded.
+
 ## Examples
 
-A keystore for a single validator:
+A keystore for a single validator. The attester is used as publisher:
 
 ```js
 {
@@ -116,28 +165,36 @@ A keystore for a single validator:
 }
 ```
 
-A keystore for two validators, one with a set of relayers, with their private keys stored in a remote signer:
+A keystore for multiple validators, with their private keys stored in a remote signer:
 
 ```js
 {
   schemaVersion: 1,
+  // All attester private keys are stored in the remote signer in localhost:8080
   remoteSigner: 'https://localhost:8080',
+  // This slasher private key is also stored in the remote signer
   slasher: '0x1234567890123456789012345678901234567890',
   validators: [
     {
-      // Attester private key is stored in the remote signer in localhost:8080
+      // One publisher is defined as a private key, another as an account that goes to the default remote signer, another goes to another signer
       attester: '0x1234567890123456789012345678901234567890',
-      // One relayer is defined as a private key, another as an account that goes to the default remote signer, another goes to another signer
-      relayers: [
+      publisher: [
         '0x1234567890123456789012345678901234567890123456789012345678901234',
         '0x1234567890123456789012345678901234567890',
-        { remoteSigner: 'https://localhost:8081', address: '0x1234567890123456789012345678901234567890' }
+        { remoteSignerUrl: 'https://localhost:8081', address: '0x1234567890123456789012345678901234567890' }
       ]
       feeRecipient: '0x1234567890123456789012345678901234567890123456789012345678901234',
     },
     {
+      // This attester sends txs using the attester account as publisher
       attester: '0x1234567890123456789012345678901234567890',
       feeRecipient: '0x1234567890123456789012345678901234567890123456789012345678901234',
+    },
+    {
+      // This attester uses the publishers derived from a mnemonic
+      attester: '0x1234567890123456789012345678901234567890',
+      feeRecipient: '0x1234567890123456789012345678901234567890123456789012345678901234',
+      publisher: { mnmemonic: "test test test test", addressCount: 4 }
     },
   ]
 }
@@ -152,7 +209,7 @@ A keystore for a prover that sends proofs from their prover address directly:
 }
 ```
 
-A keystore for a prover with two relayers:
+A keystore for a prover with two publishers:
 
 ```js
 {
