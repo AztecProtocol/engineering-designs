@@ -16,10 +16,10 @@ Based fallback provide us with these guarantees, assuming that the base-layer is
 
 The Aztec network is a Rollup on Ethereum L1, that have its own consensus layer to support build-ahead.
 Since the consensus layer is only there for the ability to have fast ledger growth, e.g., block times that are smaller than proving times, it should not be strictly required for the state of the chain to be progressed.
-Therefore, we provide a fallback mechanism to handle the case where the committee fail to perform their duties - allowing anyone to grow the ledger.
+Therefore, we provide a fallback mechanism to handle the case where the committee fails to perform their duties - allowing anyone to grow the ledger.
 
 The nature in which they could fail to perform their duties varies widely.
-It could be an attack to try and censor the network, or it might be that a majority of the network is running a node that corrupts its state the 13 of August every year as an homage to the Aztec empire.
+It could be an attack to try and censor the network, or it might be that a majority of the network is running a node that corrupts its state the 13th of August every year as an homage to the Aztec empire.
 
 Nevertheless, we need a mechanism to ensure the liveness of the chain, even if slower, in these events.
 
@@ -49,7 +49,7 @@ The based fallback is expected to have a significantly worse user experience sin
 
 Because of this, we really do not want to enter the fallback too often, but we need to make it happen often enough that it is usable.
 For applications that are dependent on users acting based on external data or oracle data, a low bar to enter based mode can be desirable since it will mean that they would be able to keep running more easily.
-Lending and trading falls into these catagories as they usually depend on external data sources, e.g., prices of CEX'es influence how people use a trading platform and lending platforms mostly use oracles to get prices.
+Lending and trading falls into these categories as they usually depend on external data sources, e.g., prices of CEX'es influence how people use a trading platform and lending platforms mostly use oracles to get prices.
 
 We suggest defining the time where Based fallback can be entered to be $T_{\textsf{fallback}, \textsf{enter}}$ after the last proven block. 
 The minimum acceptable value for $T_{\textsf{fallback}, \textsf{enter}}$ should therefore be if a committee fails to performs its proving duties as specified as a full epoch $E$ in https://github.com/AztecProtocol/engineering-designs/pull/22 * 2.
