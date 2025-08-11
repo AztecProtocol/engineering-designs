@@ -15,13 +15,12 @@ Aside from bootstrapping (such as deploying L1 contracts), the Aztec node sends 
 
 - As a **sequencer**, it sends blob txs proposing new L2 blocks. These txs may be part of a [multicall](https://www.multicall3.com/) where the proposer also votes for a proposal, or invalidates a block. In rare circumstances, the sequencer will send a multicall with only a vote or an invalidation, but without a block (and hence without blobs). Block proposals and votes have a specific set of L1 blocks in which they may land, after those they "expire", meaning they'd revert when mined. Block proposal txs carry 1-6 blobs and cost 100k-400k gas, while votes and invalidations cost about 200k-800k gas. These txs are sent at most once per checkpoint, which is 3-12 L1 slots.
 - As a **prover**, it sends a tx with a validity proof for an epoch. These txs also have an expiration window, after which they revert if they'd land. No blobs are used. The cost is 1M-4M gas, and these txs are sent at most once per epoch, which is about 96-384 L1 slots.
-- As a **slasher**, it sends a tx to create or execute a slashing payload. While this is subject to change in the near future, we can assume that these txs happen at most once per checkpoint, and usually once per epoch. The cost of creating a payload is roughly 100k gas, and executing may be as high as 4M.
 
 A distinct property of all these txs is that they are **non-sequential**, meaning we do not care for Ethereum's increasing nonces for ordering.
 
 ## Algorithm
 
-We keep all our _publishers_ split by "scope", where the scope may be _slashing_, _proving_, or _sequencing_. If sequencing, publishers are also scoped by validator address, so a node that runs multiple validators may use different publisher accounts for each validator, to avoid publicly linking them. Note that a publisher may belong to more than one scope.
+We keep all our _publishers_ split by "scope", where the scope may be _proving_ or _sequencing_. If sequencing, publishers are also scoped by validator address, so a node that runs multiple validators may use different publisher accounts for each validator, to avoid publicly linking them. Note that a publisher may belong to more than one scope.
 
 Each publisher account is in one of the following states:
 
@@ -53,9 +52,9 @@ As an optional feature, we can define a key as **funder**, with the sole purpose
 
 ## Architecture
 
-Publishers should be managed by a new "service", similar to the EpochCache, that should be a dependency of the sequencer publisher, prover publisher, and slasher client. We can have a single service that handles _all_ keys, and then each component asks for the keys for its scope, or we could have a different instance of this service for each scope (sequencer, prover, slasher). I slightly prefer the latter.
+Publishers should be managed by a new "service", similar to the EpochCache, that should be a dependency of the sequencer publisher and prover publisher. We can have a single service that handles _all_ keys, and then each component asks for the keys for its scope, or we could have a different instance of this service for each scope (sequencer, prover). I slightly prefer the latter.
 
-This service could live in a new package, in the `ethereum` package, or in `stdlib`. Note that this service will likely use most methods from `l1-tx-utils`, which is the library being used by the sequencer publisher, prover publisher, and slasher client for sending L1 txs.
+This service could live in a new package, in the `ethereum` package, or in `stdlib`. Note that this service will likely use most methods from `l1-tx-utils`, which is the library being used by the sequencer publisher and prover publisher for sending L1 txs.
 
 The service should hydrate the state for all publishers when starting, in case it is restarted with a tx in-flight. At a minimum, it should detect if there are pending txs by checking account nonces. If needed, it could use a store to keep more detailed state for each publisher account.
 
