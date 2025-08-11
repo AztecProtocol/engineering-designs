@@ -47,6 +47,10 @@ Note that business logic dictates we should never try sending a tx while the pre
 
 Also, available publishers should be filtered by balance, ensuring that the given EOA has enough funds to send the tx, and possibly replace it with a larger gas price. If we detect a publisher account has not enough gas, we should warn (bonus points if we warn before running out).
 
+### Funder accounts
+
+As an optional feature, we can define a key as **funder**, with the sole purpose of topping up the other accounts when they run low on funds. Funder accounts should not be used for sequencing or proving. Funder accounts may be defined globally or scoped per validator. Defining a funder account globally makes it easier to manage, but leaks privacy by linking the validator accounts together.
+
 ## Architecture
 
 Publishers should be managed by a new "service", similar to the EpochCache, that should be a dependency of the sequencer publisher, prover publisher, and slasher client. We can have a single service that handles _all_ keys, and then each component asks for the keys for its scope, or we could have a different instance of this service for each scope (sequencer, prover, slasher). I slightly prefer the latter.
