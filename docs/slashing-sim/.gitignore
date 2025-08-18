@@ -1,0 +1,6 @@
+__marimo__
+__pycache__
+.claude
+.venv
+.envrc
+CLAUDE.md

@@ -1,0 +1,27 @@
+[project]
+name = "slashing-sim"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "altair>=5.5.0",
+    "marimo==0.14.16",
+    "networkx>=3.5",
+    "numba>=0.59.0",
+    "numpy>=1.26.0",
+    "pandas>=2.2.0",
+    "polars>=1.0.0",
+    "pyarrow>=21.0.0",
+    "ruff>=0.12.8",
+    "scipy>=1.16.1",
+]
+
+[tool.marimo.runtime]
+output_max_bytes = 1_000_000_000
+
+[tool.uv]
+dev-dependencies = [
+    "altair>=5.5.0",
+    "tqdm>=4.67.1",
+]
