@@ -74,7 +74,7 @@ struct ForceInclusionProof:
     
 struct BasedFallbackBlock:
     header: Header
-		proof: Proof
+	proof: Proof
     tx_count: uint256
     epoch_forced_inclusion_tx_count: uint256
     archive: bytes32
@@ -116,11 +116,10 @@ def initiate_force_include(
     archive = self.proposals[block_number_proven_against].archive
     assert archive != bytes32(0)
     assert anchor_proof.verify(archive, tx) # supposed to verify the tx is valid wrt to the anchor block at block_number_proven_against
-		assert tx.fee_payer== self.FIFPC_ADDRESS # verifies FIFPC is used 
+	assert tx.fee_payer== self.FIFPC_ADDRESS # verifies FIFPC is used 
 		
-		# fee accounting
-		
-		self.total_forced_inclusions += 1
+	# fee accounting
+	self.total_forced_inclusions += 1
     self.forced_inclusions[self.total_forced_inclusions] = ForceInclusion(
         tx_hash = tx.nullifiers[0],
         include_by_epoch = get_current_epoch() + 1 + self.FORCE_INCLUSION_DEADLINE,
@@ -133,55 +132,55 @@ def initiate_force_include(
 def propose(header: Header):
     super.propose(header)
     epoch = self.get_epoch_at(header.global_variables.timestamp)
-	  
-	  expected_root: bytes32 = get_tree_root(
+
+	# return the root of the tree corresponding to the forced inclusion transactions in forced_inclusions between pending and pending + fip.num_forced_inclusions. Should match the forced_root function be used in the circuits.  
+	expected_root: bytes32 = get_tree_root(
         self.forced_inclusion_pending_tip, 
         header.num_forced_inclusions
-    )# a function that returns the root of the tree corresponding to the forced inclusion transactions in forced_inclusions between pending and pending + fip.num_forced_inclusions. Should match the forced_root function be used in the circuits.
-		assert expected_root == header.force_inclusion_root
+	) 
+	assert expected_root == header.force_inclusion_root
 		
-		# fee accounting	
+	# fee accounting	
     for i: uint256 in range(fip.num_forced_inclusions):
-		    self.forced_inclusion_pending_tip += 1 # progress the pending tip
+		self.forced_inclusion_pending_tip += 1 # progress the pending tip
         forced_inclusions[self.forced_inclusion_pending_tip].proposer= msg.sender
 		
-		# assert there is no pending forced inclusion transactions in the queue given the proposer tries to propose non-forced inclusion transactions		
+	# assert there is no pending forced inclusion transactions in the queue given the proposer tries to propose non-forced inclusion transactions		
     if header.tx_count > fip.num_forced_inclusions && self.forced_inclusion_pending_tip < self.total_forced_inclusions:
-				assert self.forced_inclusions[self.forced_inclusion_pending_tip].include_by_epoch > epoch 						
+		assert self.forced_inclusions[self.forced_inclusion_pending_tip].include_by_epoch > epoch 						
 
 def based_fallback_propose(
-		header: Header,
-		fip: ForceInclusionProof 
-		proof,
+	header: Header,
+	fip: ForceInclusionProof 
+	proof,
     tx_count: uint256,
     epoch_forced_inclusion_tx_count: uint256
     archive: bytes32
     fees: FeePayment[EPOCH_LENGTH]
 ):
-		assert self.based_fallback ==True
+	assert self.based_fallback ==True
     epoch = self.get_epoch_at(header.global_variables.timestamp)
-	  assert epoch <= based_fallback_epc
+	assert epoch <= based_fallback_epoch
 	  
 	  # a function that returns the root of the tree corresponding to the forced inclusion transactions in forced_inclusions between pending and pending + fip.num_forced_inclusions. Should match the forced_root function be used in the circuits.
-	  expected_root: bytes32 = get_tree_root(
-        self.forced_inclusion_pending_tip, 
-        fip.num_forced_inclusions
-    )
-		assert expected_root == fip.force_inclusion_root
+	expected_root: bytes32 = get_tree_root(
+        	self.forced_inclusion_pending_tip, 
+        	fip.num_forced_inclusions
+    	)
+	assert expected_root == fip.force_inclusion_root
 	  
-	  if epoch_forced_inclusion_tx_count >= min(FORCED_INCLUSION_LIVENESS_PARAM, self.total_forced_inclusions - self.forced_inclusion_proven_tip  : # immediately propose and prove block
-			  super.propose(header)
-			  super.submit_next_epoch_proof(
+	if epoch_forced_inclusion_tx_count >= min(FORCED_INCLUSION_LIVENESS_PARAM, self.total_forced_inclusions - self.forced_inclusion_proven_tip  : # immediately propose and prove block
+		super.propose(header)
+		super.submit_next_epoch_proof(
 		    proof, tx_count, epoch_forced_inclusion_tx_count, archive, fees
-		) # note, also passing epoch_forced_inclusion_tx_count to enforce this number is valid. Might be easier ways to track this.
+			) # note, also passing epoch_forced_inclusion_tx_count to enforce this number is valid. Might be easier ways to track this.
 		
-				# fee distribution	
-				fee_collected: uint256= 0
-		    for i: uint256 in range(1, epoch_forced_inclusion_tx_count+1):
-		        self.proven_tip += 1 # given epoch has been proven, increase the proven tip of the forced inclusion queue by the number of forced inclusion transactions during the proven epoch
-		        fee_collected +=self.forced_inclusions[self.proven_tip].fee_paid
-				send(msg.sender, fee_collected);
-						# send proposer all fees
+		# fee distribution	
+		fee_collected: uint256= 0
+		for i: uint256 in range(1, epoch_forced_inclusion_tx_count+1):
+			self.proven_tip += 1 # given epoch has been proven, increase the proven tip of the forced inclusion queue by the number of forced inclusion transactions during the proven epoch
+			fee_collected +=self.forced_inclusions[self.proven_tip].fee_paid
+		send(msg.sender, fee_collected) # send proposer all fees
 	  
 	  else: # FORCED_INCLUSION_LIVENESS_PARAM requirement not met, block must wait until end of based fallback epoch. 
 			  assert epoch_forced_inclusion_tx_count > based_fallback_leader.epoch_forced_inclusion_tx_count # require new block proposes more forced inclusions than previous block
@@ -189,16 +188,16 @@ def based_fallback_propose(
 			  assert super.verify_basedfallback_proof(
 				    header, proof, tx_count, epoch_forced_inclusion_tx_count, archive, fees
 				) # don't submit, verify only for now
-			  based_fallback_leader = BasedFallbackBlock(
-							header,
-							proof,
+				based_fallback_leader = BasedFallbackBlock(
+						header,
+						proof,
 					    tx_count,
 					    epoch_forced_inclusion_tx_count,
 					    archive,
 					    fees
-				)# store leader
-			  # fee accounting	
-		    for i: uint256 in range(1,epoch_forced_inclusion_tx_count+1):
+				) # store leader
+				# fee accounting	
+				for i: uint256 in range(1,epoch_forced_inclusion_tx_count+1):
 				    forced_inclusions[self.forced_inclusion_pending_tip+i].proposer= msg.sender
 
 @external
@@ -208,23 +207,31 @@ def prune():
 		
 def finalize_based_fallback_propose() :
     assert self.based_fallback_epoch < self.get_epoch_at(header.global_variables.timestamp)
-		super.propose(self.based_fallback_leader.header)
-		super.submit_next_epoch_proof(
-		    self.based_fallback_leader.proof, self.based_fallback_leader.tx_count, self.based_fallback_leader.epoch_forced_inclusion_tx_count, self.based_fallback_leader.archive, self.based_fallback_leader.fees
-		)
-		self.based_fallback_leader = 0
-		for i: uint256 in range(1, self.based_fallback_leader.epoch_forced_inclusion_tx_count+1):
-		    self.proven_tip += 1 # given epoch has been proven, increase the proven tip of the forced inclusion queue by the number of forced inclusion transactions during the proven epoch
-		    fee_collected +=self.forced_inclusions[self.proven_tip].fee_paid
-		send(self.based_fallback_leader.header.proposer, fee_collected);
-		self.based_fallback_epoch = self.get_epoch_at(header.global_variables.timestamp) +1 # conservatively set based_fallback_epoch to next epoch
+	super.propose(self.based_fallback_leader.header)
+	super.submit_next_epoch_proof(
+		self.based_fallback_leader.proof,
+		self.based_fallback_leader.tx_count,
+		self.based_fallback_leader.epoch_forced_inclusion_tx_count,
+		self.based_fallback_leader.archive,
+		self.based_fallback_leader.fees
+	)
+	self.based_fallback_leader = 0
+
+	# fee accounting
+	fee_collected: uint256= 0
+	for i: uint256 in range(1, self.based_fallback_leader.epoch_forced_inclusion_tx_count+1):
+		self.proven_tip += 1 # given epoch has been proven, increase the proven tip of the forced inclusion queue by the number of forced inclusion transactions during the proven epoch
+	 	fee_collected +=self.forced_inclusions[self.proven_tip].fee_paid
+	send(self.based_fallback_leader.header.proposer, fee_collected);
+
+	self.based_fallback_epoch = self.get_epoch_at(header.global_variables.timestamp) +1 # conservatively set based_fallback_epoch to next epoch
 
 		
 def exit_based_fallback() :
-		# this function should require assertions from an Aztec epoch committee to exit
-		self.based_fallback= False
-		self.fallback_primed = False 
-		based_fallback_leader = 0
+	# this function should require assertions from an Aztec epoch committee to exit
+	self.based_fallback= False
+	self.fallback_primed = False 
+	based_fallback_leader = 0
 		
 # --- Internal / View Functions for Forced Inclusion Logic ---
 @view
@@ -256,19 +263,35 @@ def forced_inclusion_liveness_fault(epoch: uint256, tx_count: uint256, epoch_for
 		) # note, also passing epoch_forced_inclusion_tx_count to enforce this number is valid. Might be easier ways to track this.
     
     if forced_inclusion_liveness_fault(epoch, tx_count, epoch_forced_inclusion_tx_count): # violation of the forced inclusion liveness requirement
-				****if ****self.fallback_primed == True: # Trigger has already been primed
-						self.based_fallback = True # based fallback next epoch
-						self.based_fallback_epoch = self.get_epoch_at(header.global_variables.timestamp) +1 # conservatively set based_fallback_epoch to next epoch
-				self.fallback_primed = True # primes based fallback mode. This needs to be set to false after based fallback mode is entered. 
+		if self.fallback_primed == True: # Trigger has already been primed
+			self.based_fallback = True # based fallback next epoch
+			self.based_fallback_epoch = self.get_epoch_at(header.global_variables.timestamp) +1 # conservatively set based_fallback_epoch to next epoch
+		self.fallback_primed = True # primes based fallback mode. This needs to be set to false after based fallback mode is entered. 
     
     # fee distribution	
     for i: uint256 in range(1, epoch_forced_inclusion_tx_count+1):
         self.proven_tip += 1 # given epoch has been proven, increase the proven tip of the forced inclusion queue by the number of forced inclusion transactions during the proven epoch
         fi_fee_half: uint256 =self.forced_inclusions[self.proven_tip].fee_paid /2 # proposer and prover receive half of the fee paid. 50:50 split is arbitrary
         send(self.forced_inclusions[self.proven_tip].proposer, fi_fee_half)
-				send(msg.sender, fi_fee_half); # for each fip, send half of the forced inclusion fee paid to the proposer
-				# can be made more efficient by batching transfers	  
+		send(msg.sender, fi_fee_half); # for each fip, send half of the forced inclusion fee paid to the proposer
+		# can be made more efficient by batching transfers	  
 ```
+## Forced Inclusion Transaction Flow (excluding based fallback)
+
+1. User sends a forced inclusion transaction to L1 via `initiate_force_include()`
+	1. verifies the transactions against it's anchor block `block_number_proven_against`
+	2. creates a forced inclusion transaction artefact, setting the fee to msg.value and the deadline for forced inclusion as `include_by_epoch= get_current_epoch() + 1 + self.FORCE_INCLUSION_DEADLINE`
+	3. the transactions is added to the forced inclusion queue
+2. Proposer proposes a block in the form of a `header` through `propose()`.
+	1. The `propose()` reads how many forced inclusion transactions the block proposes, `header.num_forced_inclusions`, and verifies the root of the tree made up of the next `header.num_forced_inclusions` transactions in the forced inclusion queue match the root provided (and verified on L2) in `header.force_inclusion_root`.
+   	2. The `propose()` function also checks that either:
+		1. only forced inclusion transactions were proposed.
+		2. if non-forced inclusion transactions were proposed, that there are no transactions in the forced inclusion queue with `include_by_epoch` less than or equal to the current epoch
+3. Prover proves an epoch of proposed blocks by calling `submit_proof()`
+	1. Verifies proof as normal.
+	2. Checks if there was a liveness fault, as specified in `forced_inclusion_liveness_fault()`. Failing this check either primes the trigger, or triggers based fallback for the proceeding epoch.
+	3. Pays fees to appropriate proposer and prover. 
+
 
 ### Block Validation
 
