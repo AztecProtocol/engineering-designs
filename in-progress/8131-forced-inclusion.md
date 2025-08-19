@@ -7,408 +7,267 @@
 | Approvers            | @just-mitch @aminsammara @Maddiaa0 |
 | Target Approval Date | YYYY-MM-DD                         |
 
-## Executive Summary
+# Executive Summary
 
-We propose a method to provide the Aztec network with similar **inclusion** censorship resistance of the base-layer.
+We propose a method to provide the Aztec network with similar **inclusion** censorship resistance as that of the base-layer.
 
-The mechanisms uses a delayed queue on L1, and require the ability to include valid but failing transactions (many of these changes overlaps with tx-objects).
-After some delay, the following blocks are complied to include transactions from the queue, and failing to do so will reject the blocks.
+The mechanism uses a delayed forced inclusion queue on L1, and requires the ability to include valid but failing transactions (many of these changes overlaps with tx-objects). After some delay, proposed blocks are required to include transactions from the queue, and failing to do so will reject the blocks.
 
-The length of the delay should take into account the expected delays of shared mutable, as it could be impossible to force a transaction that uses shared mutable if the queue delay is too large.
+The mechanism requires a minimum number of transactions to be included from the forced inclusion queue each epoch. If this minimum is not met then based fallback mode is entered. The based fallback mode needed for the forced inclusion mechanism introduces the concept of a based fallback epoch. During a based fallback epoch, blocks must be proposed and proven in the same transaction (nothing new there vs previous based fallback implementations). 
 
-## Introduction
+In this mechanism, any proven based fallback block containing the previously mentioned minimum number of forced inclusion transactions progresses the state to the next based fallback epoch. If the minimum is not met by the end of a based fallback epoch, the block containing the most forced inclusion transactions is finalized, and the state progresses to the next epoch. 
 
-While the [based fallback mechanism](8404-based-fallback.md) provide a mechanism to which we could provide ledger growth, to properly satisfy our liveness requirements, we need to improve the censorship resistance guarantees of the system.
-However for the censorship resistance to be meaningful, we will briefly go over what we define as censorship.
+When in based fallback mode, whenever the forced inclusion queue is emptied of all transactions that are required to be included, based fallback mode can be exited. 
 
-We use a similar definition of a censored transaction as the one outlined in [The Hand-off Problem](https://blog.init4.technology/p/the-hand-off-problem) (a good read that you should look into):
-
-> _"a transaction is censored if a third party can prevent it from achieving its goal."_
-
-For a system as the ours, even with the addition of the [based fallback mechanism](8404-based-fallback.md), there is a verity of methods a censor can use to keep a transaction out.
-
-The simplest is that the committee simply ignore the transaction.
-In this case, the user would need to wait until a more friendly committee comes along, and he is fully dependent on the consensus mechanism of our network being honest.
-
-Note, that there is a case where a honest committee would ignore your transaction, you might be paying an insufficient fee.
-This case should be easily solved, pay up you cheapskate!
-
-But lets assume that this is not the case you were in, you paid a sufficient fee and they keep excluding it.
-
-In rollups such as Arbitrum and Optimism both have a mechanism that allow the user to take his transactions directly to the base layer, and insert it into a "delayed" queue.
-After some delay have passed, the elements of the delayed queue can be forced into the ordering, and the sequencer is required to include it, or he will enter a game of fraud or not where he already lost.
-
-The delay is introduced into the system to ensure that the forced inclusions cannot be used as a way to censor the rollup itself.
-
-Curtesy of [The Hand-off Problem](https://blog.init4.technology/p/the-hand-off-problem), we borrow this great figure:
-![There must be a hand-off from unforced to forced inclusion.](https://substackcdn.com/image/fetch/f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F35f3bee4-0a8d-4c40-9c8d-0a145be64d87_3216x1243.png)
-
-The hand-off is here the point where we go from the ordering of transactions that the sequencer/proposer is freely choosing and the transactions that they are forced to include specifically ordered.
-For Arbitrum and Optimisms that would be after this delay passes and it is forced into the ordering.
-
-By having this forced insertion into the ordering the systems can get the same **inclusion** censorship resistance as their underlying baselayer.
-As long as ledger growth is also ensured, it is looking pretty good on the liveness property.
-
-However, nothing is really that easy.
-Note the emphasis on **inclusion** censorship resistance.
-While this provides a method to include the transaction, the transaction might itself revert, and so it is prevented from achieving its goal!
-
-This is particularly an issue in build-ahead models, as the delay ensure that the sequencer have plenty of time to include transactions, before the hand-off, that will alter the state of the chain, potentially making the transaction revert.
-
-Again, [The Hand-off Problem](https://blog.init4.technology/p/the-hand-off-problem) have a wonderful example and image:
-Consider that you have forced a transactions that is to use a trading pair or lending market, the sequencer could include your transaction right after it have emptied the market or pushed it just enough for your tx to fail to then undo the move right after.
-![The sequencer or builder can manipulate the state at the hand-off.](https://substackcdn.com/image/fetch/f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F9b449e22-66d0-4fe1-bc25-28aea3329e72_2799x1428.png)
-
-As this attack relies on contentious state being accessed, it is especially prone to happen for transactions operating in the public domain.
-For a private transaction, they might occur if the same user sent multiple transactions using the same notes (a double-spend) which should rightfully be stopped.
-Nevertheless, even a private transaction that is not double-spending might run into issues if its "lifetime" `max_block_number` have a smaller value than the time of forced inclusion.
-If the proposers can delay the transaction sufficiently it would end up reverting even if no state actually changed.
-
-A different attack could be to make the fees spike such that your forced transaction might have insufficient funds and end up reverting as an effect.
-This can be avoided by not requiring forced transactions to pay the fee, as long as the transaction have a bounded amount of gas.
-A reason that this could be acceptable is that the cost to go to L1 SHOULD be far greater than going to the L2, so you cannot use it as a mechanism to dos as it is still much more expensive than sending the same transaction and paying L2 gas for it.
-
-However, it opens a annoying problem for us, the circuits would need to know that it is a forced transaction to give us that "special" treatment.
-
-And how will we let it learn this fact?
-We essentially have a list of to be forced transactions at the contract, and we need to know if the block includes any of these.
-The naive way would be to loop through the transactions hashes, but then you perform a `sload` for every transaction (bye bye cheap transactions).
-Alternatively you could have the proposer provide hints - he can tell which of the transactions are forced!
-But what if he lies?
-In the case where he lies, the circuit would believe it was a normal transaction, and he gotta pay up.
-At the contract level, it would not check any value as it do not believe anything is in the forced inclusion, and if included before the deadline, the deadline will not make the proof submission fail either.
-
-For those reasons, we will take the simple way out.
-Let him pay, he might need to send 2 forced transactions, one to fund a balance and the second to perform his actual transaction, but that is part of the deal - take it or leave it.
-
-To minimize the proposers ability to make the transaction fail it can be beneficial to force the hand-off to happen at the start of a block.
-This essentially pushes the above example into a case of "multi-block censorship attack", which can be risky if the entity censoring is not producing both blocks.
-If the entity is producing both blocks, it can be seen fairly close to the same block with the caveat of some TWAP logic etc behaving differently.
-
-In the following sections, we will outline a design that allows us to provide **inclusion** guarantees to the users.
-
-We will **NOT** provide a mechanism that provide **execution** guarantees.
-
-
-> Consideration around minimum block size:  
-> Since one attack vector a censor could employ is to create blocks of just 1 transaction from the forced queue and thereby censor most for a longer duration it might be beneficial to require a minimum block size.
-
-## Implementation
+# **Implementation**
 
 While we would like most of the updates to be on the contract level, there are some checks that simply cannot be performed at the time where the insertion into the queue is performed.
 
-Namely, while we can check that the private kernel is valid against a specific archive root at the time of queue insertion, we don't know yet how it will alter the state as it depends on the time it gets inserts.
-As mentioned there is essentially an upper bound on that from the delay.
+Namely, while we can check that the private kernel is valid against a specific archive root at the time of queue insertion, we don't know yet how it will alter the state as it depends on the time it gets inserted on L2. As mentioned, there is essentially an upper bound on that from the (anchor block) delay.
 
-For this reason, we need to alter the circuits[^1], such that they will **not** cause an invalid rollup if a **FORCED** transaction were to fail due to:
+For this reason, we need to alter L2 execution and proving circuits, such that they will **not** cause an invalid rollup if a **FORCED** transaction were to fail due to:
 
-- A revert in public setup (usually called non-revertible)
-- Not included before `max_block_number`
-- Have duplicate nullifiers
-- Have invalid sibling pairs
-- Have insufficient funds for the fee
+1. **Pass but no diff**: Revert in public setup
+2. **Pass but no diff**: Fails due to late inclusion
+3. **Pass but no diff**: Fails due to stale anchor 
+4. **Pass but no diff**: Duplicate nullifiers
+5. **Invalid rollup**: Sequencer lies about the sibling paths to make it seem like duplicate nullifiers.
 
-[^1]: The reader who have spent too much time in these documents might recall that this have a big overlap with the changes needed if the tx objects idea is to be implemented 😯.
+Additionally, on L2 we need the following
 
-There is just one issue as mentioned at the end of the last chapter - figuring out if it is forced or not is a huge pain.
-Therefore we will likely need to support it for all transactions instead, as we cannot easily discern the types from one another.
+1. We bypass the fee payment when the fee payer matches a specific magic address: namely the `FIFPC` address on L2 (an abbreviation for **forced inclusion fee paying contract**)
+2. We accumulate the mana spent for txs using the `FIFPC` separately, such that we have 2 values that are outputted from the circuit.
+3. We compute a `forced_inclusion_root` that is the root of a tree of the transactions using the `FIFPC` address as fee payer, and verify this root vs. a header input.
 
-For the sake of simplicity, we will briefly assume that the above changes are made and describe the high-level architecture changes, before diving into the different aspects.
+For the sake of simplicity, we assume that the above changes are made and describe the high-level architecture changes, before diving into the different aspects.
 
-The idea is fairly simple:
+The idea is as follows
 
-- As part of the `Header` include a `txs_hash` which is the root of a SHA256 merkle tree, whose leafs are the first nullifiers (the transaction hashes) of the transactions in the block.
-- The rollup circuits have to ensure that this `txs_hash` is build correctly, e.g., are from the transaction hashes of the same transactions published to DA.
-- We take the idea of a delayed queue, that after some delay, forces the blocks to order transactions based on the queue.
-  When inserting into the delayed queue, we can check the private kernel proof (fairly expensive 💸) and we store the transaction hash along with a bit of metadata, e.g., the time at which it must be included etc.
-- At the time of epoch proof inclusion, the `txs_hash` roots can be used to prove the inclusion of members from the queue.
-  If specific transactions were required and are not proven to be included, the ethereum transaction simple reverts.
+- We take the idea of a delayed queue, that after some delay, forces the blocks to order transactions based on the queue. When inserting into the delayed queue, we can check the private kernel proof (fairly expensive 💸) and we store the transaction hash along with a bit of metadata, e.g., the time at which it must be included, which proposer included the transaction whenever it gets included, etc.
+- Forced inclusion transactions must specify the FIFPC as their fee payer on L2. This is used to ensure the mapping “all L1 forced inclusion queue transactions are treated as forced inclusion transactions on L2” holds. The FIFPC handles fee payment for forced inclusion transacitons in a unique way, so forced inclusion transactions do not need to pay L2 mana.
+- Headers are amended to include a merkle root of the forced inclusion transactions which they include, as well as the number of forced inclusion transaction they refer to. This needs to be verified in the circuits. This is used to ensure the mapping “all L2 forced inclusion transactions are present in the L1 forced inclusion queue” holds. Together with the previous bullet point, this ensures a 1-to-1 mapping of forced inclusion transactions on L1 and L2.
+- At the time of epoch proof inclusion, there is no need to verify anything related to forced inclusion transactions in the L2 blocks, although for simplicity we pass the number of forced inclusion transactions in L2 as a param. It may be simpler to store this as a variable in L1.
+- It is not currently imposed where in a block forced inclusion transactions are executed. However, the root on L2 must be constructed using the same ordering as the forced inclusion queue on L1.
 
-Beware that we only really address the forced inclusion needs when the proof is proposed.
-Nevertheless, the criteria for inclusion can be based on the time of the proposal.
-This would mean that someone can make a proposal that does not include forced inclusions (which should have been included), and people might believe it to be the pending chain if they are not checking if it satisfy the force inclusions.
+Additionally, we add functionality to handle the following:
 
-### The Delayed Queue Contract
+- Payment of forced inclusion fees happen on L1, and are settled at proof time.
+- If not enough forced inclusion transactions (enough is set as `FORCED_INCLUSION_LIVENESS_PARAM`) are popped over the course of 2 epochs, based fallback is triggered.
+- In based fallback, blocks are either:
+    - immediately accepted if the forced inclusion queue is emptied, or `FORCED_INCLUSION_LIVENESS_PARAM` transactions are popped from the queue.
+    - Added to an implicit queue ordered by the number of transactions the block pops from the forced inclusion queue. If no block is immediately accepted during an epoch, the block popping the most transactions can be accepted as final.
 
-Below we outline a delayed queue in vyper-like pseudo code.
-Here assuming that is an extension of the rollup contract so we have access to proven tip and such.
-Also note, that we are not too concerned about gas in below snippet, it is mainly there to convey an idea.
+**NOTE**: The based fallback transitions are still a work in progress.
+
+# Forced Inclusion Contracts
 
 ```python
 struct ForceInclusion:
-  tx_hash: bytes32
-  include_by_epoch: uint256
-  included: bool
-
+    tx_hash: bytes32
+    include_by_epoch: uint256
+    fee_paid: uint256 # fee accounting
+    proposer: address  # proposer assigned when included in a proposed block
 
 struct ForceInclusionProof:
-  proposal: ProposalHeader
-  attestations: Attestations
-  forced_inclusion_index: uint256,
-  block_number: uint256
-  index_in_block: uint256
-  membership_proof: bytes32[]
+    forced_inclusion_root : bytes32 # Merkle root of FI txs included in the proposed block
+    num_forced_inclusions: uint256 # num leaves covered by the root
+    
+struct BasedFallbackBlock:
+    header: Header
+		proof: Proof
+    tx_count: uint256
+    epoch_forced_inclusion_tx_count: uint256
+    archive: bytes32
+    fees: FeePayment[EPOCH_LENGTH]
 
-
+# --- Storage Variables ---
 forced_inclusions: public(HashMap[uint256, ForceInclusion])
-forced_inclusion_tip: public(uint256)
-forced_inclusion_count: public(uint256)
+total_forced_inclusions: public(uint256)
+forced_inclusion_proven_tip : public(uint256) # last FI tx proven
+forced_inclusion_pending_tip : public(uint256) # last FI tx proposed 
 
+FORCED_INCLUSION_DEADLINE: immutable(uint256)
+FIFPC_ADDRESS : immutable(address)
 
-FORCE_INCLUSION_DEADLINE: immutable(uint256)
+FORCED_INCLUSION_LIVENESS_PARAM: immutable(uint256) # number of FI txs that must be popped per epoch
+fallback_primed : bool
+based_fallback: bool
+based_fallback_leader: BasedFallbackBlock #tracks the nextt based fallback block to be added when in based fallback mode
+based_fallback_epoch: uint256
 
+# --- Constructor ---
+def __init__(deadline: uint256, fifpc_address: address, liveness_param:uint256):
+    self.FORCED_INCLUSION_DEADLINE = deadline
+    self.FIFPC_ADDRESS =  fifpc_address  # FIFPC address on L2
+    self.FORCED_INCLUSION_LIVENESS_PARAM = liveness_param
+		self.fallback_primed = false
+		self.based_fallback = false	
+		self.based_fallback_epoch = 0	
 
-def __init__(deadline: uint256):
-  self.FORCE_INCLUSION_DEADLINE = deadline
-
-
+# --- User-Facing Function ---
+@external
 def initiate_force_include(
     tx: Tx,
     block_number_proven_against: uint256
+    anchor_proof: Proof
 ):
-  '''
-  To be used by a user if they are getting massively censored by
-  the committees.
-  '''
+    assert block_number_proven_against <= self.proven_tip.block_number # here, self.proven_tip returns the block at the tip of the proven chain
 
-  assert block_number_proven_against <= self.proven_tip.block_number
+    archive = self.proposals[block_number_proven_against].archive
+    assert archive != bytes32(0)
+    assert anchor_proof.verify(archive, tx) # supposed to verify the tx is valid wrt to the anchor block at block_number_proven_against
+		assert tx.fee_payer== self.FIFPC_ADDRESS # verifies FIFPC is used 
+		
+		# fee accounting
+		
+		self.total_forced_inclusions += 1
+    self.forced_inclusions[self.total_forced_inclusions] = ForceInclusion(
+        tx_hash = tx.nullifiers[0],
+        include_by_epoch = get_current_epoch() + 1 + self.FORCE_INCLUSION_DEADLINE,
+        fee_paid=msg.value
+        proposer=empty(address) # proposer assigned later at propose()
+    )
+    
+# --- Proposer Functions ---
+@external
+def propose(header: Header):
+    super.propose(header)
+    epoch = self.get_epoch_at(header.global_variables.timestamp)
+	  
+	  expected_root: bytes32 = get_tree_root(
+        self.forced_inclusion_pending_tip, 
+        header.num_forced_inclusions
+    )# a function that returns the root of the tree corresponding to the forced inclusion transactions in forced_inclusions between pending and pending + fip.num_forced_inclusions. Should match the forced_root function be used in the circuits.
+		assert expected_root == header.force_inclusion_root
+		
+		# fee accounting	
+    for i: uint256 in range(fip.num_forced_inclusions):
+		    self.forced_inclusion_pending_tip += 1 # progress the pending tip
+        forced_inclusions[self.forced_inclusion_pending_tip].proposer= msg.sender
+		
+		# assert there is no pending forced inclusion transactions in the queue given the proposer tries to propose non-forced inclusion transactions		
+    if header.tx_count > fip.num_forced_inclusions && self.forced_inclusion_pending_tip < self.total_forced_inclusions:
+				assert self.forced_inclusions[self.forced_inclusion_pending_tip].include_by_epoch > epoch 						
 
-  archive = self.proposals[block_number_proven_against].archive
-  assert archive != empty(bytes32)
-  assert proof.verify(archive, tx)
+def based_fallback_propose(
+		header: Header,
+		fip: ForceInclusionProof 
+		proof,
+    tx_count: uint256,
+    epoch_forced_inclusion_tx_count: uint256
+    archive: bytes32
+    fees: FeePayment[EPOCH_LENGTH]
+):
+		assert self.based_fallback ==True
+    epoch = self.get_epoch_at(header.global_variables.timestamp)
+	  assert epoch <= based_fallback_epc
+	  
+	  # a function that returns the root of the tree corresponding to the forced inclusion transactions in forced_inclusions between pending and pending + fip.num_forced_inclusions. Should match the forced_root function be used in the circuits.
+	  expected_root: bytes32 = get_tree_root(
+        self.forced_inclusion_pending_tip, 
+        fip.num_forced_inclusions
+    )
+		assert expected_root == fip.force_inclusion_root
+	  
+	  if epoch_forced_inclusion_tx_count >= min(FORCED_INCLUSION_LIVENESS_PARAM, self.total_forced_inclusions - self.forced_inclusion_proven_tip  : # immediately propose and prove block
+			  super.propose(header)
+			  super.submit_next_epoch_proof(
+		    proof, tx_count, epoch_forced_inclusion_tx_count, archive, fees
+		) # note, also passing epoch_forced_inclusion_tx_count to enforce this number is valid. Might be easier ways to track this.
+		
+				# fee distribution	
+				fee_collected: uint256= 0
+		    for i: uint256 in range(1, epoch_forced_inclusion_tx_count+1):
+		        self.proven_tip += 1 # given epoch has been proven, increase the proven tip of the forced inclusion queue by the number of forced inclusion transactions during the proven epoch
+		        fee_collected +=self.forced_inclusions[self.proven_tip].fee_paid
+				send(msg.sender, fee_collected);
+						# send proposer all fees
+	  
+	  else: # FORCED_INCLUSION_LIVENESS_PARAM requirement not met, block must wait until end of based fallback epoch. 
+			  assert epoch_forced_inclusion_tx_count > based_fallback_leader.epoch_forced_inclusion_tx_count # require new block proposes more forced inclusions than previous block
+			  assert header.tx_count == fip.num_forced_inclusions 
+			  assert super.verify_basedfallback_proof(
+				    header, proof, tx_count, epoch_forced_inclusion_tx_count, archive, fees
+				) # don't submit, verify only for now
+			  based_fallback_leader = BasedFallbackBlock(
+							header,
+							proof,
+					    tx_count,
+					    epoch_forced_inclusion_tx_count,
+					    archive,
+					    fees
+				)# store leader
+			  # fee accounting	
+		    for i: uint256 in range(1,epoch_forced_inclusion_tx_count+1):
+				    forced_inclusions[self.forced_inclusion_pending_tip+i].proposer= msg.sender
 
-  self.forced_inclusions[self.forced_inclusion_count] = ForceInclusion(
-    tx_hash = tx.nullifiers[0],
-    include_by_epoch = get_current_epoch() + 1 + self.FORCE_INCLUSION_DEADLINE
-  )
-  self.forced_inclusion_count += 1
-
-
-def show_included(fip: ForceInclusionProof) -> bool:
-  '''
-  Convince the contract that a specific forced inclusion at `forced_inclusion_index` was
-  indeed included in a block.
-  '''
-  if self.forced_inclusions[fip.forced_inclusion_index].included:
-    return False
-
-  assert fip.forced_inclusion_index < self.forced_inclusion_count
-  tx_hash = self.forced_inclusions[fip.forced_inclusion_index].nullifier
-
-  assert self.proposals[fip.block_number].hash == hash(fip.proposal, fip.attestations)
-  assert fip.membership_proof.verify(tx_hash, fip.proposal.txs_hash)
-
-  self.forced_inclusions[fip.forced_inclusion_index].included = True
-
-  return self.progress_forced_inclusion_tip()
-
-
-def progress_forced_inclusion_tip() -> bool:
-  before = self.forced_inclusion_tip
-  for i in range(self.forced_inclusion_tip, self.forced_inclusion_count):
-    if not self.forced_inclusions[i].included:
-      return
-    self.forced_inclusion_tip = i
-  return self.forced_inclusion_tip != before
-
-
-@view
-def force_until(epoch: uint256, tx_count: uint256) -> uint256:
-  '''
-  Given the total number of transactions in the blocks of the epoch, return the index
-  we should have progressed to in the forced inclusion queue
-
-  I think this one maybe still have some issues with inclusion. Think we have to do the "progress" check.
-  Which could get really strange with the epoch.
-  '''
-  if tx_count == 0:
-    return self.forced_inclusion_tip
-
-  inclusions = 0;
-  force_until = self.forced_inclusion_tip
-
-  for i in range(self.self.forced_inclusion_tip, self.forced_inclusion_count):
-    fi = self.forced_inclusions[i]
-    if fi.included:
-      # This was included in the past
-      continue
-
-    if fi.include_by_epoch > epoch + 1:
-      break
-
-    inclusions += 1
-    force_until = i
-
-    if inclusions == tx_count:
-      break
-
-  return force_until
-
-
-@override
-def submit_next_epoch_proof(proof, tx_count: uint256, archive: bytes32, fees: FeePayment[EPOCH_LENGTH]):
-  epoch = self.get_epoch_at(self.get_timestamp_for_slot(self.blocks[self.provenBlockCount].slot_number))
-  super.submit_next_epoch_proof(proof, tx_count, archive, fees)
-  assert self.force_until(epoch, tx_count) <= self.forced_inclusion_tip, 'missing force inclusions'
-
-
-def submit_proof_with_force(proof, tx_count: uint256, archive, fees: FeePayment[EPOCH_LENGTH], fips: ForceInclusionProof[]):
-  epoch = self.get_epoch_at(self.get_timestamp_for_slot(self.blocks[self.provenBlockCount].slot_number))
-  super.submit_next_epoch_proof(proof, tx_count, archive, fees)
-  forced_until = self.force_until(epoch, tx_count)
-
-  fip_block = 0
-  fip_index = 0
-  for fip in fips:
-    assert fip.block_number > last_block_number_in_prior_epoch
-    assert fip.block_number <= last_block_number_in_current_epoch
-
-    if fip.block_number != fip_block:
-      fip_block = fip.block_number
-      fip_index = 0
-
-    assert fip.index_in_block == fip_index, 'incorrect ordering'
-    assert self.show_included(fip), 'did not progress the queue, incorrect ordering'
-
-    fip_index += 1
-
-  assert forced_until <= self.forced_inclusion_tip, 'missing force inclusions'
-```
-
-The reason we have the constraints on the block being in the epoch is fairly simple.
-If we did not have this check, it would be possible to provide a proof for a transactions that was included in a previous epoch.
-This could happen for example if you also had a block in the prior epoch.
-Lets say that there are 2 transactions that have passed their "deadline" so they must be included.
-You provide a block with 2 transactions, the first is from the forced queue, but the second is not.
-The `force_until` would return that you need to progress by 2.
-You then provide it the proof for the prior tx, it progress by 1, and then the proof for your new, the second.
-At this point, you progressed by 2, but only one of them was actually new.
-
-If someone have included a forced transaction earlier than it was required, anyone can use the `show_included` to mark it as included and progress the state of the delayed queue.
-
-Notice that the forced inclusions outlined does **not** strictly require insertion into the beginning of the epoch.
-But only that it is within the start of blocks within the epoch.
-
-Also, observe, that a failure to include the forced transactions will be caught at the time of proof verification, not at the time of proposal!
-
-#### Stricter inclusion constraints
-
-By being stricter with our constraints, and more loose with our gas expenditure 😎 we can change the system such that it:
-- Enforces the ordering earlier in the life-cycle;
-- Force the delayed queue to be included as the first transactions, e.g., from the very start of the epoch, limiting the proposers power.
-
-By extending the checks of the proposal, we can cause an early failure, such that we don't have to wait until the block have been proven to catch them meddling with the force inclusion ordering.
-
-It requires a bit more accounting, and will likely be slightly more expensive, however, the improved properties seems to make up for that.
-
-Could I not have written this in the first go?
-Well, yes, but it might get confusing with both the pending and non pending functions so I'm going to keep them separate for now.
-
-
-```python
-# Tracks the current active "reality":
-# Effectively a count on the number of pending chain reorgs.
-active_pending: uint256
-# For all the potential realities, tracks where the tip is
-forced_pending_tip: HashMap[uint256, uint256]
-# For all the potential realities, tracks what have been included
-included_pending: HashMap[uint256, HashMap[uint256, bool]]
-
-def propose(header: Header, fips: ForceInclusionProof[]):
-  super.propose(header)
-
-  epoch = self.get_epoch_at(header.global_variables.timestamp)
-  force_until = force_until_pending(epoch, header.tx_count)
-
-  for i, fip in enumerate(fips):
-    assert fip.block_number == header.global_variables.block_number, 'incorrect block'
-    assert fip.index_in_block == i, 'incorrect ordering'
-    assert self.show_included_pending(fip), 'did not progress the queue, incorrect ordering'
-
-  assert force_until <= self.forced_pending_tip[self.active_pending], 'missing force inclusions'
-
-
+@external
 def prune():
-  super.prune()
-  self.active_pending += 1
-  self.forced_pending_tip[self.active_pending] = self.forced_inclusion_tip
+    super.prune() # Call parent contract's prune logic.
+		self.forced_inclusion_pending_tip = self.proven_tip # reset pending tip of forced inclusion queue to last proven transaction
+		
+def finalize_based_fallback_propose() :
+    assert self.based_fallback_epoch < self.get_epoch_at(header.global_variables.timestamp)
+		super.propose(self.based_fallback_leader.header)
+		super.submit_next_epoch_proof(
+		    self.based_fallback_leader.proof, self.based_fallback_leader.tx_count, self.based_fallback_leader.epoch_forced_inclusion_tx_count, self.based_fallback_leader.archive, self.based_fallback_leader.fees
+		)
+		self.based_fallback_leader = 0
+		for i: uint256 in range(1, self.based_fallback_leader.epoch_forced_inclusion_tx_count+1):
+		    self.proven_tip += 1 # given epoch has been proven, increase the proven tip of the forced inclusion queue by the number of forced inclusion transactions during the proven epoch
+		    fee_collected +=self.forced_inclusions[self.proven_tip].fee_paid
+		send(self.based_fallback_leader.header.proposer, fee_collected);
+		self.based_fallback_epoch = self.get_epoch_at(header.global_variables.timestamp) +1 # conservatively set based_fallback_epoch to next epoch
 
-
+		
+def exit_based_fallback() :
+		# this function should require assertions from an Aztec epoch committee to exit
+		self.based_fallback= False
+		self.fallback_primed = False 
+		based_fallback_leader = 0
+		
+# --- Internal / View Functions for Forced Inclusion Logic ---
 @view
-def force_until_pending(epoch: uint256, tx_count: uint256) -> uint256:
-  '''
-  Very similar to `force_until` with the caveat that we also skip if it have been
-  included previously in the pending chain.
-  '''
+def forced_inclusion_liveness_fault(epoch: uint256, tx_count: uint256, epoch_forced_inclusion_tx_count: uint256) -> bool:
+		if tx_count == epoch_forced_inclusion_tx_count:
+				return False
+		if self.forced_inclusion_pending_tip == self.total_forced_inclusions:
+				return False
+		if self.forced_inclusions[self.proven_tip + epoch_forced_inclusion_tx_count].include_by_epoch > epoch:
+				return False
+		if epoch_forced_inclusion_tx_count >= FORCED_INCLUSION_LIVENESS_PARAM: # enough forced inclusion transactions were included this epoch
+				return False
+		# if all of the above if statements are false, this means the first forced inclusion transaction in the queue after those proven this epoch is also "due to be proven" and that not enough forced inclusion transactions were included this epoch(enough is equivalent to FORCED_INCLUSION_LIVENESS_PARAM). 
+		return True		
 
-  # Similar to the force_until
-  if tx_count == 0:
-    return self.forced_pending_tip[self.active_pending]
-
-  inclusions = 0;
-  force_until = self.forced_pending_tip[self.active_pending]
-
-  for i in range(self.forced_pending_tip[self.active_pending] , self.forced_inclusion_count):
-    fi = self.forced_inclusions[i]
-
-    if fi.included or self.included_pending[self.active_pending][i]: # The diff is down here!
-      # This was included in the past
-      continue
-
-    if fi.include_by_epoch > epoch + 1:
-      break
-
-    inclusions += 1
-    force_until = i
-
-    if inclusions == tx_count:
-      break
-
-  return force_until
-
-
-def show_included_pending(fip: ForceInclusionProof) -> bool:
-  '''
-  Convince the contract that a specific forced inclusion at `forced_inclusion_index` was
-  indeed included in a block.
-  '''
-  if self.forced_inclusions[fip.forced_inclusion_index].included:
-    return False
-
-  assert fip.forced_inclusion_index < self.forced_inclusion_count
-  tx_hash = self.forced_inclusions[fip.forced_inclusion_index].tx_hash
-
-  assert self.proposals[fip.block_number].hash == hash(fip.proposal, fip.attestations)
-  assert fip.membership_proof.verify(tx_hash, fip.proposal.txs_hash)
-
-  self.included_pending[self.active_pending][fip.forced_inclusion_index] = True
-
-  return self.progress_forced_inclusion_tip_pending()
-
-
-def progress_forced_inclusion_tip_pending() -> bool:
-  before = self.forced_pending_tip[self.active_pending]
-  for i in range(self.forced_pending_tip[self.active_pending], self.forced_inclusion_count):
-    if not (self.forced_inclusions[i].included OR self.included_pending[self.active_pending][i]):
-      break
-    self.forced_pending_tip[self.active_pending] = i
-  return self.forced_pending_tip[self.active_pending] != before
-
-
-@override
-def submit_proof(proof, tx_count: uint256, archive):
-  epoch = self.get_epoch_at(self.get_timestamp_for_slot(self.blocks[self.provenBlockCount].slot_number))
-  super.submit_next_epoch_proof(proof, tx_count, archive, fees)
-  forced_until = self.force_until(epoch, tx_count)
-
-  # Notice that this is very similar to `progress_forced_inclusion_tip_pending`
-  before = self.forced_inclusion_tip
-  for i in range(self.forced_inclusion_tip, self.forced_inclusion_count):
-    if not (self.forced_inclusions[i].included OR self.included_pending[self.active_pending][i]):
-      break
-    self.forced_inclusion_tip = i
-  
-  assert forced_until <= self.forced_inclusion_tip, 'missing force inclusions'
+# --- Overridden Parent Function ---
+@overridedef submit_proof(
+    proof,
+    tx_count: uint256,
+    epoch_forced_inclusion_tx_count: uint256
+    archive: bytes32
+    fees: FeePayment[EPOCH_LENGTH]
+):
+    assert self.based_fallback == False 
+    epoch = self.get_epoch_at(self.get_timestamp_for_slot(self.blocks[self.provenBlockCount].slot_number))
+    
+    super.submit_next_epoch_proof(
+		    proof, tx_count, epoch_forced_inclusion_tx_count, archive, fees
+		) # note, also passing epoch_forced_inclusion_tx_count to enforce this number is valid. Might be easier ways to track this.
+    
+    if forced_inclusion_liveness_fault(epoch, tx_count, epoch_forced_inclusion_tx_count): # violation of the forced inclusion liveness requirement
+				****if ****self.fallback_primed == True: # Trigger has already been primed
+						self.based_fallback = True # based fallback next epoch
+						self.based_fallback_epoch = self.get_epoch_at(header.global_variables.timestamp) +1 # conservatively set based_fallback_epoch to next epoch
+				self.fallback_primed = True # primes based fallback mode. This needs to be set to false after based fallback mode is entered. 
+    
+    # fee distribution	
+    for i: uint256 in range(1, epoch_forced_inclusion_tx_count+1):
+        self.proven_tip += 1 # given epoch has been proven, increase the proven tip of the forced inclusion queue by the number of forced inclusion transactions during the proven epoch
+        fi_fee_half: uint256 =self.forced_inclusions[self.proven_tip].fee_paid /2 # proposer and prover receive half of the fee paid. 50:50 split is arbitrary
+        send(self.forced_inclusions[self.proven_tip].proposer, fi_fee_half)
+				send(msg.sender, fi_fee_half); # for each fip, send half of the forced inclusion fee paid to the proposer
+				# can be made more efficient by batching transfers	  
 ```
 
 ### Block Validation
@@ -483,6 +342,46 @@ The PXE should also change slightly, as it could offer sending a forced transact
 
 The sequencers would need to take into account the forced queue.
 This could be done fairly simple by just having the "vanilla" sequencer build their blocks using first this queue and then their mempool.
+
+## Proposed FIFPC L2 Execution Changes
+
+All forced inclusion transactions (FI txs) queued on L1 must set the special “forced inclusion Fee Paying Contract”, `FIFPC`, as their fee payer / FPC. The processing of `FIFPC` transactions on L2 will allow the L1 to verify that only FI txs queued on L1 used the `FIFPC`, by forcing a commitment to all `FIFPC` transactions to be reported to L1. With this, we are able to ensure a 1-to-1 mapping of FI txs queued on L1 with all FIFPC transactions processed on L2. The changes to L2 execution are as follows:
+
+1. Create a special “forced inclusion Fee Paying Contract (`FIFPC`). 
+    1. `FIFPC` noir contract development: added as part of genesis at "magic" address. (h/t Lasse)
+    2. `FeeJuice` noir contract: allow the `FIFPC` magic address to mint funds such that it can cover itself (h/t Lasse)
+2. For each block, add a parameter which commits to the number of transactions using `FIFPC`. If the actual number of `FIFPC` transactions differs from the committed number, the block is invalid, which is enforced at proof time. 
+3. For each epoch, maintain in L2 state:
+    1. An array of `FIFPC` fees collected, let's say `_args.fiFees[]`, similar to `_args.fees[]`, 
+    2. A commitment to the FI txs processed this epoch. This will be a proof parameter used to validate processed FI txs on L2 match those processed on L1.
+4. **Accounting**: 
+    1. Each time the `FIFPC` is used (by an FI tx)
+        1. Mint `max_fee` on behalf of the respective FI tx
+        2. Calculate actual gas fee, `actual_fee`, as is normal in an FPC
+            1. pay `actual_fee` ****to the L2 accounting contract
+            2. add the actual gas fee to the `_args.fiFees[]` index corresponding to the current block.
+            3. burn `max_fee-actual_fee`.
+    2. In `handleRewardsAndFees()` , calculate fee to be collected by proposers and provers as normal, with an additional line of code which decreases the fee to be collected by the corresponding entry in `_args.fiFees[]`
+    3. Burn sum(`_args.fiFees[]`)  
+
+## Based Fallback Mechanism Explainer
+
+[The original discussion on based fallback can be found here.](https://www.notion.so/Based-Fallback-Mechanism-249360fc38d080948962d2966ad68fd9?pvs=21) In this section, we describe at a high-level the working design being used for the based fallback.
+
+1. Based Fallback is entered after 2 consecutive epochs where the minimum liveness threshold $L > 0$ is not met. Not meeting the liveness threshold in an epoch means less than $L$  transactions were proposed in that epoch.
+    1. Design wise, this can be pseudo enforced by:
+        1. disabling normal proof submission, 
+        2. having L2 nodes disregard such epochs
+        3. forcing proofs to be sent through a special “based_fallback_” function which handles forking the chain.
+2. Based fallback proceeds in **based fallback epochs** which currently have the same length as normal epochs, although this may need to be increased to enable permissionless block proposals.
+3. Once in based fallback, all block proposals must be accompanied by a proof for that block. 
+4. Let there be `$F$` transactions in the forced inclusion queue when based fallback mode is entered. During a based fallback slot, the canonical proposed block is decided according to the following rules:
+    1. If any block proposal contains `min(FORCED_INCLUSION_LIVENESS_PARAM, $F$)` forced inclusion transactions, this block is made canonical and the based fallback epoch ends.
+    2. Else, if no block proposal contains the `min(FORCED_INCLUSION_LIVENESS_PARAM, $F$)` forced inclusion transactions, at the end of the based fallback slot, the block proposal containing the most forced inclusion transactions is made canonical. Ties are decided by time-priority. 
+5. (WIP) Based fallback can be exited if and only if all of the following conditions hold:
+    1. The forced inclusion queue has been emptied
+    2. The Aztec committee corresponding to the current L1 slot (or perhaps the current Aztec epoch is not dependent on the L1 slot?) sends an aggregated signature to the L1 smart contract, signalling the committee is online. The most straightforward way for this signature to be provided would be through a normal-mode block proposal.
+        1. We may want a separate deadline within a based fallback slot for this committee signature to come online. This would avoid honest-but-slow prover work being invalidated close to proving being finished.
 
 ## Change Set
 
