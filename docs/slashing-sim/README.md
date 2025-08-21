@@ -40,11 +40,11 @@ The main value of the notebook comes from the network simulation, and then being
 git clone https://github.com/AztecProtocol/engineering-designs.git
 cd docs/slashing-sim
 
+# Create a virtual environment if you want to (remember to activate)
+uv venv
+
 # Install dependencies using uv
 uv sync
-
-# This creates a virtual environment and installs all required packages
-uv venv
 ```
 
 ### Running the Simulation
