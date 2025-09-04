@@ -32,88 +32,94 @@ We define a keystore to be a JSON file with the following structure. To satisfy 
 
 ```ts
 type KeyStore = {
-  /** Schema version of this keystore file (initially 1). */
-  schemaVersion: number;
-  /** Validator configurations. */
-  validators?: ValidatorKeyStore[];
-  /** One or more accounts used for creating slash payloads on L1. Does not create slash payloads if not set. */
-  slasher?: EthAccounts;
-  /** Default config for the remote signer for all accounts in this file. */
-  remoteSigner?: EthRemoteSignerConfig;
-  /** Prover configuration. Only one prover configuration is allowed. */
-  prover?: ProverKeyStore;
+	/** Schema version of this keystore file (initially 1). */
+	schemaVersion: number;
+	/** Validator configurations. */
+	validators?: ValidatorKeyStore[];
+	/** One or more accounts used for creating slash payloads on L1. Does not create slash payloads if not set. */
+	slasher?: EthAccounts;
+	/** Default config for the remote signer for all accounts in this file. */
+	remoteSigner?: EthRemoteSignerConfig;
+	/** Prover configuration. Only one prover configuration is allowed. */
+	prover?: ProverKeyStore;
+	/** Used for automatically funding publisher accounts if there is none defined in the corresponding  ValidatorKeyStore*/
+	fundingAccount?: EthAccount;
 };
 
 type ValidatorKeyStore = {
-  /**
-   * One or more validator attester keys to handle in this configuration block.
-   * An attester address may only appear once across all configuration blocks across all keystore files.
-   */
-  attester: EthAccounts;
-  /**
-   * Coinbase address to use when proposing an L2 block as any of the validators in this configuration block.
-   * Falls back to the attester address if not set.
-   */
-  coinbase?: EthAddress;
-  /**
-   * One or more EOAs used for sending block proposal L1 txs for all validators in this configuration block.
-   * Falls back to the attester account if not set.
-   */
-  publisher?: EthAccounts;
-  /**
-   * Fee recipient address to use when proposing an L2 block as any of the validators in this configuration block.
-   */
-  feeRecipient: AztecAddress;
-  /**
-   * Default remote signer for all accounts in this block.
-   */
-  remoteSigner?: EthRemoteSignerConfig;
+	/**
+	 * One or more validator attester keys to handle in this configuration block.
+	 * An attester address may only appear once across all configuration blocks across all keystore files.
+	 */
+	attester: EthAccounts;
+	/**
+	 * Coinbase address to use when proposing an L2 block as any of the validators in this configuration block.
+	 * Falls back to the attester address if not set.
+	 */
+	coinbase?: EthAddress;
+	/**
+	 * One or more EOAs used for sending block proposal L1 txs for all validators in this configuration block.
+	 * Falls back to the attester account if not set.
+	 */
+	publisher?: EthAccounts;
+	/**
+	 * Fee recipient address to use when proposing an L2 block as any of the validators in this configuration block.
+	 */
+	feeRecipient: AztecAddress;
+	/**
+	 * Default remote signer for all accounts in this block.
+	 */
+	remoteSigner?: EthRemoteSignerConfig;
+	/**
+	 * Used for automatically funding publisher accounts in this block.
+	 */
+	fundingAccount?: EthAccount;
 };
 
 type ProverKeyStore =
-  | {
-      /** Address that identifies the prover. This address will receive the rewards. */
-      id: EthAddress;
-      /** One or more EOAs used for sending proof L1 txs. */
-      publisher: EthAccounts[];
-    }
-  | EthAccount;
+	| {
+			/** Address that identifies the prover. This address will receive the rewards. */
+			id: EthAddress;
+			/** One or more EOAs used for sending proof L1 txs. */
+			publisher: EthAccounts[];
+	  }
+	| EthAccount;
 
 /** One or more L1 accounts */
 type EthAccounts = EthAccount | EthAccount[] | EthMnemonicConfig;
 
 /** A mnemonic can be used to define a set of accounts */
 type EthMnemonicConfig = {
-  mnemonic: string;
-  addressIndex?: number;
-  accountIndex?: number;
-  addressCount?: number;
-  accountCount?: number;
+	mnemonic: string;
+	addressIndex?: number;
+	accountIndex?: number;
+	addressCount?: number;
+	accountCount?: number;
 };
 
 /** An L1 account is a private key, a remote signer configuration, or a standard json key store file */
 type EthAccount =
-  | EthPrivateKey
-  | EthRemoteSignerAccount
-  | EthJsonKeyFileV3Config;
+	| EthPrivateKey
+	| EthRemoteSignerAccount
+	| EthJsonKeyFileV3Config;
 
 /** A remote signer is configured as an URL to connect to, and optionally a client certificate to use for auth */
 type EthRemoteSignerConfig =
-  | Url
-  | { remoteSignerUrl: Url; certPath?: string; certPass?: string };
+	| Url
+	| { remoteSignerUrl: Url; certPath?: string; certPass?: string };
 
 /**
  * A remote signer account config is equal to the remote signer config, but requires an address to be specified.
  * If only the address is set, then the default remote signer config from the parent config is used.
  */
 type EthRemoteSignerAccount =
-  | EthAddress
-  | {
-      address: EthAddress;
-      remoteSignerUrl: Url;
-      certPath?: string;
-      certPass?: string;
-    };
+	| EthAddress
+	| {
+			address: EthAddress;
+			remoteSignerUrl: Url;
+			certPath?: string;
+			certPass?: string;
+	  };
 
 /** A json keystore config points to a local file with the encrypted private key, and may require a password for decrypting it */
 type EthJsonKeyFileV3Config = { path: string; password?: string };
