@@ -42,7 +42,7 @@ type KeyStore = {
 	remoteSigner?: EthRemoteSignerConfig;
 	/** Prover configuration. Only one prover configuration is allowed. */
 	prover?: ProverKeyStore;
-	/** Used for automatically funding publisher accounts */
+	/** Used for automatically funding publisher accounts if there is none defined in the corresponding  ValidatorKeyStore*/
 	fundingAccount?: EthAccount;
 };
 
