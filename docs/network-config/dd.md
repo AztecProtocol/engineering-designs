@@ -39,7 +39,8 @@ Parsing of this schema should be permissive, allowing for new keys to be added w
       "https://another.provider.com/snapshots/staging-public/",
     ],
     "registryAddress": "0x2e48addca360da61e4d6c21ff2b1961af56eb83b",
-    "feeAssetHandlerAddress": "0xb46dc3d91f849999330b6dd93473fa29fc45b076"
+    "feeAssetHandlerAddress": "0xb46dc3d91f849999330b6dd93473fa29fc45b076",
+    "l1ChainId": 11155111
   },
   "staging-ignition": { 
     "bootnodes": [ 
@@ -50,7 +51,8 @@ Parsing of this schema should be permissive, allowing for new keys to be added w
       "https://another.provider.com/snapshots/staging-ignition/",
     ],
     "registryAddress": "0x5f85fa0f40bc4b5ccd53c9f34258aa55d25cdde8",
-    "feeAssetHandlerAddress": "0x67d645b0a3e053605ea861d7e8909be6669812c4"
+    "feeAssetHandlerAddress": "0x67d645b0a3e053605ea861d7e8909be6669812c4",
+    "l1ChainId": 11155111
   },
   "testnet": {
     "bootnodes": [ 
@@ -61,7 +63,8 @@ Parsing of this schema should be permissive, allowing for new keys to be added w
       "https://another.provider.com/snapshots/testnet/",
     ],
     "registryAddress": "0xc2f24280f5c7f4897370dfdeb30f79ded14f1c81",
-    "feeAssetHandlerAddress": "0x50513c3713ffd33301e85f30d86ab764df421fe9"
+    "feeAssetHandlerAddress": "0x50513c3713ffd33301e85f30d86ab764df421fe9",
+    "l1ChainId": 11155111
   }
 }
 ```
