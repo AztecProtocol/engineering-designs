@@ -22,11 +22,12 @@ Node operators can specify `--network <network-name>` on the command line when t
 
 When this argument is provided the node performs a lookup of basic information about the network such as where to find p2p bootnodes or state snapshots.
 
-This information will be provided in the form of a json file, hosted at a known GitHub location owned by the foundation.
+This information will be provided in the form of a json file, hosted at a known GitHub location owned by the foundation. The node will accept a new configuration value `NETWORK_CONFIG_LOCATION` which will default to this github location.
+This configuration value can be either a url or a path to a local file.
 
 It will still be possible for an operator to override sections of the configuration with their own provided values. As an example, it is possible to override the `bootnodes` configuration by populating the `BOOTSTRAP_NODES` environment variable.
 
-Parsing of this schema should be permissive, allowing for new keys to be added which a node at a given version is unaware of. In this case that node would continue to use it's previously provided values.
+Parsing of this schema should be permissive, allowing for new keys to be added which a node at a given version maybe unaware of. In this case that node would continue to use it's previously provided values.
 
 ```
 {
