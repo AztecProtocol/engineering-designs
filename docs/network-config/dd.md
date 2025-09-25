@@ -26,6 +26,8 @@ This information will be provided in the form of a json file, hosted at a known 
 
 It will still be possible for an operator to override sections of the configuration with their own provided values. As an example, it is possible to override the `bootnodes` configuration by populating the `BOOTSTRAP_NODES` environment variable.
 
+Parsing of this schema should be permissive, allowing for new keys to be added which a node at a given version is unaware of. In this case that node would continue to use it's previously provided values.
+
 ```
 {
   "staging-public": { 
@@ -35,7 +37,9 @@ It will still be possible for an operator to override sections of the configurat
     "snapshots": [
       "https://storage.googleapis.com/aztec-testnet/snapshots/staging-public/",
       "https://another.provider.com/snapshots/staging-public/",
-    ]
+    ],
+    "registryAddress": "0x2e48addca360da61e4d6c21ff2b1961af56eb83b",
+    "feeAssetHandlerAddress": "0xb46dc3d91f849999330b6dd93473fa29fc45b076"
   },
   "staging-ignition": { 
     "bootnodes": [ 
@@ -45,7 +49,8 @@ It will still be possible for an operator to override sections of the configurat
       "https://storage.googleapis.com/aztec-testnet/snapshots/staging-ignition/",
       "https://another.provider.com/snapshots/staging-ignition/",
     ],
-    registry
+    "registryAddress": "0x5f85fa0f40bc4b5ccd53c9f34258aa55d25cdde8",
+    "feeAssetHandlerAddress": "0x67d645b0a3e053605ea861d7e8909be6669812c4"
   },
   "testnet": {
     "bootnodes": [ 
@@ -54,7 +59,9 @@ It will still be possible for an operator to override sections of the configurat
     "snapshots": [
       "https://storage.googleapis.com/aztec-testnet/snapshots/testnet/",
       "https://another.provider.com/snapshots/testnet/",
-    ]
+    ],
+    "registryAddress": "0xc2f24280f5c7f4897370dfdeb30f79ded14f1c81",
+    "feeAssetHandlerAddress": "0x50513c3713ffd33301e85f30d86ab764df421fe9"
   }
 }
 ```
