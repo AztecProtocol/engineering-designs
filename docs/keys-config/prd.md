@@ -51,13 +51,7 @@ type ValidatorKeyStore = {
 	 * One or more validator attester keys to handle in this configuration block.
 	 * An attester address may only appear once across all configuration blocks across all keystore files.
 	 */
-	attester: EthAccounts;
-	/** 
-	 * One or more BLS attester keys to handle in this configuration block.
-	 * These keys map 1 to 1 with the attester accounts above.
-	 * So for example, if a mnemonic is used here it should specify the same number of keys as in 'attester'.
-	 */
-	blsAttester?: BLSAccounts;
+	attester: AttesterAccounts;
 	/**
 	 * Coinbase address to use when proposing an L2 block as any of the validators in this configuration block.
 	 * Falls back to the attester address if not set.
@@ -92,10 +86,10 @@ type ProverKeyStore =
 	| EthAccount;
 
 /** One or more L1 accounts */
-type EthAccounts = EthAccount | EthAccount[] | EthMnemonicConfig;
+type EthAccounts = EthAccount | EthAccount[] | MnemonicConfig;
 
-/** One or more BLS accounts */
-type BLSAccounts = BLSAccount | BLSAccount[] | BLSMnemonicConfig;
+/** One or more attester accounts combining ETH and BLS keys */
+type AttesterAccounts = AttesterAccount | AttesterAccounts | MnemonicConfig;
 
 /** A mnemonic can be used to define a set of accounts */
 type MnemonicConfig = {
@@ -106,18 +100,22 @@ type MnemonicConfig = {
 	accountCount?: number;
 };
 
-type EthMnemonicConfig = MnemonicConfig;
-type BLSMnemonicConfig = MnemonicConfig;
-
 /** An L1 account is a private key, a remote signer configuration, or a standard json key store file */
 type EthAccount =
 	| EthPrivateKey
 	| EthRemoteSignerAccount
-	| EthJsonKeyFileV3Config;
+	| JsonKeyFileV3Config;
 
-type BlsAccount = 
+/** A BLS account is either a private key, or a standard json key store file */ 
+type BLSAccount = 
   | BLSPrivateKey
-  | BLSJsonKeyFileV3Config;
+  | JsonKeyFileV3Config;
+
+/** An AttesterAccount is a combined EthAccount with an optional BLS account */
+type AttesterAccount = {
+  ethAccount: EthAccount;
+  blsAccount?: BLSAccount;
+}
 
 /** A remote signer is configured as an URL to connect to, and optionally a client certificate to use for auth */
 type EthRemoteSignerConfig =
@@ -139,8 +137,6 @@ type EthRemoteSignerAccount =
 
 /** A json keystore config points to a local file with the encrypted private key, and may require a password for decrypting it */
 type JsonKeyFileV3Config = { path: string; password?: string };
-type EthJsonKeyFileV3Config = JsonKeyFileV3Config;
-type BLSJsonKeyFileV3Config = JsonKeyFileV3Config;
 
 
 /** A private key is a 32-byte 0x-prefixed hex */
@@ -175,6 +171,10 @@ The remote signer defines a [Web3Signer](https://docs.web3signer.consensys.io/) 
 ### Json V3
 
 The JsonV3 keyfile is a standard for storing encrypted ethereum private keys. The `JsonKeyFileV3Config` allows defining a path to a JsonV3 keyfile along with the password needed for decrypting it. The path may be a directory, in which case all json files within the directory are loaded.
+
+### BLS Keys
+
+BLS keys are currently optional as they are not used within the platform. If specified they will be validated as being in the correct format.
 
 ## Examples
 
