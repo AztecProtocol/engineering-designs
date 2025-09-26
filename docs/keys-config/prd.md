@@ -112,10 +112,7 @@ type BLSAccount =
   | JsonKeyFileV3Config;
 
 /** An AttesterAccount is a combined EthAccount and optional BLSAccount */
-type AttesterAccount = {
-  ethAccount: EthAccount;
-  blsAccount?: BLSAccount;
-}
+type AttesterAccount = { eth: EthAccount; bls?: BLSAccount; } | EthAccount
 
 /** A remote signer is configured as an URL to connect to, and optionally a client certificate to use for auth */
 type EthRemoteSignerConfig =
