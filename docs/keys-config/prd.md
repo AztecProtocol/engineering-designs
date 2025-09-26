@@ -52,12 +52,12 @@ type ValidatorKeyStore = {
 	 * An attester address may only appear once across all configuration blocks across all keystore files.
 	 */
 	attester: EthAccounts;
-  /** 
-   * One or more BLS attester keys to handle in this configuration block.
-   * These keys map 1 to 1 with the attester accounts above.
-   * So for example, if a mnemonic is used here it should specify the same number of keys as in 'attester'.
-   */
-  blsAttester?: BLSAccounts;
+	/** 
+	 * One or more BLS attester keys to handle in this configuration block.
+	 * These keys map 1 to 1 with the attester accounts above.
+	 * So for example, if a mnemonic is used here it should specify the same number of keys as in 'attester'.
+	 */
+	blsAttester?: BLSAccounts;
 	/**
 	 * Coinbase address to use when proposing an L2 block as any of the validators in this configuration block.
 	 * Falls back to the attester address if not set.
@@ -157,7 +157,7 @@ type AztecAddress = Hex<32>;
 
 ### Mnemonic
 
-The `EthMnemonicConfig` accepts a seed phrase and by default derives the private key at `m/44'/60'/0'/0/0` based on [BIP44](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki). Setting a different address or account index change the corresponding level, and setting a different count generates multiple keys starting on the specified index.
+The `MnemonicConfig` accepts a seed phrase and by default derives the private key at `m/44'/60'/0'/0/0` based on [BIP44](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki). Setting a different address or account index change the corresponding level, and setting a different count generates multiple keys starting on the specified index.
 
 | Address Index | Address Count | Account Index | Account Count | Resulting Derivation Paths                                                     |
 | ------------- | ------------- | ------------- | ------------- | ------------------------------------------------------------------------------ |
@@ -174,7 +174,7 @@ The remote signer defines a [Web3Signer](https://docs.web3signer.consensys.io/) 
 
 ### Json V3
 
-The JsonV3 keyfile is a standard for storing encrypted ethereum private keys. The `EthJsonKeyFileV3Config` allows defining a path to a JsonV3 keyfile along with the password needed for decrypting it. The path may be a directory, in which case all json files within the directory are loaded.
+The JsonV3 keyfile is a standard for storing encrypted ethereum private keys. The `JsonKeyFileV3Config` allows defining a path to a JsonV3 keyfile along with the password needed for decrypting it. The path may be a directory, in which case all json files within the directory are loaded.
 
 ## Examples
 
