@@ -51,7 +51,7 @@ type ValidatorKeyStore = {
 	 * One or more validator attester keys to handle in this configuration block.
 	 * An attester address may only appear once across all configuration blocks across all keystore files.
 	 */
-	attester: EthAccounts;
+	attester: AttesterAccounts;
 	/**
 	 * Coinbase address to use when proposing an L2 block as any of the validators in this configuration block.
 	 * Falls back to the attester address if not set.
@@ -86,10 +86,13 @@ type ProverKeyStore =
 	| EthAccount;
 
 /** One or more L1 accounts */
-type EthAccounts = EthAccount | EthAccount[] | EthMnemonicConfig;
+type EthAccounts = EthAccount | EthAccount[] | MnemonicConfig;
+
+/** One or more attester accounts combining ETH and BLS keys */
+type AttesterAccounts = AttesterAccount | AttesterAccounts | MnemonicConfig;
 
 /** A mnemonic can be used to define a set of accounts */
-type EthMnemonicConfig = {
+type MnemonicConfig = {
 	mnemonic: string;
 	addressIndex?: number;
 	accountIndex?: number;
@@ -101,7 +104,15 @@ type EthMnemonicConfig = {
 type EthAccount =
 	| EthPrivateKey
 	| EthRemoteSignerAccount
-	| EthJsonKeyFileV3Config;
+	| JsonKeyFileV3Config;
+
+/** A BLS account is either a private key, or a standard json key store file */ 
+type BLSAccount = 
+  | BLSPrivateKey
+  | JsonKeyFileV3Config;
+
+/** An AttesterAccount is a combined EthAccount and optional BLSAccount */
+type AttesterAccount = { eth: EthAccount; bls?: BLSAccount; } | EthAccount
 
 /** A remote signer is configured as an URL to connect to, and optionally a client certificate to use for auth */
 type EthRemoteSignerConfig =
@@ -122,10 +133,13 @@ type EthRemoteSignerAccount =
 	  };
 
 /** A json keystore config points to a local file with the encrypted private key, and may require a password for decrypting it */
-type EthJsonKeyFileV3Config = { path: string; password?: string };
+type JsonKeyFileV3Config = { path: string; password?: string };
+
 
 /** A private key is a 32-byte 0x-prefixed hex */
 type EthPrivateKey = Hex<32>;
+
+type BLSPrivateKey = Hex<32>
 
 /** An address is a 20-byte 0x-prefixed hex */
 type EthAddress = Hex<20>;
@@ -136,7 +150,7 @@ type AztecAddress = Hex<32>;
 
 ### Mnemonic
 
-The `EthMnemonicConfig` accepts a seed phrase and by default derives the private key at `m/44'/60'/0'/0/0` based on [BIP44](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki). Setting a different address or account index change the corresponding level, and setting a different count generates multiple keys starting on the specified index.
+The `MnemonicConfig` accepts a seed phrase and by default derives the private key at `m/44'/60'/0'/0/0` based on [BIP44](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki). Setting a different address or account index change the corresponding level, and setting a different count generates multiple keys starting on the specified index.
 
 | Address Index | Address Count | Account Index | Account Count | Resulting Derivation Paths                                                     |
 | ------------- | ------------- | ------------- | ------------- | ------------------------------------------------------------------------------ |
@@ -153,7 +167,11 @@ The remote signer defines a [Web3Signer](https://docs.web3signer.consensys.io/) 
 
 ### Json V3
 
-The JsonV3 keyfile is a standard for storing encrypted ethereum private keys. The `EthJsonKeyFileV3Config` allows defining a path to a JsonV3 keyfile along with the password needed for decrypting it. The path may be a directory, in which case all json files within the directory are loaded.
+The JsonV3 keyfile is a standard for storing encrypted ethereum private keys. The `JsonKeyFileV3Config` allows defining a path to a JsonV3 keyfile along with the password needed for decrypting it. The path may be a directory, in which case all json files within the directory are loaded.
+
+### BLS Keys
+
+BLS keys are currently optional as they are not used within the platform. If specified they will be validated as being in the correct format.
 
 ## Examples
 
