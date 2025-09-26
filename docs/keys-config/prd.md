@@ -111,7 +111,7 @@ type BLSAccount =
   | BLSPrivateKey
   | JsonKeyFileV3Config;
 
-/** An AttesterAccount is a combined EthAccount with an optional BLS account */
+/** An AttesterAccount is a combined EthAccount and optional BLSAccount */
 type AttesterAccount = {
   ethAccount: EthAccount;
   blsAccount?: BLSAccount;
