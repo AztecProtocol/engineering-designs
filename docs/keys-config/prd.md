@@ -52,6 +52,12 @@ type ValidatorKeyStore = {
 	 * An attester address may only appear once across all configuration blocks across all keystore files.
 	 */
 	attester: EthAccounts;
+  /** 
+   * One or more BLS attester keys to handle in this configuration block.
+   * These keys map 1 to 1 with the attester accounts above.
+   * So for example, if a mnemonic is used here it should specify the same number of keys as in 'attester'.
+   */
+  blsAttester?: BLSAccounts;
 	/**
 	 * Coinbase address to use when proposing an L2 block as any of the validators in this configuration block.
 	 * Falls back to the attester address if not set.
@@ -88,8 +94,11 @@ type ProverKeyStore =
 /** One or more L1 accounts */
 type EthAccounts = EthAccount | EthAccount[] | EthMnemonicConfig;
 
+/** One or more BLS accounts */
+type BLSAccounts = BLSAccount | BLSAccount[] | BLSMnemonicConfig;
+
 /** A mnemonic can be used to define a set of accounts */
-type EthMnemonicConfig = {
+type MnemonicConfig = {
 	mnemonic: string;
 	addressIndex?: number;
 	accountIndex?: number;
@@ -97,11 +106,18 @@ type EthMnemonicConfig = {
 	accountCount?: number;
 };
 
+type EthMnemonicConfig = MnemonicConfig;
+type BLSMnemonicConfig = MnemonicConfig;
+
 /** An L1 account is a private key, a remote signer configuration, or a standard json key store file */
 type EthAccount =
 	| EthPrivateKey
 	| EthRemoteSignerAccount
 	| EthJsonKeyFileV3Config;
+
+type BlsAccount = 
+  | BLSPrivateKey
+  | BLSJsonKeyFileV3Config;
 
 /** A remote signer is configured as an URL to connect to, and optionally a client certificate to use for auth */
 type EthRemoteSignerConfig =
@@ -122,10 +138,15 @@ type EthRemoteSignerAccount =
 	  };
 
 /** A json keystore config points to a local file with the encrypted private key, and may require a password for decrypting it */
-type EthJsonKeyFileV3Config = { path: string; password?: string };
+type JsonKeyFileV3Config = { path: string; password?: string };
+type EthJsonKeyFileV3Config = JsonKeyFileV3Config;
+type BLSJsonKeyFileV3Config = JsonKeyFileV3Config;
+
 
 /** A private key is a 32-byte 0x-prefixed hex */
 type EthPrivateKey = Hex<32>;
+
+type BLSPrivateKey = Hex<32>
 
 /** An address is a 20-byte 0x-prefixed hex */
 type EthAddress = Hex<20>;
