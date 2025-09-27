@@ -11,7 +11,7 @@
 
 We propose a method to provide the Aztec network with similar **inclusion** censorship resistance of the base-layer.
 
-The mechanisms uses a delayed queue on L1, and require the ability to include valid but failing transactions (many of these changes overlaps with tx-objects).
+The mechanisms uses a delayed queue on L1, and requires the ability to include valid but failing transactions (many of these changes overlaps with tx-objects).
 After some delay, the following blocks are complied to include transactions from the queue, and failing to do so will reject the blocks.
 
 The length of the delay should take into account the expected delays of shared mutable, as it could be impossible to force a transaction that uses shared mutable if the queue delay is too large.
@@ -36,11 +36,11 @@ This case should be easily solved, pay up you cheapskate!
 But lets assume that this is not the case you were in, you paid a sufficient fee and they keep excluding it.
 
 In rollups such as Arbitrum and Optimism both have a mechanism that allow the user to take his transactions directly to the base layer, and insert it into a "delayed" queue.
-After some delay have passed, the elements of the delayed queue can be forced into the ordering, and the sequencer is required to include it, or he will enter a game of fraud or not where he already lost.
+After some delay has passed, the elements of the delayed queue can be forced into the ordering, and the sequencer is required to include it, or he will enter a game of fraud or not where he already lost.
 
 The delay is introduced into the system to ensure that the forced inclusions cannot be used as a way to censor the rollup itself.
 
-Curtesy of [The Hand-off Problem](https://blog.init4.technology/p/the-hand-off-problem), we borrow this great figure:
+Courtesy of [The Hand-off Problem](https://blog.init4.technology/p/the-hand-off-problem), we borrow this great figure:
 ![There must be a hand-off from unforced to forced inclusion.](https://substackcdn.com/image/fetch/f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F35f3bee4-0a8d-4c40-9c8d-0a145be64d87_3216x1243.png)
 
 The hand-off is here the point where we go from the ordering of transactions that the sequencer/proposer is freely choosing and the transactions that they are forced to include specifically ordered.
@@ -53,9 +53,9 @@ However, nothing is really that easy.
 Note the emphasis on **inclusion** censorship resistance.
 While this provides a method to include the transaction, the transaction might itself revert, and so it is prevented from achieving its goal!
 
-This is particularly an issue in build-ahead models, as the delay ensure that the sequencer have plenty of time to include transactions, before the hand-off, that will alter the state of the chain, potentially making the transaction revert.
+This is particularly an issue in build-ahead models, as the delay ensures that the sequencer have plenty of time to include transactions, before the hand-off, that will alter the state of the chain, potentially making the transaction revert.
 
-Again, [The Hand-off Problem](https://blog.init4.technology/p/the-hand-off-problem) have a wonderful example and image:
+Again, [The Hand-off Problem](https://blog.init4.technology/p/the-hand-off-problem) has a wonderful example and image:
 Consider that you have forced a transactions that is to use a trading pair or lending market, the sequencer could include your transaction right after it have emptied the market or pushed it just enough for your tx to fail to then undo the move right after.
 ![The sequencer or builder can manipulate the state at the hand-off.](https://substackcdn.com/image/fetch/f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F9b449e22-66d0-4fe1-bc25-28aea3329e72_2799x1428.png)
 
@@ -68,7 +68,7 @@ A different attack could be to make the fees spike such that your forced transac
 This can be avoided by not requiring forced transactions to pay the fee, as long as the transaction have a bounded amount of gas.
 A reason that this could be acceptable is that the cost to go to L1 SHOULD be far greater than going to the L2, so you cannot use it as a mechanism to dos as it is still much more expensive than sending the same transaction and paying L2 gas for it.
 
-However, it opens a annoying problem for us, the circuits would need to know that it is a forced transaction to give us that "special" treatment.
+However, it opens a annoying problem for us, the circuits will need to know that it is a forced transaction to give us that "special" treatment.
 
 And how will we let it learn this fact?
 We essentially have a list of to be forced transactions at the contract, and we need to know if the block includes any of these.
@@ -118,11 +118,11 @@ For the sake of simplicity, we will briefly assume that the above changes are ma
 The idea is fairly simple:
 
 - As part of the `Header` include a `txs_hash` which is the root of a SHA256 merkle tree, whose leafs are the first nullifiers (the transaction hashes) of the transactions in the block.
-- The rollup circuits have to ensure that this `txs_hash` is build correctly, e.g., are from the transaction hashes of the same transactions published to DA.
+- The rollup circuits have to ensure that this `txs_hash` is built correctly, e.g., are from the transaction hashes of the same transactions published to DA.
 - We take the idea of a delayed queue, that after some delay, forces the blocks to order transactions based on the queue.
   When inserting into the delayed queue, we can check the private kernel proof (fairly expensive 💸) and we store the transaction hash along with a bit of metadata, e.g., the time at which it must be included etc.
 - At the time of epoch proof inclusion, the `txs_hash` roots can be used to prove the inclusion of members from the queue.
-  If specific transactions were required and are not proven to be included, the ethereum transaction simple reverts.
+  If specific transactions were required and are not proven to be included, the ethereum transaction simply reverts.
 
 Beware that we only really address the forced inclusion needs when the proof is proposed.
 Nevertheless, the criteria for inclusion can be based on the time of the proposal.
