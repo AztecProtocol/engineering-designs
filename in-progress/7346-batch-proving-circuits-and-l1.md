@@ -30,7 +30,7 @@ The circuit then performs the following checks and computations:
 
 - Recursively verifies the left and right inputs
 - Checks that the tree is greedily filled from left to right
-- Checks that constants from left and right match
+- Checks that constants from the left and right match
 - Checks that the end state from left matches the start state from right (ie they follow from each other)
 - Outputs the start of left and end of right
 - Hashes together or sums up any accumulated fields (tx count, effects hashes, accumulated fees, etc)
@@ -201,7 +201,7 @@ contract Rollup {
 
 ### State
 
-To track both the proven and unproven chains, we add the following state variables to the contract:
+To track both proven and unproven chains, we add the following state variables to the contract:
 
 ```diff
 contract Rollup {
