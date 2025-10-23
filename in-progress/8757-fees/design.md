@@ -44,31 +44,30 @@ Adopting a mana limit per L2 block, we can divide the L1 cost by this mana limit
 
 We then allow an oracle to inform the wei per mana for proving a unit of mana.
 
-We add these two "wei per mana" values together, and multiply by an EIP-1559 style congestion multiplier based on the excess mana in the current block to get the base fee in wei per mana.
+We add these two "wei per mana" values together, and multiply by an EIP-1559 style congestion multiplier based on the excess mana in the current block to get the minimum fee in wei per mana.
 
 We then allow an oracle to inform the fee asset per wei.
 
-We then multiply the base fee in wei per mana by the fee asset per wei to get the "true" L2 base fee in fee asset per mana (hereafter just `base_fee_per_mana`).
+We then multiply the minimum fee in wei per mana by the fee asset per wei to get the "true" L2 minimum fee in fee asset per mana (hereafter just `min_fee_per_mana`).
 
 ### User Flow
 
-When a user submits a transaction, they first compute the `base_fee_per_mana` by looking at the previous block header and the L1 rollup contract.
+When a user submits a transaction, they first compute the `minimum_fee_per_mana` by looking at the previous block header and the L1 rollup contract.
 
 They then specify a max fee per mana (and max priority fee) they are willing to pay.
 
-The transaction can only be included if the specified max fee per mana is greater than the L2 base fee, barring caveats such as sufficient balance, etc.
-
+The transaction can only be included if the specified max fee per mana is greater than the L2 minimum fee per mana, barring caveats such as sufficient balance, etc.
 
 ## Protocol Defined Constants
 
 - `OVERHEAD_MANA_PER_TX` - the overhead cost in mana for a transaction (e.g. 21_000)
 - `TARGET_MANA_PER_BLOCK` - the amount of mana that an "average" block is expected to consume (e.g. 15e6)
 - `MAXIMUM_MANA_PER_BLOCK` - the maximum amount of mana that a block can consume (e.g. 2 \* TARGET_MANA_PER_BLOCK)
-- `BLOBS_PER_BLOCK` - the number of blobs per block that are compensated for in the base fee (e.g. 3)
+- `BLOBS_PER_BLOCK` - the number of blobs per block that are compensated for in the minimum fee (e.g. 3)
 - `L2_SLOTS_PER_L2_EPOCH` - the number of L2 slots in each L2 epoch (e.g. 32)
 - `L1_GAS_PER_BLOCK_PROPOSAL` - the amount of L1 gas required to propose an L2 block on L1 (e.g. 0.2e6)
 - `L1_GAS_PER_EPOCH_VERIFICATION` - the amount of L1 gas required to verify an L2 epoch on L1 (e.g. 1e6)
-- `MINIMUM_L2_SLOTS_PER_UNDERLYING_BASE_FEE_ORACLE_UPDATE` - the minimum number of L2 slots between updates to the underlying base fee oracle (e.g. 4)
+- `MINIMUM_L2_SLOTS_PER_UNDERLYING_MINIMUM_FEE_ORACLE_UPDATE` - the minimum number of L2 slots between updates to the underlying minimum fee oracle (e.g. 4)
 - `MINIMUM_FEE_ASSET_PER_ETH` - the minimum price of the fee asset in eth (e.g. 10)
 - `MAXIMUM_FEE_ASSET_PER_ETH_PERCENT_CHANGE_PER_L2_SLOT` - the maximum percentage increase in the price of the fee asset per block (e.g. 1%)
 - `FEE_ASSET_PRICE_UPDATE_FRACTION` - a value used to update the `fee_asset_price_modifier` (e.g. 1e11)
@@ -88,7 +87,7 @@ This means that it should always be the case that a proposer has its data costs 
 
 If L1 gas spikes during an epoch, this will be reflected in the `wei_per_l1_gas` and `wei_per_l1_blob_gas` oracles and make their way into the cost.
 
-However, these oracles lag the current L1 base fees. Furthermore, the base fee computed at the time of a block being proposed may differ from the base fee at the time of the epoch being verified.
+However, these oracles lag the current L1 base fees. Furthermore, the minimum fee computed at the time of a block being proposed may differ from the minimum fee at the time of the epoch being verified.
 
 Thus, it is possible for L1 gas prices to spike to a point where it is not profitable for a prover to submit their proof to L1.
 To mitigate these issues, we see to main approaches:
@@ -116,24 +115,24 @@ Further, it is assumed that in the immediate term the proving cost will dominate
 The L2 block header contains the following fields:
 
 - `total_mana_used` - the total mana used by the block
-- `base_fee_per_mana` - the base fee in fee asset per mana
+- `minimum_fee_per_mana` - the minimum fee in fee asset per mana
 
 ## Rollup Contract Fields
 
 The rollup contract contains the following fields:
 
-- `proving_cost_per_mana` - the proving cost per mana in TST
+- `proving_cost_per_mana` - the proving cost per mana in wei
 - `fee_asset_price_numerator` - a value used in the computation of the fee asset price per eth
 - `excessMana` - a running value of the excess mana used beyond the target
-- `wei_per_l1_gas` - the cost of L1 gas in wei. Updated by anyone to the current L1 gas price at most every `MINIMUM_L2_SLOTS_PER_UNDERLYING_BASE_FEE_ORACLE_UPDATE` slots
-- `wei_per_l1_blob_gas` - the cost of L1 blob gas in wei. Updated by anyone to the current L1 blob gas price at most every `MINIMUM_L2_SLOTS_PER_UNDERLYING_BASE_FEE_ORACLE_UPDATE` slots
+- `wei_per_l1_gas` - the cost of L1 gas in wei. Updated by anyone to the current L1 gas price at most every `MINIMUM_L2_SLOTS_PER_UNDERLYING_MINIMUM_FEE_ORACLE_UPDATE` slots
+- `wei_per_l1_blob_gas` - the cost of L1 blob gas in wei. Updated by anyone to the current L1 blob gas price at most every `MINIMUM_L2_SLOTS_PER_UNDERLYING_MINIMUM_FEE_ORACLE_UPDATE` slots
 
 ## Exponentially Computed Values
 
 There are 2 important variables that are computed exponentially:
 
 - `fee_asset_per_eth`
-- `base_fee_wei_per_mana_congestion_multiplier`
+- `minimum_fee_wei_per_mana_congestion_multiplier`
 
 The purpose is to allow prices to fluctuate, but with guarantees, e.g. the proving cost in wei per mana will never change by more than X% per block.
 
@@ -169,7 +168,7 @@ That is,
 
 The new `fee_asset_price_modifier` is capped at (+/-) `MAXIMUM_FEE_ASSET_PER_ETH_PERCENT_CHANGE_PER_L2_SLOT` \* `FEE_ASSET_PRICE_UPDATE_FRACTION` / 100.
 
-### `base_fee_congestion_multiplier`
+### `minimum_fee_congestion_multiplier`
 
 First we compute the excess mana in the current block by considering the parent mana spent and excess mana.
 
@@ -182,7 +181,7 @@ First we compute the excess mana in the current block by considering the parent 
 
 ```math
 \begin{aligned}
-\text{base fee congestion multiplier} &= \text{MINIMUM\_CONGESTION\_MULTIPLIER} * \text{exp}\left(\frac{\text{excess mana}}{\text{CONGESTION\_MULTIPLIER\_UPDATE\_FRACTION}}\right)
+\text{minimum fee congestion multiplier} &= \text{MINIMUM\_CONGESTION\_MULTIPLIER} * \text{exp}\left(\frac{\text{excess mana}}{\text{CONGESTION\_MULTIPLIER\_UPDATE\_FRACTION}}\right)
 \end{aligned}
 ```
 
@@ -209,25 +208,25 @@ The L1 cost for an L2 block covered by the prover. Will be assuming a full epoch
 
 ```math
 \begin{aligned}
-\text{Prover L1 cost per L2 block} &= \left\lceil \frac{\text{L1\_GAS\_PER\_EPOCH\_VERIFIED}}{\text{L2\_SLOTS\_PER\_L2\_EPOCH}} \right\rceil * \text{wei\_per\_l1\_gas}\\ 
+\text{Prover L1 cost per L2 block} &= \left\lceil \frac{\text{L1\_GAS\_PER\_EPOCH\_VERIFIED}}{\text{L2\_SLOTS\_PER\_L2\_EPOCH}} \right\rceil * \text{wei\_per\_l1\_gas}\\
 &+ \text{proving\_cost\_per\_mana} * \text{TARGET\_MANA\_PER\_BLOCK} \\
 \end{aligned}
 ```
 
-## Deriving the base fee
+## Deriving the minimum fee
 
-When a proposer is building an L2 block, it calculates a sequencer and a prover component and a congestion multiplier and from there the base fee that the user must cover.
+When a proposer is building an L2 block, it calculates a sequencer and a prover component and a congestion multiplier and from there the minimum fee that the user must cover.
 
 ```math
 \begin{aligned}
     \text{sequencer cost per mana} &= \left\lceil \frac{\text{Sequencer L1 cost per L2 block}}{\text{TARGET\_MANA\_PER\_BLOCK}} \right\rceil \\ 
     \text{prover cost per mana} &= \left\lceil \frac{\text{Prover L1 cost per L2 block}}{\text{TARGET\_MANA\_PER\_BLOCK}} \right\rceil \\ 
-    \text{base\_fee\_in\_wei} &= \left(\text{sequencer cost per mana} + \text{prover cost per mana} \right) * \text{base fee congestion multiplier} \\
-    \text{base\_fee\_in\_fee\_asset} &= \left\lceil \text{base\_fee\_in\_wei} * \text{fee asset per wei} \right\rceil
+    \text{minimum\_fee\_in\_wei} &= \left(\text{sequencer cost per mana} + \text{prover cost per mana} \right) * \text{minimum fee congestion multiplier} \\
+    \text{minimum\_fee\_in\_fee\_asset} &= \left\lceil \text{minimum\_fee\_in\_wei} * \text{fee asset per wei} \right\rceil
 \end{aligned}
 ```
 
-This final value is the `base_fee_per_mana` field in the L2 block header.
+This final value is the `minimum_fee_per_mana` field in the L2 block header.
 
 ## The cost of a transaction in the fee asset
 
@@ -242,12 +241,12 @@ Therefore, the cost of a transaction's proposal, data publication, and verificat
 ```math
 \begin{aligned}
 \text{priority fee per mana} &= \min(
-    \text{transaction.priority fee per mana}, \text{transaction.max fee per mana} - \text{base fee per mana}) \\
-\text{fee}_{tx} &= \text{mana}_{tx} * (\text{base fee per mana} + \text{priority fee per mana})
+    \text{transaction.priority fee per mana}, \text{transaction.max fee per mana} - \text{minimum fee per mana}) \\
+\text{fee}_{tx} &= \text{mana}_{tx} * (\text{minimum fee per mana} + \text{priority fee per mana})
 \end{aligned}
 ```
 
-Recall: Any transactions must have a max fee per mana that is greater than the base fee asset per mana to be included
+Recall: Any transactions must have a max fee per mana that is greater than the minimum fee asset per mana to be included
 
 ## Collection of the fees
 
