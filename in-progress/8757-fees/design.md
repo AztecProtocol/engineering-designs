@@ -121,7 +121,7 @@ The L2 block header contains the following fields:
 
 The rollup contract contains the following fields:
 
-- `proving_cost_per_mana` - the proving cost per mana in TST
+- `proving_cost_per_mana` - the proving cost per mana in wei
 - `fee_asset_price_numerator` - a value used in the computation of the fee asset price per eth
 - `excessMana` - a running value of the excess mana used beyond the target
 - `wei_per_l1_gas` - the cost of L1 gas in wei. Updated by anyone to the current L1 gas price at most every `MINIMUM_L2_SLOTS_PER_UNDERLYING_MINIMUM_FEE_ORACLE_UPDATE` slots
