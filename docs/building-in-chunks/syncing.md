@@ -39,4 +39,4 @@ Provisional blocks are not available on L1 by definition. Provisional block head
 
 # Syncing mined blocks
 
-Nodes monitor L1 for new mined nodes, and sync block headers from it. These block headers should match the provisional block headers already synced, in which case there is no need to sync new block data. If not, the provisional chain is reorged and the flow for syncing historical block data is used to obtain the missing data for any new blocks on L1.
+Nodes monitor L1 for new mined blocks, and sync block headers from it. These block headers should match the provisional block headers already synced, in which case there is no need to sync new block data. If not, the provisional chain is reorged and the flow for syncing historical block data is used to obtain the missing data for any new blocks on L1.
