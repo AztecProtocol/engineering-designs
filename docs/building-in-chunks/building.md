@@ -8,7 +8,7 @@ Proposers now partition their slot time into N chunks, where N is configurable a
 
 While the proposer is waiting for the attestations for the initial block, they start production of the second block immediately. So while attestors reexecute the first block, the proposer is already producing the second one.
 
-When the proposer receives all the necessary attestations for the first block, then it broadcasts the proposal for the second one, and broadcasts the initial block as **provisional**. We call the **provisional** chain the blocks that have been attested to but not yet published to L1 (we would also like better ideas for this name). Nodes will sync the provisional node for improved UX (see [_Improving "app latency"_](./dd.md)). Validators will then begin reexecution of this new block, while the proposer moves on to building the next block.
+When the proposer receives all the necessary attestations for the first block, then it broadcasts the proposal for the second one, and broadcasts the initial block as **provisional**. We call the **provisional** chain the blocks that have been attested to but not yet published to L1 (we would also like better ideas for this name). Nodes will sync the provisional block for improved UX (see [_Improving "app latency"_](./dd.md)). Validators will then begin reexecution of this new block, while the proposer moves on to building the next block.
 
 Once the proposer has built all blocks, or has exceeded its time allowance for the slot, it pushes all blocks in the slot to L1 as a **checkpoint**.
 
