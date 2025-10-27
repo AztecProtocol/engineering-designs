@@ -12,7 +12,7 @@ We have the following potential channels for acquiring data:
 - L1 blobs (for tx effects)
 - P2P gossipsub for broadcasting new data (either headers or tx effects)
 - P2P reqresp for acquiring either headers or tx effects
-- Centralized repositories (eg cloud-based file stores) for acquiring either headers or tx effects
+- Centralized repositories (eg cloud-based file stores) for acquiring either headers or tx effects (blob archives only work for this when syncing mined or historical blocks, NOT for provisional blocks)
 - Reconstructing tx effects via tx reexecution (assuming the tx hashes for the block are known via a proposal, and the original txs are available)
 
 Note that acquiring L1 blobs require a supernode, so we want to avoid it if possible. Also note that block headers contain a commitment to tx effects, so if a node has a given block header, they can get the corresponding tx effects from any source and verify them.
