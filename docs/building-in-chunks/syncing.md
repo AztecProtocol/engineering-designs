@@ -37,6 +37,6 @@ Provisional blocks are not available on L1 by definition. Provisional block head
 - Have validators in the committee (and nodes running with always-reexecute) sync from their current attestation job directly, assuming the provisional header matches
 - Either include block data in the gossipsub'd block header, or have nodes rely on reqresp to obtain the block bodies that correspond to the headers
 
-# Syncing mined nodes
+# Syncing mined blocks
 
 Nodes monitor L1 for new mined nodes, and sync block headers from it. These block headers should match the provisional block headers already synced, in which case there is no need to sync new block data. If not, the provisional chain is reorged and the flow for syncing historical block data is used to obtain the missing data for any new blocks on L1.
