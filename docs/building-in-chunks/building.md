@@ -6,7 +6,7 @@ Design for block-building under building in chunks.
 
 Proposers now partition their slot time into N chunks, where N is configurable and defaults to 2 initially. During the first chunk, they accumulate txs into a block until they hit a time, gas, or tx count limit. They then close that block, sign over it, and broadcast the block proposal across the p2p network.
 
-While the proposer is waiting for the attestations for the initial block, they start production of the second block immediately. So while attestors reexecute the first block, the proposer is already producing the second one.
+As soon as the second chunk of time begins, the proposer starts production of the second block. Note that they do not wait for attestations for the first block here. So while attestors reexecute the first block, the proposer can be producing the second one.
 
 When the proposer receives all the necessary attestations for the first block, then it broadcasts the proposal for the second one, and broadcasts the initial block as **provisional**. We call the **provisional** chain the blocks that have been attested to but not yet published to L1 (we would also like better ideas for this name). Nodes will sync the provisional block for improved UX (see [_Improving "app latency"_](./dd.md)). Validators will then begin reexecution of this new block, while the proposer moves on to building the next block.
 
@@ -97,3 +97,5 @@ In our current design, a proposer does not start building for their slot until t
 Instead, we can build the blocks for slot N during slot N-1, and we use slot N exclusively for publishing to L1, while the next proposer builds the blocks for slot N+1. This means we get much more time for publishing, which we'll need if we require more than one blob per checkpoint, and we are continuously building blocks, which enables higher TPS.
 
 Note that, in the unhappy path in which a proposer fails to publish their L1 checkpoint, the block built by the following proposer is invalidated, so the provisional chain is reorged back by two slots. It should be possible for any node in the network to pick up the blocks produced for a given slot and upload to L1, but building that machinery is out of scope for the moment.
+
+As a design simplification, we can choose **not** to implement staggered slots, and just allocate time within the slot for L1 submission, like we do today.
