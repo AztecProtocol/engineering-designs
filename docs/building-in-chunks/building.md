@@ -75,7 +75,7 @@ When an attestor for a slot receives a block proposal for a fresh slot, it spins
 
 ## Provisional blocks
 
-A provisional block is equivalent to the data posted to L1. It contains a checkpoint header, block header, committee attestations, and the proposer signature over all data. Note that this proposer signature guarantees that it is the proposer who decides when a block within a slot is added to the provisional chain.
+A provisional block is equivalent to the data posted to L1. It contains a checkpoint header, block header, committee attestations, and the proposer signature over all data. Note that this proposer signature guarantees that it is the proposer who decides when a block within a slot is added to the provisional chain. Nodes verify this signature before accepting a new provisional block
 
 ## L1 checkpoints
 
