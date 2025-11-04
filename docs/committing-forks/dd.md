@@ -7,7 +7,7 @@ As part of the building in chunks project, it is desirable for nodes on the netw
 Currently, committing forks is expressly forbidden by the world state. There is a strict model of:
 
 1. A single, canconical fork, advanced solely by state read from L1. Tx effects are inserted to generate the new tree state in cache followed by a `commit_block` to persist the changes. This is performed by a `SYNC_BLOCK` request.
-2. Any number of forks, taking any block as there reference. Any alternative chain state can be created but `commit_block` or any other persistance operation is prevented.
+2. Any number of forks, taking any block as their reference. Any alternative chain state can be created but `commit_block` or any other persistance operation is prevented.
 
 This strict model provides a strong guarantee that we only ever persist the true canonical state as well as removing a category of potential bugs around attempting to commit forks that don't refer to the last committed block.
 
@@ -31,6 +31,8 @@ Within the Typescript interface, operations are potentially queued before being 
 4. Writes of state (either to memory or disk) must be exclusive to other writes and reads of uncommitted state.
 
 ## Proposed Changes
+
+Whilst the above model provides nice guarantees around the consistency of the world state database, they aren't strictly required. Loosening the model should allow us to achieve the goal of committing forks quite easily.
 
 Firstly, when a fork is created the roots of the trees of the canonical state will be captured and stored by the fork as `referenceRoot` values.
 
