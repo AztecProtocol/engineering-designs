@@ -14,6 +14,10 @@ As we add building-in-chunks, we'll have a new tip which is a block that has bee
 
 ## What we propose
 
+- `unattested`: Latest block built locally by a validator, not yet attested
+  - We could consider not exposing it via RPC, since it's mostly used internally
+  - Name could be confusing, since the `unattested` chain tip may coincide with the `finalized` one, which is definitely attested
+  - Alternatively `candidate`, `local`, `provisional`
 - `latest`: Latest block proposed and attested by L2 validators
   - Formerly `provisional`
 - `committed`: Latest block included in an L1 checkpoint
@@ -23,7 +27,7 @@ As we add building-in-chunks, we'll have a new tip which is a block that has bee
 - `verified`: Latest block verified by a zk proof on L1
   - Formerly `proven`
 - `finalized`: Latest block verified on a finalized L1 block
-  - Same as befor
+  - Same as before
 
 ## What other networks are doing
 
