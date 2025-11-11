@@ -209,7 +209,7 @@ The main change for L1 contracts is that `propose` now accepts a _checkpoint_ in
 
 ## Fully decoupling L2 blocks from L1
 
-The L2 block production is decoupled from L1 checkpointing. By decoupling, we mean having L2 produce blocks, and at some point an entity groups some of them into a checkpoint and pushes them to L1, but L2 can keep advancing independent of L1. In other words, L2 liveness should not depend on L1 availability (though its finality most definitely should).
+The L2 block production is decoupled from L1 checkpointing. By decoupling, we mean that L2 can continue producing blocks, and at some point an entity groups them into a checkpoint and submits it to L1 within a single L1 block. This allows L2 to progress more quickly and independently of L1.
 
 > We'd need mechanisms for fluctuating fees without having to go through L1.
 
