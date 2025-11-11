@@ -14,16 +14,16 @@ As we add building-in-chunks, we'll have a new tip which is a block that has bee
 
 ## What we propose
 
-- `unattested`: Latest block built locally by a validator, not yet attested
+- `unattested`: Latest block built locally by a validator during block proposal or attestation, not yet attested by committee
   - We could consider not exposing it via RPC, since it's mostly used internally
   - Name could be confusing, since the `unattested` chain tip may coincide with the `finalized` one, which is definitely attested
   - Alternatively `candidate`, `local`, `provisional`
 - `latest`: Latest block proposed and attested by L2 validators
   - Formerly `provisional`
-- `committed`: Latest block included in an L1 checkpoint
+- `mined`: Latest block included in an L1 checkpoint
   - Formerly `pending`, which is a bad name since it has a different meaning in Ethereum
   - Alternatively `safe`, though it is subject to reorg if proving fails
-  - Alternatively `mined`, though it could be confusing between L1 and L2 mined
+  - Alternatively `committed`, to avoid confusion between L1 and L2 "mined"
 - `verified`: Latest block verified by a zk proof on L1
   - Formerly `proven`
 - `finalized`: Latest block verified on a finalized L1 block
