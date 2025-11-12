@@ -19,7 +19,7 @@ Note that acquiring L1 blobs require a supernode, so we want to avoid it if poss
 
 Also note that headers are usually broadcasted along with the committee signatures, so any node can get an economic guarantee for the validity of a header by checking its attestations.
 
-# Syncing historical blocks
+## Syncing historical blocks
 
 A node that starts from scratch or has been offline may first download a snapshot archive to get a view of the chain no more than a day old, to speed up syncing.
 
@@ -29,7 +29,7 @@ Block headers should then be synced from L1 directly until the current tip of th
 - Any configured L1 supernode
 - P2P reqresp (last resort in order to minimize pressure on the P2P layer)
 
-# Syncing provisional blocks
+## Syncing provisional blocks
 
 Provisional blocks are not available on L1 by definition. Provisional block headers should be broadcasted across the network via gossipsub. As for provisional block data, we can:
 
@@ -37,6 +37,18 @@ Provisional blocks are not available on L1 by definition. Provisional block head
 - Have validators in the committee (and nodes running with always-reexecute) sync from their current attestation job directly, assuming the provisional header matches
 - Either include block data in the gossipsub'd block header, or have nodes rely on reqresp to obtain the block bodies that correspond to the headers
 
-# Syncing mined blocks
+## Syncing mined blocks
 
 Nodes monitor L1 for new mined blocks, and sync block headers from it. These block headers should match the provisional block headers already synced, in which case there is no need to sync new block data. If not, the provisional chain is reorged and the flow for syncing historical block data is used to obtain the missing data for any new blocks on L1.
+
+# Subsystem changes
+
+## Archiver
+
+This requires changing the archiver to accept a new source of blocks, aside from L1. We propose adding an inbound queue to the archiver where other components can inject unattested or provisional blocks as they are discovered, expected to be called by p2p or the validator.
+
+The archiver is expected to resolve conflicts between these data sources, and prune unmined provisional data based on synced L2 slots. In other words, if the provisional blocks for a given L2 slot are never mined on L1, the archiver must trigger a prune.
+
+## World state
+
+As an optimization, instead of throwing away the world state updates committed during execution/reexecution in a validator and then re-syncing, world state should commit the fork if the archiver accepts the new blocks.
