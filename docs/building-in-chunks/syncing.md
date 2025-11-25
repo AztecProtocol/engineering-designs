@@ -33,15 +33,20 @@ Block headers should then be synced from L1 directly until the current tip of th
 
 Provisional blocks are not available on L1 by definition. Provisional block headers should be broadcasted across the network via gossipsub. As for provisional block data, we can:
 
-- Have it submitted to centralized repositories (which means we upload block data when provisional, not mined) and sync from there
 - Have validators in the committee (and nodes running with always-reexecute) sync from their current attestation job directly, assuming the provisional header matches
-- Either include block data in the gossipsub'd block header, or have nodes rely on reqresp to obtain the block bodies that correspond to the headers
+- Have it submitted to centralized repositories (which means we upload block data when provisional, not mined) and sync from there
+- Have nodes rely on reqresp to obtain the block bodies that correspond to the headers
+- Add another gossipsub topic specific to block bodies (only if strictly necessary, since it adds noise to the p2p network)
+
+:warning: We need to understand the impact of reexecution, since this could be the main route for syncing, by having every node just reexecute everything rather than trust the committee attestations.
 
 ## Syncing mined blocks
 
 Nodes monitor L1 for new mined blocks, and sync block headers from it. These block headers should match the provisional block headers already synced, in which case there is no need to sync new block data. If not, the provisional chain is reorged and the flow for syncing historical block data is used to obtain the missing data for any new blocks on L1.
 
 # Subsystems
+
+Updated relationships between subsystems:
 
 ```mermaid
 ---
