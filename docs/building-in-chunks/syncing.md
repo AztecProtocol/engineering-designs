@@ -17,7 +17,7 @@ We have the following potential channels for acquiring data:
 
 Note that acquiring L1 blobs require a supernode, so we want to avoid it if possible. Also note that block headers contain a commitment to tx effects, so if a node has a given block header, they can get the corresponding tx effects from any source and verify them.
 
-Also note that headers are usually broadcasted along with the committee signatures, so any node can get an economic guarantee for the validity of a header by checking its attestations.
+Also note that headers are broadcasted along with the committee attestations, so any node can get an economic guarantee for the validity of a header by checking its attestations. This guarantee assures that, if the checkpoint that includes the block makes it to L1, then the attested block will be included and will have the expected state root. In other words, the chain either progresses with the attested state, or prunes back to a prior block checkpointed to L1.
 
 ## Syncing historical blocks
 
@@ -41,7 +41,23 @@ Provisional blocks are not available on L1 by definition. Provisional block head
 
 Nodes monitor L1 for new mined blocks, and sync block headers from it. These block headers should match the provisional block headers already synced, in which case there is no need to sync new block data. If not, the provisional chain is reorged and the flow for syncing historical block data is used to obtain the missing data for any new blocks on L1.
 
-# Subsystem changes
+# Subsystems
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart TB
+    A("Archiver") -- syncs from --> L1("Rollup Contract")
+    WS("World State") -- syncs from --> A
+    V("Sequencer & Validator Client") -- pushes unattested blocks to --> A
+    V -- commits forks to --> WS
+    P2P("P2P Client") -- pushes attested blocks to --> A
+    V -- broadcasts attested blocks via --> P2P
+    V -- pushes checkpoints to --> L1
+    A <-- syncs to/from --> S3("Blocks Filestore")
+```
 
 ## Archiver
 
