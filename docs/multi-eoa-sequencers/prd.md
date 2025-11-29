@@ -16,11 +16,11 @@ Note: We can pull up delivery based on what we see/want in prod: if people are u
 
 # Background
 
-An Ethereum address can either choose to send legacy transactions **or** blob transactions at the same time to prevent some DDoS attacks. ([Ref](https://github.com/ethereum/go-ethereum/issues/28925#issuecomment-1925601084))
+An Ethereum address can send either legacy transactions or blob transactions, but not both concurrently, to prevent some DDoS attacks ([Ref](https://github.com/ethereum/go-ethereum/issues/28925#issuecomment-1925601084))
 
 Further, because all transactions must respect the expected nonce value from the account, if a blob transaction is sent, but is not included within a desired timeframe, it must be cancelled or replaced; this operation is expensive, requiring [a 100% price increase from the initial (blob)gas prices](https://github.com/ethereum/go-ethereum/blob/6143c350ae1ecf3330678be02b4c2745bb6b8134/core/txpool/blobpool/config.go#L34).
 
-Separately, sequencers in Aztec are able perform multiple actions during their slot, including:
+Separately, sequencers in Aztec are able to perform multiple actions during their slot, including:
 
 - [propose](https://github.com/AztecProtocol/aztec-packages/blob/27f1eca25c4c5849d32541b5ad1d3068d5d1911a/l1-contracts/src/core/libraries/rollup/ProposeLib.sol#L71) a block to the L1 (a blob transaction)
 - [signal/vote](https://github.com/AztecProtocol/aztec-packages/blob/27f1eca25c4c5849d32541b5ad1d3068d5d1911a/l1-contracts/src/governance/proposer/EmpireBase.sol#L55) at the governance proposer (non-blob)
@@ -51,7 +51,7 @@ The validators are able to separate their proposer from their attester. This pro
 ## Assumptions
 
 - Validators may only vote at the governance proposer and slash proposer during their L2 slot for which they are sequencer.
-- We use ethereum blobs for DA.
+- We use Ethereum blobs for DA.
 
 # User Stories
 
@@ -61,7 +61,7 @@ Alice is making transactions on Aztec. She is happy when they are promptly inclu
 
 ## Sequencer
 
-Sally Sequencer wants to make money running a validator on the aztec network.
+Sally Sequencer wants to make money running a validator on the Aztec network.
 
 Sally is happy when her node publishes Aztec blocks because that means she makes money when that block is proven.
 
@@ -93,14 +93,14 @@ WHERE: end user and sequencer user stories.
 
 If needed, the current sequencer **SHOULD** prioritize their block submission over their voting.
 
-WHY: it more important for network liveness, and blob transactions need more time to get included.
+WHY: it is more important for network liveness, and blob transactions need more time to get included.
 WHERE: end user story and developer apprehension
 
 ### ATTR03
 
 Beyond updating payload addresses for votes, node operators **SHOULD NOT** need to make live updates to their node's configuration to ensure that they are consistently producing blocks.
 
-WHY: if things are hard, people don't do them. in this case, that would mean degraded performance for all aztec users.
+WHY: if things are hard, people don't do them. in this case, that would mean degraded performance for all Aztec users.
 WHERE: sequencer user story.
 
 ### ATTR04
