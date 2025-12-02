@@ -4,49 +4,35 @@ How syncing the L2 chain works in a building-in-chunks world.
 
 # Context
 
-Nodes need to sync L2 block headers and block data. Block headers are eventually posted to L1 as calldata, whereas block data contains tx effects and are eventually posted as blobs.
-
-We have the following potential channels for acquiring data:
-
-- L1 calldata (for headers)
-- L1 blobs (for tx effects)
-- P2P gossipsub for broadcasting new data (either headers or tx effects)
-- P2P reqresp for acquiring either headers or tx effects
-- Centralized repositories (eg cloud-based file stores) for acquiring either headers or tx effects (blob archives only work for this when syncing mined or historical blocks, NOT for provisional blocks)
-- Reconstructing tx effects via tx reexecution (assuming the tx hashes for the block are known via a proposal, and the original txs are available)
+Checkpoint headers are posted to L1 as calldata, whereas block headers and bodies are posted as blobs. Validators, and nodes that want to follow the `proposed` chain, also need to sync blocks that are not yet posted to L1.
 
 Note that acquiring L1 blobs require a supernode, so we want to avoid it if possible. Also note that block headers contain a commitment to tx effects, so if a node has a given block header, they can get the corresponding tx effects from any source and verify them.
 
-Also note that headers are broadcasted along with the committee attestations, so any node can get an economic guarantee for the validity of a header by checking its attestations. This guarantee assures that, if the checkpoint that includes the block makes it to L1, then the attested block will be included and will have the expected state root. In other words, the chain either progresses with the attested state, or prunes back to a prior block checkpointed to L1.
+We have the following data sources:
 
-## Syncing historical blocks
+- Execution clients for L1 calldata (for checkpoint headers)
+- Consensus semi-supernodes for L1 blobs (for block headers and bodies)
+- Centralized repositories (eg cloud-based file stores) for L1 blob data
+- Reconstructing tx effects via tx reexecution (assuming the original txs are available)
 
-A node that starts from scratch or has been offline may first download a snapshot archive to get a view of the chain no more than a day old, to speed up syncing.
+## Syncing proposed blocks
 
-Block headers should then be synced from L1 directly until the current tip of the L1-mined chain. For all block headers synced this way, the node should acquire its tx effects from:
-
-- Any configured centralized repositories
-- Any configured L1 supernode
-- P2P reqresp (last resort in order to minimize pressure on the P2P layer)
-
-## Syncing provisional blocks
-
-Provisional blocks are not available on L1 by definition. Provisional block headers should be broadcasted across the network via gossipsub. As for provisional block data, we can:
-
-- Have validators in the committee (and nodes running with always-reexecute) sync from their current attestation job directly, assuming the provisional header matches
-- Have it submitted to centralized repositories (which means we upload block data when provisional, not mined) and sync from there
-- Have nodes rely on reqresp to obtain the block bodies that correspond to the headers
-- Add another gossipsub topic specific to block bodies (only if strictly necessary, since it adds noise to the p2p network)
-
-:warning: We need to understand the impact of reexecution, since this could be the main route for syncing, by having every node just reexecute everything rather than trust the committee attestations.
+Blocks in the `proposed` chain are not available on L1 by definition. Nodes who follow this chain are expected to listen to block proposals in the p2p network, and reexecute these proposals.
 
 ## Syncing mined blocks
 
-Nodes monitor L1 for new mined blocks, and sync block headers from it. These block headers should match the provisional block headers already synced, in which case there is no need to sync new block data. If not, the provisional chain is reorged and the flow for syncing historical block data is used to obtain the missing data for any new blocks on L1.
+A node that starts from scratch or has been offline may first download a snapshot archive to get a view of the chain no more than a day old, to speed up syncing.
+
+Then checkpoint headers should then be synced from L1 directly until the current tip of the L1-mined chain. For all checkpoint headers synced this way, the node should acquire its blocks from:
+
+- Any configured centralized repositories
+- Any configured L1 supernode
+
+When syncing mined blocks, the node must check if the mined blocks match the `proposed` ones already stored. If not, it must reorg out these blocks and sync to the L1 mined chain.
 
 # Subsystems
 
-Updated relationships between subsystems:
+Updated relationships between subsystems.
 
 ```mermaid
 ---
@@ -56,17 +42,19 @@ config:
 flowchart TB
     A("Archiver") -- syncs from --> L1("Rollup Contract")
     WS("World State") -- syncs from --> A
-    V("Sequencer & Validator Client") -- pushes unattested blocks to --> A
+    S("Sequencer") -- pushes unattested blocks to --> A
+    V("Validator Client") -- pushes unattested blocks to --> A
     V -- commits forks to --> WS
-    P2P("P2P Client") -- pushes attested blocks to --> A
-    V -- broadcasts attested blocks via --> P2P
-    V -- pushes checkpoints to --> L1
+    S -- commits forks to --> WS
+    P2P("P2P Client") -- pushes block proposals to --> V
+    S -- broadcasts block proposals via --> P2P
+    S -- pushes checkpoints to --> L1
     A <-- syncs to/from --> S3("Blocks Filestore")
 ```
 
 ## Archiver
 
-This requires changing the archiver to accept a new source of blocks, aside from L1. We propose adding an inbound queue to the archiver where other components can inject unattested or provisional blocks as they are discovered, expected to be called by p2p or the validator.
+This requires changing the archiver to accept a new source of blocks, aside from L1. We propose adding an inbound queue to the archiver where other components can inject unattested or provisional blocks as they are discovered, expected to be the validator or whatever component is responsible for (re)execution.
 
 The archiver is expected to resolve conflicts between these data sources, and prune unmined provisional data based on synced L2 slots. In other words, if the provisional blocks for a given L2 slot are never mined on L1, the archiver must trigger a prune.
 
