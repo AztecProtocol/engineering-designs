@@ -14,12 +14,8 @@ As we add building-in-chunks, we'll have a new tip which is a block that has bee
 
 ## What we propose
 
-- `unattested`: Latest block built locally by a validator during block proposal or attestation, not yet attested by committee
-  - We should not expose it to users via RPC, since it's meant to be used internally
-  - Alternatives considered: `candidate`, `local`, `provisional`
-- `attested`: Latest block proposed and attested by L2 validators, requires a `BlockAttested` message to be signed by the proposer
-  - Formerly `provisional`
-  - Alternatives considered: `latest`, mimicking Ethereum
+- `proposed`: Latest block proposed by the current proposer and reexecuted locally.
+  - Alternatives considered: `candidate`, `latest`, `provisional`
 - `checkpointed`: Latest block included in an L1 checkpoint
   - Formerly `pending`, which is a bad name since it has a different meaning in Ethereum
   - Alternatives considered: `safe`, `committed`, `mined`
