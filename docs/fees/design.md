@@ -68,9 +68,10 @@ The transaction can only be included if the specified max fee per mana is greate
 - `L1_GAS_PER_BLOCK_PROPOSAL` - the amount of L1 gas required to propose an L2 block on L1 (e.g. 0.2e6)
 - `L1_GAS_PER_EPOCH_VERIFICATION` - the amount of L1 gas required to verify an L2 epoch on L1 (e.g. 1e6)
 - `MINIMUM_L2_SLOTS_PER_UNDERLYING_MINIMUM_FEE_ORACLE_UPDATE` - the minimum number of L2 slots between updates to the underlying minimum fee oracle (e.g. 4)
-- `MINIMUM_FEE_ASSET_PER_ETH` - the minimum price of the fee asset in eth (e.g. 10)
-- `MAXIMUM_FEE_ASSET_PER_ETH_PERCENT_CHANGE_PER_L2_SLOT` - the maximum percentage increase in the price of the fee asset per block (e.g. 1%)
-- `FEE_ASSET_PRICE_UPDATE_FRACTION` - a value used to update the `fee_asset_price_modifier` (e.g. 1e11)
+- `ETH_PER_FEE_ASSET_PRECISION` - the precision used for the ETH/fee asset price (e.g. 1e12)
+- `MIN_ETH_PER_FEE_ASSET` - the minimum price in ETH per fee asset unit (e.g. 100, representing 1e-10 ETH/AZTEC)
+- `MAX_ETH_PER_FEE_ASSET` - the maximum price in ETH per fee asset unit (e.g. 1e11, representing 0.1 ETH/AZTEC)
+- `MAX_FEE_ASSET_PRICE_MODIFIER_BPS` - the maximum percentage change per slot in basis points (e.g. 100, representing ±1%)
 - `MINIMUM_CONGESTION_MULTIPLIER` - the minimum value the congestion multiplier can take (e.g. 1)
 - `CONGESTION_MULTIPLIER_UPDATE_FRACTION` - the constant factor to dampen movement in the congestion multiplier (e.g. 8.547 \* TARGET_MANA_PER_BLOCK)
 
@@ -122,53 +123,42 @@ The L2 block header contains the following fields:
 The rollup contract contains the following fields:
 
 - `proving_cost_per_mana` - the proving cost per mana in wei
-- `fee_asset_price_numerator` - a value used in the computation of the fee asset price per eth
+- `eth_per_fee_asset` - the current price of the fee asset in ETH (with `ETH_PER_FEE_ASSET_PRECISION` precision)
 - `excessMana` - a running value of the excess mana used beyond the target
 - `wei_per_l1_gas` - the cost of L1 gas in wei. Updated by anyone to the current L1 gas price at most every `MINIMUM_L2_SLOTS_PER_UNDERLYING_MINIMUM_FEE_ORACLE_UPDATE` slots
 - `wei_per_l1_blob_gas` - the cost of L1 blob gas in wei. Updated by anyone to the current L1 blob gas price at most every `MINIMUM_L2_SLOTS_PER_UNDERLYING_MINIMUM_FEE_ORACLE_UPDATE` slots
 
-## Exponentially Computed Values
+## Computed Values
 
-There are 2 important variables that are computed exponentially:
+### `eth_per_fee_asset` (Direct Price Storage)
 
-- `fee_asset_per_eth`
-- `minimum_fee_wei_per_mana_congestion_multiplier`
+The `eth_per_fee_asset` value represents the price of the fee asset in ETH, stored directly with `ETH_PER_FEE_ASSET_PRECISION` (1e12) precision. A higher value means the fee asset is more expensive (more ETH needed per unit).
 
-The purpose is to allow prices to fluctuate, but with guarantees, e.g. the proving cost in wei per mana will never change by more than X% per block.
+A proposer can adjust the `eth_per_fee_asset` stored in the rollup contract by up to `MAX_FEE_ASSET_PRICE_MODIFIER_BPS` basis points each slot (e.g., ±1%).
 
-All three computations follow the same formula:
-
-```math
-\text{value} = \text{minimum value} * \text{exp}\left(\frac{\text{variable}}{\text{constant}}\right)
-```
-
-### Example Calculation
-
-[See a calculation](https://www.wolframalpha.com/input?i=%28exp%28%281e9%2B1e9%29%2F%281e9*100%29%29-exp%28%281e9%29%2F%281e9*100%29%29%29%2Fexp%28%281e9%29%2F%281e9*100%29%29) which shows the percent change if the numerator doubles from 1e9 to 2e9 when the denominator is 1e9\*100 is ~1%.
-
-You can repeat the calculation for [a starting point of zero](https://www.wolframalpha.com/input?i=%28exp%28%281*1e9%29%2F%281e9*100%29%29-exp%28%280%29%2F%281e9*100%29%29%29%2Fexp%28%280%29%2F%281e9*100%29%29) to see that the percent change is ~1% as well.
-
-The takeaway is that, in this case, if we cap the change in the numerator between 0 and 1e9, the percent change is at most ~1%.
-
-### `fee_asset_per_eth`
+The update formula is:
 
 ```math
-\text{fee asset per eth} = \text{MINIMUM\_FEE\_ASSET\_PER\_ETH} * \text{exp}\left(\frac{\text{fee asset price numerator}}{\text{FEE\_ASSET\_PRICE\_UPDATE\_FRACTION}}\right)
+\text{new\_price} = \text{current\_price} * \frac{10000 + \text{modifier\_bps}}{10000}
 ```
 
-A proposer can adjust the `fee_asset_price_numerator` stored in the rollup contract by up to `MAXIMUM_FEE_ASSET_PER_ETH_PERCENT_CHANGE_PER_L2_SLOT` each slot.
+Where `modifier_bps` is in the range `[-MAX_FEE_ASSET_PRICE_MODIFIER_BPS, +MAX_FEE_ASSET_PRICE_MODIFIER_BPS]`.
 
-They do so by updating the `fee_asset_price_modifier` field, which is used to update the `fee_asset_price_numerator` stored in the rollup contract.
+The result is clamped to the bounds `[MIN_ETH_PER_FEE_ASSET, MAX_ETH_PER_FEE_ASSET]`.
 
-That is,
+**Price Conversions:**
 
+To convert from wei (ETH) to fee asset:
 ```math
-\text{new fee asset price numerator} := \text{old fee asset price numerator} + \text{fee asset price modifier}
+\text{fee\_asset} = \left\lceil \frac{\text{wei} * \text{ETH\_PER\_FEE\_ASSET\_PRECISION}}{\text{eth\_per\_fee\_asset}} \right\rceil
 ```
 
-The new `fee_asset_price_modifier` is capped at (+/-) `MAXIMUM_FEE_ASSET_PER_ETH_PERCENT_CHANGE_PER_L2_SLOT` \* `FEE_ASSET_PRICE_UPDATE_FRACTION` / 100.
+To convert from fee asset to wei (ETH):
+```math
+\text{wei} = \left\lceil \frac{\text{fee\_asset} * \text{eth\_per\_fee\_asset}}{\text{ETH\_PER\_FEE\_ASSET\_PRECISION}} \right\rceil
+```
 
-### `minimum_fee_congestion_multiplier`
+### `minimum_fee_congestion_multiplier` (Exponential)
 
 First we compute the excess mana in the current block by considering the parent mana spent and excess mana.
 
@@ -222,7 +212,7 @@ When a proposer is building an L2 block, it calculates a sequencer and a prover 
     \text{sequencer cost per mana} &= \left\lceil \frac{\text{Sequencer L1 cost per L2 block}}{\text{TARGET\_MANA\_PER\_BLOCK}} \right\rceil \\ 
     \text{prover cost per mana} &= \left\lceil \frac{\text{Prover L1 cost per L2 block}}{\text{TARGET\_MANA\_PER\_BLOCK}} \right\rceil \\ 
     \text{minimum\_fee\_in\_wei} &= \left(\text{sequencer cost per mana} + \text{prover cost per mana} \right) * \text{minimum fee congestion multiplier} \\
-    \text{minimum\_fee\_in\_fee\_asset} &= \left\lceil \text{minimum\_fee\_in\_wei} * \text{fee asset per wei} \right\rceil
+    \text{minimum\_fee\_in\_fee\_asset} &= \left\lceil \frac{\text{minimum\_fee\_in\_wei} * \text{ETH\_PER\_FEE\_ASSET\_PRECISION}}{\text{eth\_per\_fee\_asset}} \right\rceil
 \end{aligned}
 ```
 
