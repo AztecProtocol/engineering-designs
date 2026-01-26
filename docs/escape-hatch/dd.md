@@ -145,6 +145,8 @@ Duplicate candidates are rejected, and only entities that have no current status
 
 ```solidity
 function joinCandidateSet() external override {
+  getSetTimestamp(getCurrentHatch() + Hatch.wrap(LAG_IN_HATCHES)); // ADR-016
+
   address candidate = msg.sender;
 
   require(
@@ -277,6 +279,7 @@ During the proposal, we mainly need to sidestep the `verifyProposer` and instead
 if (isOpen) {
 	require(msg.sender == proposer);
 } else {
+	ValidatorSelectionLib.setupEpoch(...); // ADR-017
 	ValidatorSelectionLib.verifyProposer(...);
 }
 ...
@@ -832,3 +835,32 @@ Alternatively, to hit the “proposer” the hardest while still providing some 
 The exit boundary can be made strict already at the point in time where the randao value is frozen as nothing will change after that. This could allow a slightly faster exit. 
 
 However it would increase complexity and cases, so we will simply not do it unless really necessary, as it is at only slightly earlier.
+
+## ADR-016: Tighter Entry Boundary
+
+**Status**: Accepted
+
+**Decision**: Restrict the entry such that it is not possible until it is possible to initiate exit
+
+When the `initiateExit` function is called, it will internally call the `selectCandidates` function which relies on `getSetTimestamp` that does the computation:
+
+```solidity
+_getFirstEpoch(_hatch) - Epoch.wrap(LAG_IN_EPOCHS_FOR_SET_SIZE);
+```
+
+Which will be reverting for `_hatch == 0`. For `_hatch > 0` we won't underflow as `FREQUENCY > LAG_IN_EPOCHS_FOR_SET_SIZE`. We don't need to also check `getSeedTimestamp` since the `LAG_IN_EPOCHS_FOR_SET_SIZE > LAG_IN_EPOCHS_FOR_RANDAO` so if the set lag don't underflow neither will the randao lag.
+
+To account for changes done to the `getSetTimestamp` we will just do a call into it to account for it and provide same error. This will ensure that we cannot enter unless we could also initiate an exit at the same time.
+
+Constraints are added into `getSetTimestamp` and `getSeedTimestamp` to provide meaningful errors when underflowing instead of just "underflow".
+
+
+## ADR-017: Escape Hatch For Empty Committee
+
+**Status**: Accepted
+
+**Decision**: Allow escape hatch even without any committee
+
+In the past the intention was that the escape was just a way to get blocks through if getting censored, not to handle the case where there are no committees. This was not focussed since the cost of the escape hatch were expected to be higher than the committee, so it did not make sense to use the hatch when you could just become the committee for less funds. Anyway, as the escape hatch can be swapped out with other configuration to achieve a different goal it should also work when there are no committee. 
+
+This is addressed simply by only requiring the `setupEpoch` to be called as part of propose if the hatch is not open. 
