@@ -8,9 +8,9 @@ Contributors: TBD
 
 Today, each 72s slot has a large **dead zone** where no blocks are built. After the proposer finishes building, the slot is consumed by checkpoint finalization (validator re-execution, attestation collection, assembly) and predominantly L1 publishing. The next proposer doesn't start building until the current slot is nearly over.
 
-With 6s blocks, the dead zone is **24 seconds out of every 72** — that's 33% of the slot with no block production. 8 blocks are produced per slot despite 72s of wall-clock time. The following analysis is based on 6s block durations.
+With 6s blocks, the dead zone is at least **24 seconds out of every 72** — that's 33% of the slot with no block production. 8 blocks are produced per slot despite 72s of wall-clock time. The following analysis is based on 6s block durations.
 
-KPIs: we are trying to reduce **user-perceived latency** (time from TX submission to "proposed chain" visibility) by up to 12s and increase **effective chain throughput** from 8 blocks per slot to 10 blocks per slot (+25% improvement), depending on trigger mode.
+KPIs: we are trying to reduce **user-perceived latency** (time from TX submission to "proposed chain" visibility) by up to 12s and increase **effective chain throughput** from 8 blocks per slot to 10 blocks per slot (+25% improvement).
 
 The solution: allow the next slot's proposer to begin building blocks as soon as the predecessor's checkpoint data appears on P2P — before it lands on L1. The next proposer builds and broadcasts blocks during what is currently dead time, and anyone can submit the predecessor's checkpoint to L1 (the next proposer is incentivized to do so because their own blocks depend on it). All blocks B builds during the overlap go into B's checkpoint for B's slot.
 
@@ -22,12 +22,30 @@ From a validator's perspective, the sequencer state machine gains a new trigger:
 
 At the moment validator's have a single view of L1, the crux of this propsal creates a second view. Validators should accept proposals / blocks on a proposer schedule that is slightly ahead of l1's proposer schedule. This allows the next proposer to begin producing blocks while the previous proposer attempts to land their checkpoint on l1.
 
-From the L1 contract's perspective, `ProposeLib.sol` already allows any address to submit a checkpoint. The change for Build Ahead is **slot validation only**: the contract must also accept a checkpoint for `slot N` after slot N has elapsed (i.e., `slot == currentSlot - 1` is valid after the slot boundary). No proposer validation changes are needed.
+The new views are:
+- proposer view
+- checkpoint submission view
 
-Alternatives considered, see:
+Proposer view is T seconds ahead of the checkpoint submission view. A key decision to be made during this proposal is how extreme is T. Where T should be chosen to maximize the amount of time checkpoint submission has on L1, but minimize the roll back distance in result of checkpoint submission being missed.
 
-- [ADR-001: Speculative Trigger (checkpoint_proposal-gated)](#adr-002-speculative-trigger-checkpoint_proposal-gated)
-- [ADR-002: Speculative Building on Individual Block Proposals](#adr-004-speculative-building-on-individual-block-proposals)
+From the L1 contract's perspective, this can be implemented without any changes. However at the end; I would like to propose a small modification that would give proposer's greater assurances that they will be able to build ontop of the previous checkpoint -- by increasing the duration of checkpoint submission.
+
+With an extreme T, the slots could overlap as so, whilst proposer A is in its checkpoint submission phase, proposer B is broadcasting blocks across the p2p network.
+gantt
+    title Pipeline
+    dateFormat X
+    axisFormat %s
+
+    section Block Building
+    Proposer A :pA, 0, 1
+    Proposer B :pB, after 1, 2
+    Proposer C :pC, after pB 2, 3
+    Proposer D :pD, after pC 3,4
+
+    section Checkpoint Submission
+    Proposer A :pCA, after 1, 2
+    Proposer B :pCB, after pCA 2, 3
+    Proposer C :pCC, after pCB 3, 4
 
 # Technical Design
 
@@ -98,7 +116,7 @@ Converting to slot-relative timestamps:
 - Next proposer starts building (current) at slotStart + 61 (= next buildStart + 1)
 - **Dead zone: 24 seconds (33% of slot)**
 
-This is the core problem. A third of every slot is overhead, with 24 seconds where no blocks are being produced.
+This is the core problem. A third of every slot is overhead, with 24 seconds where no blocks are being produced. This is visualised well in https://aztecprotocol.github.io/benchmark-page-data/misc/tx-latency-explorer/. 
 
 ## High Level Protocol
 
@@ -107,7 +125,6 @@ We modify the sequencer state machine and the L1 rollup contract to enable **cro
 If the predecessor's checkpoint doesn't appear on P2P, a **mid-slot liveness timeout** fires: a globally agreed, configurable timeout after which honest nodes start accepting proposals from the next proposer. See [Mid-Slot Liveness Timeout](#mid-slot-liveness-timeout).
 
 All blocks that B builds during the overlap period go into **B's checkpoint** for slot N+1.
-
 
 ### Build Trigger: Checkpoint_proposal-Gated
 
@@ -145,47 +162,6 @@ B builds silently for ~2s before attestations arrive. Once confirmed, B broadcas
 | Latency improvement | — | ~14s |
 | Throughput improvement | — | +25% |
 
-### Comparison
-
-| | Conservative | Speculative |
-|---|---|---|
-| Trigger | attestation collected | checkpoint_proposal received |
-| B broadcasts | immediately | after attestation |
-| Dead zone | 12s (17%) | 10s (14%) |
-| Blocks/slot | 10 | 10 |
-| Failure mode | None — attested state | Silent discard if attestations don't arrive |
-| Complexity | Lower | Moderate (build/broadcast decoupling) |
-
-Note: With 72s slots, both modes yield 10 blocks/slot because the 2s difference doesn't cross a block boundary. The speculative mode's advantage is a slightly smaller dead zone.
-
-## L1 Submission Handoff
-
-The predecessor attempts L1 submission during their slot as normal. At the **slot boundary**, the predecessor stops trying. After the slot boundary, anyone can submit the predecessor's checkpoint to L1 — the current `ProposeLib.sol` already allows any address to submit. The incentive for the next proposer to submit is indirect: B needs A's checkpoint on L1 to make B's own blocks valid.
-
-Any node reconstructs the checkpoint from P2P data — the `checkpoint_proposal` message and the collected attestations. No special handoff protocol is needed.
-
-The slot boundary handoff avoids races: during the slot, A submits; after the slot boundary, others take over. 
-
-## Failure Handling
-
-If the predecessor's checkpoint fails to land on L1, the next proposer retries once. If the retry also fails:
-
-1. The next proposer discards all speculative blocks built on top of the failed checkpoint
-2. The next proposer rebuilds from the last L1-confirmed tip
-3. Transactions from discarded blocks return to the mempool
-
-```mermaid
-flowchart TD
-    A[B builds on A's checkpoint] --> B[B submits A's checkpoint to L1]
-    B --> C{L1 submission succeeds?}
-    C -->|Yes| D[Continue building normally]
-    C -->|No| E[B retries once]
-    E --> F{Retry succeeds?}
-    F -->|Yes| D
-    F -->|No| G[B discards speculative blocks]
-    G --> H[B rebuilds from last L1-confirmed tip]
-    H --> I[TXs from discarded blocks return to mempool]
-```
 
 ## Speculative Depth Limit
 
@@ -217,7 +193,7 @@ The existing inbox lag configuration value (which allows the inbox to be 1-2 che
 
 ## Same-Proposer Optimization
 
-When the same validator is proposer for consecutive slots (which the current selection algorithm allows), we skip the overlap ceremony entirely. The proposer already has the state and can continue building continuously across the slot boundary. No checkpoint trigger, no re-sync, no P2P round-trip. See [ADR-008: Same-Proposer Consecutive Slots](#adr-008-same-proposer-consecutive-slots).
+When the same validator is proposer for consecutive slots (which the current selection algorithm allows), we skip the overlap ceremony entirely. The proposer already has the state and can continue building continuously across the slot boundary. No checkpoint trigger, no re-sync, no P2P round-trip. 
 
 ## Epoch Boundary Behavior
 
@@ -236,6 +212,118 @@ The exact timeout value is TBD and will be tuned via testing. It should be long 
 ## Empty Slot / Offline Proposer
 
 If the predecessor produces no checkpoint and the mid-slot liveness timeout fires, the next proposer builds from the last confirmed state. If neither mechanism triggers (no checkpoint, no timeout — e.g., the proposer produced blocks but failed during attestation), the next proposer falls back to current behavior: wait for the slot to end, then build from the last confirmed state.
+
+## Drawbacks
+
+1. **Soft reorgs at the speculative boundary.** When speculative blocks are discarded (L1 submission failure), users who saw TX effects on the proposed chain experience a reorg. However, this risk is equivalent to the existing system's reorg behavior at the proposed→checkpointed boundary — it just manifests at a different point (across slots rather than within a slot). This is not a new class of risk, though the window is slightly wider.
+
+2. **Coordinated upgrade required.** The L1 contract changes are a hard fork.
+
+## Latency Analysis
+
+**Current system** (6s blocks, 72s slots, no Build Ahead):
+
+| Stage | Duration |
+|-------|----------|
+| TX submission → P2P to proposer | ~2s |
+| Wait for block window | 0–24s dead zone (avg ~12s) |
+| Block execution | ~2–6s |
+| Block visible on proposed chain (P2P propagation + validator re-execution) | ~4–8s |
+| **Total** | **~8–40s, avg ~24s** |
+
+**With Build Ahead** (speculative trigger):
+
+| Stage | Duration |
+|-------|----------|
+| TX submission → P2P to proposer | ~2s |
+| Wait for block window | 0–10s dead zone (avg ~5s) |
+| Block execution | ~2–6s |
+| Block visible on proposed chain (P2P propagation + validator re-execution) | ~4–8s |
+| **Total** | **~8–26s, avg ~17s** |
+
+The worst-case latency drops from ~40s to ~26-28s. Average latency drops from ~24s to ~17-18s.
+
+// TODO: check the above 
+
+## Observability Needs
+
+We need monitoring for:
+
+- **Speculative depth**: how often does depth reach 2? This indicates L1 congestion or faulty proposers ahead.
+- **Speculative block discards**: how often does the retry-then-discard path fire? This directly impacts user experience (soft reorgs).
+- **Overlap utilization**: how much of the dead zone is actually recovered? Measures the real-world latency gain.
+- **Build Ahead trigger**: how often does B trigger on checkpoint_proposal vs fallback (early build)?
+- **Next-proposer L1 submissions**: how often does the next proposer land the predecessor's checkpoint vs the predecessor landing it themselves?
+- **Silent discard rate** (speculative mode only): how often does B build speculatively then discard because attestations didn't arrive?
+
+# Open Questions
+
+- **Reorg UX:** When speculative blocks are discarded, users experience a soft reorg (equivalent to the existing proposed→checkpointed boundary reorg). How should this be surfaced? Options range from explicit reorg events to silent rebuild. Needs further thought.
+
+- **Mid-slot liveness timeout value:** The exact timeout value needs to be determined through testing. Too short risks false positives (penalizing slow-but-honest proposers); too long wastes build time.
+
+# Implementation Notes
+
+- **Timetable adjustment is a sliding window:** The extended build window from Build Ahead is not a change to the timetable formula itself. B dynamically computes its block count based on when the checkpoint trigger fires. The formula `timeAvailableForBlocks = slotDuration - initOffset - timeReservedAtEnd` remains correct for each proposer's own slot; the overlap simply means B starts populating its window earlier.
+
+# Test Plan
+
+The mechanism should be testable via the existing multi-validator test infrastructure. Key scenarios:
+
+- **Happy path**: Proposer A broadcasts checkpoint_proposal, B starts building silently, attestations arrive, B broadcasts blocks, B submits A's checkpoint.
+- **Speculative discard**: A's checkpoint_proposal arrives but attestations never reach quorum. B discards silently, no P2P broadcast.
+- **Failure path**: A's checkpoint fails L1 submission, B retries, retry fails, B discards and rebuilds.
+- **Depth limit**: Three consecutive proposers where the first two checkpoints don't land on L1 — third proposer should wait.
+- **Epoch boundary**: Overlap spanning committee rotation — old committee attestations accepted without re-validation.
+- **Same proposer**: Consecutive slots with the same proposer — overlap is skipped.
+- **Mid-slot liveness timeout**: Predecessor produces no proposals — liveness timeout fires, next proposer builds from confirmed state.
+- **Empty slot**: Predecessor offline — next proposer falls back to current behavior.
+- **Throughput**: Measure actual block count per slot with Build Ahead enabled vs disabled.
+
+# Rollout Plan
+
+This **requires** a coordinated rollout - creating a second proposer view will require all nodes to run compatible versions such that they are building along the correct tip.
+
+# Future Work (Out of Scope)
+
+- **Relay Handoff evolution:** Fully decouple building from L1 submission. The predecessor never submits to L1, gaining the full publishing window for additional block building. Natural evolution if this design proves effective. (L2 Consensus / distinct batching roles c-train has discussed)
+
+- **Speculative proving:** How will the proving client take advantage of this pipelining?
+
+# Potential Improvement: L1 contract changes
+
+If proposer A misses their checkpoint submission slot (on purpose / being out priced), proposer B will have spent some time building on a chain that will be pruned, even though the attestation's gathered have given them a high confidence in their validity. 
+
+If a proposer A misses their slot, I propose allowing it's submission for longer than the current deadline. Giving up to two l1 submission slots for each proposer. In this proposal, the proposerA must face a rather extreme penalty for missing their slot, either by a slashing, loosing a % of their rewards to the late proposal submitter - or both.
+
+## L1 Submission Handoff
+
+The predecessor attempts L1 submission during their slot as normal. At the **slot boundary**, the predecessor stops trying. After the slot boundary, anyone can submit the predecessor's checkpoint to L1 — the current `ProposeLib.sol` already allows any address to submit. The incentive for the next proposer to submit is indirect: B needs A's checkpoint on L1 to make B's own blocks valid, but also should yield some of proposer A's block rewards.
+
+Any node reconstructs the checkpoint from P2P data — the `checkpoint_proposal` message and the collected attestations. No special handoff protocol is needed.
+
+The slot boundary handoff avoids races: during the slot, A submits; after the slot boundary, others take over. 
+
+## Failure Handling
+
+If the predecessor's checkpoint fails to land on L1, the next proposer retries once. If the retry also fails:
+
+1. The next proposer discards all speculative blocks built on top of the failed checkpoint
+2. The next proposer rebuilds from the last L1-confirmed tip
+3. Transactions from discarded blocks return to the mempool
+
+```mermaid
+flowchart TD
+    A[B builds on A's checkpoint] --> B[B submits A's checkpoint to L1]
+    B --> C{L1 submission succeeds?}
+    C -->|Yes| D[Continue building normally]
+    C -->|No| E[B retries once]
+    E --> F{Retry succeeds?}
+    F -->|Yes| D
+    F -->|No| G[B discards speculative blocks]
+    G --> H[B rebuilds from last L1-confirmed tip]
+    H --> I[TXs from discarded blocks return to mempool]
+```
 
 ## L1 Contract Changes
 
@@ -266,88 +354,13 @@ function validateSlot(uint256 checkpointSlot) {
 
 The reward goes to the original proposer at proof time (not submission time), so anyone submitting a checkpoint is spending gas altruistically — or in their own interest to keep the chain moving because their blocks depend on it.
 
-We will have to make some changes + do some analysis to work out how much of the rewards should be given to the submitter. 
-
-## Drawbacks
-
-1. **Soft reorgs at the speculative boundary.** When speculative blocks are discarded (L1 submission failure), users who saw TX effects on the proposed chain experience a reorg. However, this risk is equivalent to the existing system's reorg behavior at the proposed→checkpointed boundary — it just manifests at a different point (across slots rather than within a slot). This is not a new class of risk, though the window is slightly wider.
-
-2. **Coordinated upgrade required.** The L1 contract changes are a hard fork.
-
-## Latency Analysis
-
-**Current system** (6s blocks, 72s slots, no Build Ahead):
-
-| Stage | Duration |
-|-------|----------|
-| TX submission → P2P to proposer | ~2s |
-| Wait for block window | 0–24s dead zone (avg ~12s) |
-| Block execution | ~2–6s |
-| Block visible on proposed chain (P2P propagation + validator re-execution) | ~4–8s |
-| **Total** | **~8–40s, avg ~24s** |
-
-**With Build Ahead** (speculative trigger):
-
-| Stage | Duration |
-|-------|----------|
-| TX submission → P2P to proposer | ~2s |
-| Wait for block window | 0–10s dead zone (avg ~5s) |
-| Block execution | ~2–6s |
-| Block visible on proposed chain (P2P propagation + validator re-execution) | ~4–8s |
-| **Total** | **~8–26s, avg ~17s** |
-
-The worst-case latency drops from ~40s to ~26-28s. Average latency drops from ~24s to ~17-18s. Note that the absolute latency improvement (~12s) is the same as with 36s slots — the dead zone is the same length (24s), just a smaller fraction of the longer slot.
-
-## Observability Needs
-
-We need monitoring for:
-
-- **Speculative depth**: how often does depth reach 2? This indicates L1 congestion.
-- **Speculative block discards**: how often does the retry-then-discard path fire? This directly impacts user experience (soft reorgs).
-- **Overlap utilization**: how much of the dead zone is actually recovered? Measures the real-world latency gain.
-- **Build Ahead trigger**: how often does B trigger on checkpoint_proposal vs fallback (early build)?
-- **Next-proposer L1 submissions**: how often does the next proposer land the predecessor's checkpoint vs the predecessor landing it themselves?
-- **Silent discard rate** (speculative mode only): how often does B build speculatively then discard because attestations didn't arrive?
-
-# Open Questions
-
+### Open Questions
 - **Reward economics:** Rewards are distributed at **proof arrival time**, not at checkpoint submission time. This means the submitter of the L1 checkpoint doesn't automatically get the reward — the proof associates the reward with the original proposer. The incentive for B to submit A's checkpoint is indirect (B needs A's checkpoint on L1 to make B's own blocks valid). The exact reward mechanism and incentive alignment needs formal analysis but is deferred from this design.
 
-- **Blob data reconstruction:** This is a feasibility prerequisite. If the P2P `checkpoint_proposal` message does not contain sufficient data to reconstruct the blob transaction for L1, the relay mechanism needs an alternative path. Must be validated before implementation.
+### Rollout plan
+- Can only be performed as part of a large network upgrad
 
-- **Reorg UX:** When speculative blocks are discarded, users experience a soft reorg (equivalent to the existing proposed→checkpointed boundary reorg). How should this be surfaced? Options range from explicit reorg events to silent rebuild. Needs further thought.
-
-- **Mid-slot liveness timeout value:** The exact timeout value needs to be determined through testing. Too short risks false positives (penalizing slow-but-honest proposers); too long wastes build time.
-
-# Implementation Notes
-
-- **Timetable adjustment is a sliding window:** The extended build window from Build Ahead is not a change to the timetable formula itself. B dynamically computes its block count based on when the checkpoint trigger fires. The formula `timeAvailableForBlocks = slotDuration - initOffset - timeReservedAtEnd` remains correct for each proposer's own slot; the overlap simply means B starts populating its window earlier.
-
-# Test Plan
-
-The mechanism should be testable via the existing multi-validator test infrastructure. Key scenarios:
-
-- **Happy path**: Proposer A broadcasts checkpoint_proposal, B starts building silently, attestations arrive, B broadcasts blocks, B submits A's checkpoint.
-- **Speculative discard**: A's checkpoint_proposal arrives but attestations never reach quorum. B discards silently, no P2P broadcast.
-- **Failure path**: A's checkpoint fails L1 submission, B retries, retry fails, B discards and rebuilds.
-- **Depth limit**: Three consecutive proposers where the first two checkpoints don't land on L1 — third proposer should wait.
-- **Epoch boundary**: Overlap spanning committee rotation — old committee attestations accepted without re-validation.
-- **Same proposer**: Consecutive slots with the same proposer — overlap is skipped.
-- **Mid-slot liveness timeout**: Predecessor produces no proposals — liveness timeout fires, next proposer builds from confirmed state.
-- **Empty slot**: Predecessor offline — next proposer falls back to current behavior.
-- **Throughput**: Measure actual block count per slot with Build Ahead enabled vs disabled.
-
-# Rollout Plan
-
-This **requires** a coordinated rollup upgrade — the L1 contract changes (`ProposeLib.sol`) are a hard fork. All validators must upgrade simultaneously.
-
-A version of this without l1 changes CAN be shipped, however it proposer+1's certainty that the previous proposer's checkpoint will land a bit hairy. The games get a bit awkward. 
-
-# Future Work (Out of Scope)
-
-- **Relay Handoff evolution:** Fully decouple building from L1 submission. The predecessor never submits to L1, gaining the full publishing window for additional block building. Natural evolution if this design proves effective. (L2 Consensus / distinct batching roles c-train has discussed)
-
-- **Speculative proving:** How will the proving client take advantage of this pipelining?
+We will have to make some changes + do some analysis to work out how much of the rewards should be given to the submitter. 
 
 # ADR - Architecture Design Record
 
