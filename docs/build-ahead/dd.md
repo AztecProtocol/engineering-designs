@@ -39,12 +39,12 @@ gantt
 
     section Block Building
     Proposer A :pA, 0, 1
-    Proposer B :pB, after 1, 2
+    Proposer B :pB, after pA 1, 2
     Proposer C :pC, after pB 2, 3
     Proposer D :pD, after pC 3,4
 
     section Checkpoint Submission
-    Proposer A :pCA, after 1, 2
+    Proposer A :pCA, after pA, 2
     Proposer B :pCB, after pCA 2, 3
     Proposer C :pCC, after pCB 3, 4
 ```
