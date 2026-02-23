@@ -26,10 +26,8 @@ From the L1 contract's perspective, `ProposeLib.sol` already allows any address 
 
 Alternatives considered, see:
 
-- [ADR-001: Conservative Trigger (attestation-gated)](#adr-001-conservative-trigger-attestation-gated)
-- [ADR-002: Speculative Trigger (checkpoint_proposal-gated)](#adr-002-speculative-trigger-checkpoint_proposal-gated)
-- [ADR-003: Relay Handoff](#adr-003-relay-handoff)
-- [ADR-004: Speculative Building on Individual Block Proposals](#adr-004-speculative-building-on-individual-block-proposals)
+- [ADR-001: Speculative Trigger (checkpoint_proposal-gated)](#adr-002-speculative-trigger-checkpoint_proposal-gated)
+- [ADR-002: Speculative Building on Individual Block Proposals](#adr-004-speculative-building-on-individual-block-proposals)
 
 # Technical Design
 
@@ -384,8 +382,7 @@ We need monitoring for:
 
 The mechanism should be testable via the existing multi-validator test infrastructure. Key scenarios:
 
-- **Happy path (conservative)**: Proposer A builds and broadcasts checkpoint, Proposer B starts building after attestations collected, B successfully submits A's checkpoint to L1.
-- **Happy path (speculative)**: Proposer A broadcasts checkpoint_proposal, B starts building silently, attestations arrive, B broadcasts blocks, B submits A's checkpoint.
+- **Happy path**: Proposer A broadcasts checkpoint_proposal, B starts building silently, attestations arrive, B broadcasts blocks, B submits A's checkpoint.
 - **Speculative discard**: A's checkpoint_proposal arrives but attestations never reach quorum. B discards silently, no P2P broadcast.
 - **Failure path**: A's checkpoint fails L1 submission, B retries, retry fails, B discards and rebuilds.
 - **Depth limit**: Three consecutive proposers where the first two checkpoints don't land on L1 — third proposer should wait.
@@ -395,21 +392,11 @@ The mechanism should be testable via the existing multi-validator test infrastru
 - **Empty slot**: Predecessor offline — next proposer falls back to current behavior.
 - **Throughput**: Measure actual block count per slot with Build Ahead enabled vs disabled.
 
-To evaluate impact on KPIs, measure user-perceived latency and blocks per slot in a test network with and without Build Ahead, focusing on transactions arriving during the dead zone.
-
 # Rollout Plan
 
 This **requires** a coordinated rollup upgrade — the L1 contract changes (`ProposeLib.sol`) are a hard fork. All validators must upgrade simultaneously.
 
 A version of this without l1 changes CAN be shipped, however it proposer+1's certainty that the previous proposer's checkpoint will land a bit hairy. The games get a bit awkward. 
-
-Rollback plan: disable Build Ahead in the sequencer config (fall back to current behavior where the next proposer waits for slot start). The L1 contract change is backwards-compatible — the designated proposer can always submit during their slot as before.
-
-Risks:
-- Blob data reconstruction may not be feasible from P2P data alone (see Open Questions)
-- Soft reorgs could surprise users if not properly communicated
-- L1 congestion scenarios need real-world testing to validate the depth limit behavior
-- Timetable changes may have unexpected interactions with the sub-slot scheduling
 
 # Future Work (Out of Scope)
 
@@ -421,17 +408,7 @@ Risks:
 
 These ADRs are branches in conversations I had with various LLMs, keeping in style with lasse's proposal I think they are useful to include.
 
-## ADR-001: Conservative Trigger (attestation-gated)
-
-**Status**: Proposed
-
-**Decision**: The next proposer starts building and broadcasting when the predecessor's checkpoint is attested on P2P (checkpoint_proposal + >2/3 attestations collected).
-
-This is the simplest approach. The attested checkpoint provides high confidence (>2/3 committee has signed over the state). The existing system already builds on unproven pending chain state, so this does not introduce a new trust assumption.
-
-Recovers the L1 publishing dead time (~12s). B's effective build window extends, allowing 10 blocks instead of 8. Dead zone shrinks from 24s (33%) to 12s (17%).
-
-## ADR-002: Speculative Trigger (checkpoint_proposal-gated)
+## ADR-001: Speculative Trigger (checkpoint_proposal-gated)
 
 **Status**: Proposed
 
@@ -445,17 +422,7 @@ Recovers ~14s of dead time. Dead zone shrinks from 24s (33%) to 10s (14%). With 
 
 The trade-off is moderate additional complexity: the sequencer must decouple block building from block broadcasting, maintaining a local buffer of un-broadcast blocks.
 
-## ADR-003: Relay Handoff
-
-**Status**: Rejected (for now, see Future Work)
-
-**Decision**: We will NOT fully decouple building from L1 submission at this time.
-
-A cleaner design would have the predecessor never submit to L1 — they stop after collecting attestations and the next proposer handles L1 submission entirely. This gives the predecessor extra block building time and creates a clean separation between building and submitting.
-
-However, this is a bigger structural change. The slot is no longer self-contained, and if the next proposer is offline or malicious, the checkpoint submission is delayed with no fallback. Build Ahead recovers most of the benefit with less risk. If it proves effective, the relay handoff is a natural evolution.
-
-## ADR-004: Speculative Building on Individual Block Proposals
+## ADR-002: Speculative Building on Individual Block Proposals
 
 **Status**: Rejected
 
@@ -465,7 +432,7 @@ The most aggressive approach: the next proposer starts building as soon as they 
 
 However, it carries the highest reorg risk (building on un-attested state), requires complex state management if individual blocks are invalidated, and validators might reject the next proposer's blocks if they reference state from un-attested predecessor blocks. The complexity is not justified given that Build Ahead already recovers most of the dead time.
 
-## ADR-005: P2P Reconstruction vs Explicit Handoff
+## ADR-003: P2P Reconstruction vs Explicit Handoff
 
 **Status**: Accepted
 
@@ -478,7 +445,7 @@ Two options were considered:
 
 P2P reconstruction is simpler and more resilient. It requires no special coordination protocol, works even if the proposers don't know each other's identity in advance, and uses existing gossipsub infrastructure. Any node that has the attestations could theoretically submit.
 
-## ADR-006: L1 Submission Race Avoidance
+## ADR-004: L1 Submission Race Avoidance
 
 **Status**: Accepted
 
@@ -492,7 +459,7 @@ If both the predecessor and next proposer attempt to submit the same checkpoint 
 
 Option 2 is the simplest and eliminates races entirely. The predecessor has the full slot to submit. If they haven't landed it by the slot boundary, the next proposer takes over.
 
-## ADR-007: Speculative Depth Limit
+## ADR-005: Speculative Depth Limit
 
 **Status**: Accepted
 
@@ -508,47 +475,10 @@ Three options were considered:
 
 Max 2 provides a good balance. Depth is tracked locally using the gap between `proposed` and `checkpointed` **checkpoint numbers** (not block numbers — with 8+ blocks per checkpoint, block number gap would be misleading).
 
-## ADR-008: Same-Proposer Consecutive Slots
+## ADR-006: Same-Proposer Consecutive Slots
 
 **Status**: Accepted
 
 **Decision**: When the same validator is proposer for consecutive slots, skip the overlap ceremony and continue building continuously.
 
-The overlap protocol is unnecessary when the same proposer holds both slots. They already have the state. Skipping it is strictly better: lower latency, less P2P traffic, simpler state management.
-
-## ADR-009: Epoch Boundary Handling
-
-**Status**: Superseded — no longer needed
-
-Old committee attestations remain valid across epoch rotation. The L1 contract can verify signatures from the old committee regardless of committee changes. Epoch boundary overlaps work identically to mid-epoch overlaps. No special handling required.
-
-## ADR-010: MEV Implications
-
-**Status**: Accepted (no change needed)
-
-**Decision**: The overlap does not introduce new MEV concerns.
-
-The next proposer can already see the predecessor's blocks on P2P today. The overlap does not change what information is visible — it only changes when the next proposer acts on it.
-
-## ADR-011: Network Partition Resilience
-
-**Status**: Accepted (no change needed)
-
-**Decision**: The existing >2/3 attestation threshold handles partitions.
-
-The build trigger requires >2/3 committee attestations. If the next proposer has collected a quorum of attestations, by definition enough validators have the state to later attest to the next proposer's blocks.
-
-## ADR-012: Block Ownership During Overlap
-
-**Status**: Accepted
-
-**Decision**: All blocks built by B during the overlap period go into B's checkpoint for slot N+1.
-
-Three options were considered:
-
-1. **All blocks in B's checkpoint**: Everything B builds (including during A's slot) is B's. B has a bigger checkpoint.
-2. **Overlap blocks in A's checkpoint**: Blocks B builds during A's slot extend A's checkpoint.
-3. **Separate mini-checkpoint**: Overlap blocks get their own checkpoint.
-
-Option 1 is the simplest. B is the proposer for slot N+1 and takes responsibility for all blocks it builds. The overlap doesn't change slot ownership — it changes when building starts.
-
+The overlap protocol is unnecessary when the same proposer holds both slots. They already have the state.
