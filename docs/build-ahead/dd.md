@@ -108,47 +108,8 @@ If the predecessor's checkpoint doesn't appear on P2P, a **mid-slot liveness tim
 
 All blocks that B builds during the overlap period go into **B's checkpoint** for slot N+1.
 
-## Build Trigger Options
 
-Two trigger modes are proposed. Both recover the L1 publishing dead time; they differ in how aggressively they start.
-
-### Option 1: Conservative — Attestation-Gated
-
-The next proposer starts building **and broadcasting** when both conditions are met:
-
-1. The predecessor's `checkpoint_proposal` has been received via gossipsub
-2. The next proposer has collected >2/3 committee attestations from the `checkpoint_attestation` topic
-
-**B starts building at: slotStart + 49** (attestation at +48, plus 1s init)
-
-```mermaid
-gantt
-    title Conservative Build Ahead — Attestation-Gated
-    dateFormat s
-    axisFormat %S
-
-    section Slot N (A)
-    Init + Blocks 1-8    :a_build, 0, 49s
-    Finalize (re-exec, asm, P2P) :a_fin, 49, 11s
-    L1 publish           :a_l1, 60, 12s
-
-    section Slot N+1 (B) — starts at +48
-    Init                 :b_init, 48, 1s
-    Block 1              :b_blk1, 49, 6s
-    Block 2              :b_blk2, 55, 6s
-    ...more blocks       :b_more, 61, 6s
-```
-
-| Metric | Current | Conservative Build Ahead |
-|---|---|---|
-| Dead zone | 24s (33%) | 12s (17%) |
-| Blocks per slot | 8 | 10 |
-| Latency improvement | — | ~12s |
-| Throughput improvement | — | +25% |
-
-See [ADR-001](#adr-001-conservative-trigger-attestation-gated).
-
-### Option 2: Speculative — checkpoint_proposal-Gated
+### Build Trigger: Checkpoint_proposal-Gated
 
 The next proposer starts building (locally, **not broadcasting**) as soon as the `checkpoint_proposal` is received. Blocks are only **broadcast after attestations arrive**.
 
@@ -175,7 +136,7 @@ gantt
     ...more blocks       :b_more, 59, 6s
 ```
 
-B builds silently for ~2s before attestations arrive. Once confirmed, B broadcasts everything it's built. If attestations never arrive (invalid checkpoint), B discards silently — nothing was broadcast, no P2P pollution.
+B builds silently for ~2s before attestations arrive. Once confirmed, B broadcasts everything it's built. If attestations never arrive (invalid checkpoint), B discards silently — nothing was broadcast.
 
 | Metric | Current | Speculative Build Ahead |
 |---|---|---|
@@ -183,10 +144,6 @@ B builds silently for ~2s before attestations arrive. Once confirmed, B broadcas
 | Blocks per slot | 8 | 10 |
 | Latency improvement | — | ~14s |
 | Throughput improvement | — | +25% |
-
-Note: The speculative trigger gains ~2s over conservative but this does not cross a 6s block boundary, so both modes yield 10 blocks per slot. The speculative mode's advantage is reduced dead zone (10s vs 12s) rather than additional blocks.
-
-See [ADR-002](#adr-002-speculative-trigger-checkpoint_proposal-gated).
 
 ### Comparison
 
@@ -205,9 +162,9 @@ Note: With 72s slots, both modes yield 10 blocks/slot because the 2s difference 
 
 The predecessor attempts L1 submission during their slot as normal. At the **slot boundary**, the predecessor stops trying. After the slot boundary, anyone can submit the predecessor's checkpoint to L1 — the current `ProposeLib.sol` already allows any address to submit. The incentive for the next proposer to submit is indirect: B needs A's checkpoint on L1 to make B's own blocks valid.
 
-Any node reconstructs the checkpoint from P2P data — the `checkpoint_proposal` message and the collected attestations. No special handoff protocol is needed; see [ADR-005: P2P Reconstruction vs Explicit Handoff](#adr-005-p2p-reconstruction-vs-explicit-handoff).
+Any node reconstructs the checkpoint from P2P data — the `checkpoint_proposal` message and the collected attestations. No special handoff protocol is needed.
 
-The slot boundary handoff avoids races: during the slot, A submits; after the slot boundary, others take over. See [ADR-006: L1 Submission Race Avoidance](#adr-006-l1-submission-race-avoidance).
+The slot boundary handoff avoids races: during the slot, A submits; after the slot boundary, others take over. 
 
 ## Failure Handling
 
@@ -248,7 +205,7 @@ stateDiagram-v2
     land --> cbuild : ✓ build allowed
 ```
 
-When depth = 2, the next proposer waits for at least one checkpoint to land on L1 before building. This reintroduces some dead time, but only during sustained L1 congestion — a rare scenario. See [ADR-007: Speculative Depth Limit](#adr-007-speculative-depth-limit).
+When depth = 2, the next proposer waits for at least one checkpoint to land on L1 before building. This reintroduces some dead time, but only when proposer's cannot land blocks for 1m+.
 
 ## TX Deduplication
 
@@ -309,15 +266,13 @@ function validateSlot(uint256 checkpointSlot) {
 
 The reward goes to the original proposer at proof time (not submission time), so anyone submitting a checkpoint is spending gas altruistically — or in their own interest to keep the chain moving because their blocks depend on it.
 
+We will have to make some changes + do some analysis to work out how much of the rewards should be given to the submitter. 
+
 ## Drawbacks
 
 1. **Soft reorgs at the speculative boundary.** When speculative blocks are discarded (L1 submission failure), users who saw TX effects on the proposed chain experience a reorg. However, this risk is equivalent to the existing system's reorg behavior at the proposed→checkpointed boundary — it just manifests at a different point (across slots rather than within a slot). This is not a new class of risk, though the window is slightly wider.
 
-2. **Blob data reconstruction.** When the next proposer submits the predecessor's checkpoint to L1, they need the blob data. If the predecessor stopped submitting at the slot boundary, the blobs need to be reconstructed from P2P data. Whether the `checkpoint_proposal` gossipsub message contains sufficient data for this needs validation.
-
-3. **Coordinated upgrade required.** The L1 contract changes are a hard fork. All validators must upgrade simultaneously — likely at an epoch boundary.
-
-4. **Remaining dead zone.** Even with Build Ahead, 10-12s of dead zone remains per slot (the checkpoint finalization overhead: re-execution + assembly + P2P round-trip). This is inherent to the attestation-based protocol and cannot be eliminated without changing the trust model (e.g., optimistic attestation).
+2. **Coordinated upgrade required.** The L1 contract changes are a hard fork.
 
 ## Latency Analysis
 
@@ -330,16 +285,6 @@ The reward goes to the original proposer at proof time (not submission time), so
 | Block execution | ~2–6s |
 | Block visible on proposed chain (P2P propagation + validator re-execution) | ~4–8s |
 | **Total** | **~8–40s, avg ~24s** |
-
-**With Build Ahead** (conservative trigger):
-
-| Stage | Duration |
-|-------|----------|
-| TX submission → P2P to proposer | ~2s |
-| Wait for block window | 0–12s dead zone (avg ~6s) |
-| Block execution | ~2–6s |
-| Block visible on proposed chain (P2P propagation + validator re-execution) | ~4–8s |
-| **Total** | **~8–28s, avg ~18s** |
 
 **With Build Ahead** (speculative trigger):
 
@@ -360,7 +305,7 @@ We need monitoring for:
 - **Speculative depth**: how often does depth reach 2? This indicates L1 congestion.
 - **Speculative block discards**: how often does the retry-then-discard path fire? This directly impacts user experience (soft reorgs).
 - **Overlap utilization**: how much of the dead zone is actually recovered? Measures the real-world latency gain.
-- **Build Ahead trigger**: how often does B trigger on checkpoint_proposal vs attestation vs fallback (early build)?
+- **Build Ahead trigger**: how often does B trigger on checkpoint_proposal vs fallback (early build)?
 - **Next-proposer L1 submissions**: how often does the next proposer land the predecessor's checkpoint vs the predecessor landing it themselves?
 - **Silent discard rate** (speculative mode only): how often does B build speculatively then discard because attestations didn't arrive?
 
