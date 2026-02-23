@@ -546,7 +546,7 @@ def _(
             A bit of magic for the fake exponential and integer math. Computing the divisor this way should ensure
             that the multiplier will increase by at most a factor of ~ 1.125 every block.
             """
-            return Uint256(int(self.mana_target.value / 0.117))
+            return Uint256((self.mana_target.value * 854_700_854) // 100_000_000)
 
         def compute_sequencer_costs(
             self, block: Optional[Block], real=False
