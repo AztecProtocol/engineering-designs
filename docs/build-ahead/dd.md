@@ -31,6 +31,7 @@ Proposer view is T seconds ahead of the checkpoint submission view. A key decisi
 From the L1 contract's perspective, this can be implemented without any changes. However at the end; I would like to propose a small modification that would give proposer's greater assurances that they will be able to build ontop of the previous checkpoint -- by increasing the duration of checkpoint submission.
 
 With an extreme T, the slots could overlap as so, whilst proposer A is in its checkpoint submission phase, proposer B is broadcasting blocks across the p2p network.
+```mermaid
 gantt
     title Pipeline
     dateFormat X
@@ -46,6 +47,7 @@ gantt
     Proposer A :pCA, after 1, 2
     Proposer B :pCB, after pCA 2, 3
     Proposer C :pCC, after pCB 3, 4
+```
 
 # Technical Design
 
