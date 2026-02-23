@@ -1,7 +1,7 @@
 # Build Ahead - Proposer Pipelining
 
-Last edited time: February 21, 2026
-Tech Lead: TBD
+Last edited time: February 23, 2026
+Tech Lead: Maddiaa0
 Contributors: TBD
 
 # Problem Statement & Executive Summary
