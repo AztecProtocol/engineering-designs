@@ -135,7 +135,7 @@ The next proposer starts building (locally, **not broadcasting**) as soon as the
 **B starts building at: slotStart + 47** (checkpoint_proposal at +46, plus 1s init)
 **B starts broadcasting at: slotStart + 48** (when attestations collected)
 
-Below demonstrates what happens when build ahead time is 24 seconds, and not the entire slot duration.
+Below demonstrates what happens when build ahead time is 24 seconds, and not the entire slot duration, if much larger than A has alot more time to submit to L1.
 
 ```mermaid
 gantt
