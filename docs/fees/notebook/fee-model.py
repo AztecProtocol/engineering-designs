@@ -820,9 +820,9 @@ def _(
     random,
 ):
     fee_model = FeeModel(
-        mana_target=Uint256(int(1e8)),
-        l1_gas_per_block_proposed=Uint256(int(0.3e6)),
-        l1_gas_per_epoch_verified=Uint256(int(1e6)),
+        mana_target=Uint256(int(75_000_000)),
+        l1_gas_per_block_proposed=Uint256(int(300_000)),
+        l1_gas_per_epoch_verified=Uint256(int(3_600_000)),
         proving_cost_per_mana=Uint256(int(WEI_PER_MANA)),
         l1_gas_oracle=L1GasOracle(
             pre=L1Fees(blob_fee=Uint256(1), base_fee=Uint256(int(1e9))),
