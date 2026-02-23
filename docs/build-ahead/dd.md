@@ -118,7 +118,7 @@ Converting to slot-relative timestamps:
 - Next proposer starts building (current) at slotStart + 61 (= next buildStart + 1)
 - **Dead zone: 24 seconds (33% of slot)**
 
-This is the core problem. A third of every slot is overhead, with 24 seconds where no blocks are being produced. This is visualised well in https://aztecprotocol.github.io/benchmark-page-data/misc/tx-latency-explorer/. 
+This is the core problem. A third of every slot is overhead, with 24 seconds where no blocks are being produced. This is visualised well in https://aztecprotocol.github.io/benchmark-page-data/misc/tx-latency-explorer/.
 
 ## High Level Protocol
 
@@ -135,24 +135,26 @@ The next proposer starts building (locally, **not broadcasting**) as soon as the
 **B starts building at: slotStart + 47** (checkpoint_proposal at +46, plus 1s init)
 **B starts broadcasting at: slotStart + 48** (when attestations collected)
 
+Below demonstrates what happens when build ahead time is 24 seconds, and not the entire slot duration.
+
 ```mermaid
 gantt
     title Speculative Build Ahead — checkpoint_proposal-Gated
-    dateFormat s
-    axisFormat %S
+    dateFormat YYYY-MM-DD HH:mm:ss
+    axisFormat %M:%S
 
     section Slot N (A)
-    Init + Blocks 1-8    :a_build, 0, 49s
-    Finalize (re-exec, asm, P2P) :a_fin, 49, 11s
-    L1 publish           :a_l1, 60, 12s
+    Init + Blocks 1-8           :a_build, 2024-01-01 00:00:00, 49s
+    Finalize (re-exec, asm, P2P):a_fin,   2024-01-01 00:00:49, 11s
+    L1 publish                  :a_l1,    2024-01-01 00:01:00, 12s
 
-    section Slot N+1 (B) — starts at +46
-    Init                 :b_init, 46, 1s
-    Block 1 (silent)     :crit, b_silent, 47, 1s
-    Attestations arrive  :milestone, 48, 0s
-    Block 1 (cont) + broadcast :b_blk1, 48, 5s
-    Block 2              :b_blk2, 53, 6s
-    ...more blocks       :b_more, 59, 6s
+    section Slot N+1 (B) — starts at +46s
+    Init                        :b_init,    2024-01-01 00:00:46, 1s
+    Block 1 (silent)            :crit, b_silent, 2024-01-01 00:00:47, 1s
+    Attestations arrive         :milestone, b_attest, 2024-01-01 00:00:48, 0s
+    Block 1 (cont) + broadcast  :b_blk1,    2024-01-01 00:00:48, 5s
+    Block 2                     :b_blk2,    2024-01-01 00:00:53, 6s
+    ...more blocks              :b_more,    2024-01-01 00:00:59, 6s
 ```
 
 B builds silently for ~2s before attestations arrive. Once confirmed, B broadcasts everything it's built. If attestations never arrive (invalid checkpoint), B discards silently — nothing was broadcast.
@@ -195,7 +197,7 @@ The existing inbox lag configuration value (which allows the inbox to be 1-2 che
 
 ## Same-Proposer Optimization
 
-When the same validator is proposer for consecutive slots (which the current selection algorithm allows), we skip the overlap ceremony entirely. The proposer already has the state and can continue building continuously across the slot boundary. No checkpoint trigger, no re-sync, no P2P round-trip. 
+When the same validator is proposer for consecutive slots (which the current selection algorithm allows), we skip the overlap ceremony entirely. The proposer already has the state and can continue building continuously across the slot boundary. No checkpoint trigger, no re-sync, no P2P round-trip.
 
 ## Epoch Boundary Behavior
 
@@ -245,7 +247,7 @@ If the predecessor produces no checkpoint and the mid-slot liveness timeout fire
 
 The worst-case latency drops from ~40s to ~26-28s. Average latency drops from ~24s to ~17-18s.
 
-// TODO: check the above 
+// TODO: check the above
 
 ## Observability Needs
 
@@ -294,7 +296,7 @@ This **requires** a coordinated rollout - creating a second proposer view will r
 
 # Potential Improvement: L1 contract changes
 
-If proposer A misses their checkpoint submission slot (on purpose / being out priced), proposer B will have spent some time building on a chain that will be pruned, even though the attestation's gathered have given them a high confidence in their validity. 
+If proposer A misses their checkpoint submission slot (on purpose / being out priced), proposer B will have spent some time building on a chain that will be pruned, even though the attestation's gathered have given them a high confidence in their validity.
 
 If a proposer A misses their slot, I propose allowing it's submission for longer than the current deadline. Giving up to two l1 submission slots for each proposer. In this proposal, the proposerA must face a rather extreme penalty for missing their slot, either by a slashing, loosing a % of their rewards to the late proposal submitter - or both.
 
@@ -304,7 +306,7 @@ The predecessor attempts L1 submission during their slot as normal. At the **slo
 
 Any node reconstructs the checkpoint from P2P data — the `checkpoint_proposal` message and the collected attestations. No special handoff protocol is needed.
 
-The slot boundary handoff avoids races: during the slot, A submits; after the slot boundary, others take over. 
+The slot boundary handoff avoids races: during the slot, A submits; after the slot boundary, others take over.
 
 ## Failure Handling
 
@@ -362,7 +364,7 @@ The reward goes to the original proposer at proof time (not submission time), so
 ### Rollout plan
 - Can only be performed as part of a large network upgrad
 
-We will have to make some changes + do some analysis to work out how much of the rewards should be given to the submitter. 
+We will have to make some changes + do some analysis to work out how much of the rewards should be given to the submitter.
 
 # ADR - Architecture Design Record
 
