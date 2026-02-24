@@ -1,5 +1,9 @@
 # Testnet Faucet Project Requirements Document
 
+> [!Warning]
+> This page have been revised, older versions that had received approval:
+> 1. [11ff0c4](https://github.com/AztecProtocol/engineering-designs/commit/11ff0c45015027554f13d37f2df85e84090a55a4)
+
 - Owner: @just-mitch
 - Approvers:
   - @aminsammara
@@ -37,7 +41,7 @@ By controlling the fee asset, we can:
 
 - prevent infinite minting, and thus a DOS against the potential users of the network
 
-> [!info]
+> [!Note]
 > Rate limiting the fee paying asset to control network congestion is not necessary or desirable, as we already have a mana limit mechanism for block construction. It is better to have users obtain a lot (but not infinite) of the fee asset, and thus use a lot of mana, so that they can perform transactions.
 
 By controlling the validator set, we can:
@@ -124,19 +128,26 @@ Where: Anticipation of supply/demand shocks and potential DoS scenarios
 
 #### FUNC-05
 
-Users MUST be able to submit an L1 address and complete a verification challenge for admission to the validator set. Producing the verification response SHOULD be a one-liner for anyone with a fully synced Aztec node.
+Users MUST be able to run a 1-liner to add themselves to the validator set.
 
-Why: Ensures at least a basic level of sybil resistance
+Why: We want users to join the validator set
 Where: Experience of validators joining the set
 
 #### FUNC-06
 
-We (Aztec Labs) MUST be able to add a user to the validator set outside of the faucet process.
+The growth of the validator set SHOULD be rate limited.
+
+Why: To not overwhelm the network
+Where: Potential DoS scenarios
+
+#### FUNC-07
+
+We (Aztec Labs) MUST be able to add a user to the validator set outside of the faucet process (and ignore the rate limits).
 
 Why: We want to be able to add users to the validator set for testing purposes.
 Where: Experience of validators joining the set
 
-#### FUNC-07
+#### FUNC-08
 
 We (Aztec Labs) SHOULD be able to control the rate at which validators are added to the set.
 
@@ -177,7 +188,9 @@ Where: Experience of users bailing on anything mildly inconvenient.
 
 #### PERF-02
 
-Would-be validators SHOULD NOT need to wait more than 30 minutes to get added to the validator set (not necessarily the committee). The process SHOULD require under 5 minutes of active participation - ideally allowing validators to initiate the request and later return to find their node participating in the set.
+Would-be validators SHOULD NOT need to wait more than 1 minute to join the set given there is capacity left. 
+
+ to get added to the validator set (not necessarily the committee). The process SHOULD require under 5 minutes of active participation - ideally allowing validators to initiate the request and later return to find their node participating in the set.
 
 Why: There may still be some manual intervention to add validators to the set, but it should still be time-bound and quick.
 Where: Experience adding external validators to the set.
