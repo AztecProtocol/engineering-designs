@@ -30,7 +30,7 @@ If so, the owner of the issue will:
 
 4. **Get approval**:
    - When approvers are satisfied with the design, they will approve the PR on github.
-   - When all approvers have signed off, merge the PR with the design
+   - When all approvers have signed off, merge the PR with the design.
 
 5. **Implement the design** based on the finalized design document.
    - Any changes or decisions made during the implementation phase should be captured in user docs or protocol spec *and flagged in PRs*.
