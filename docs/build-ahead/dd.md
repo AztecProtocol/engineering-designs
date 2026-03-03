@@ -281,6 +281,7 @@ The mechanism should be testable via the existing multi-validator test infrastru
 - **Epoch boundary**: Overlap spanning committee rotation — old committee attestations accepted without re-validation.
 - **Same proposer**: Consecutive slots with the same proposer — overlap is skipped.
 - **Mid-slot liveness timeout**: Predecessor produces no proposals — liveness timeout fires, next proposer builds from confirmed state.
+- **Witholding attacks**: Malicious Predecessor does not submit checkpoint / attestations to p2p, but publishes last second in their L2 slot.
 - **Empty slot**: Predecessor offline — next proposer falls back to current behavior.
 - **Throughput**: Measure actual block count per slot with Build Ahead enabled vs disabled.
 
