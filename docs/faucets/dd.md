@@ -1,5 +1,10 @@
 # Testnet Faucet Design Document
 
+> [!Warning]
+> This page have been revised, older versions that had received approval:
+>
+> 1. [11ff0c4](https://github.com/AztecProtocol/engineering-designs/commit/11ff0c45015027554f13d37f2df85e84090a55a4)
+
 - Owner: @just-mitch
 - Approvers:
   - @aminsammara
@@ -19,9 +24,7 @@ Deploy new "handler" contracts that have the minter role on their respective ass
 
 The FeeAssetHandler will mint a fixed amount to any caller.
 
-The StakingAssetHandler will add an address to the validator set, when called by the owner.
-
-The discord bot should be augmented to allow someone to pass it a merkle proof of the archive tree, and only then be added to the validator set.
+The StakingAssetHandler will add an address to the validator set, given sufficient capacity of when called by an owner.
 
 ## Timeline
 
@@ -31,10 +34,9 @@ Outline the timeline for the project. E.g.
   - build fee asset handler
   - build staking asset handler
   - tests
-- discord bot dev : 1-2 days
 - run upgrade : <0.5 days
 
-Total: 3-5 days
+Total: 3 days
 
 ## Introduction
 
@@ -49,7 +51,7 @@ Considering the node must be able to handle these attacks, we choose to be loose
 
 Beyond all of that, there is already an inherent sybil resistance to someone flooding the network: each transaction requires a valid client-side proof, which requires non-trivial computational resources.
 
-We _are_ concerned about the DOS risk of someone adding a large number of bad validators to the set; we want to limit the rate at which validators can be added to the set, and make some reasonable effort to ensure they have access to an active aztec node.
+We _are_ concerned about the DOS risk of someone adding a large number of bad validators to the set; we want to limit the rate at which validators can be added to the set, but make no effort to ensure they have access to an active aztec node.
 
 ## Interface
 
@@ -67,36 +69,11 @@ They can then use the `bridge-erc20` utility on the aztec CLI
 
 ### Validators
 
-For users who want to be a validator, they will first:
+For users who want to be a validator, they can use the aztec CLI to add a validator (with forwarder).
 
 ```
-curl -s -X POST -H 'Content-Type: application/json' -d \
-'{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":67}' \
-"http://localhost:8080" | jq \
-".result.proven.number"
+aztec-cli add-l1-validator
 ```
-
-That will give something like `21314`
-
-Then they can get a membership path
-
-```
-curl -s -X POST -H 'Content-Type: application/json' -d \
-'{"jsonrpc":"2.0","method":"node_getArchiveSiblingPath","params":[21314, 21314],"id":67}' \
-"http://localhost:8080" | jq ".result"
-```
-
-Which will return a big encoded string.
-
-Then, over in discord, they can:
-
-```bash
-/add-validator <their address> <block number> <membership path>
-```
-
-And this will result in their address getting added to the set.
-
-**Note:** Using the proven chain allows us to add validators even if the pending chain is stalled.
 
 ## Implementation
 
@@ -221,10 +198,7 @@ The staking asset will be deployed with the same owner as the fee asset. In addi
 ```solidity
 interface IStakingAssetHandler {
 	function addValidator(address _attester, address _proposer) external;
-	function setRollup(address _rollup) external;
-	function setDepositAmount(uint256 _amount) external;
-	function setMinMintInterval(uint256 _interval) external;
-	function setMaxDepositsPerMint(uint256 _maxDepositsPerMint) external;
+	function setDepositsPerMint(uint256 _maxDepositsPerMint) external;
 	function setWithdrawer(address _withdrawer) external;
 }
 
@@ -281,14 +255,6 @@ contract StakingAssetHandler is IStakingAssetHandler, Ownable {
 		rollup.deposit(_attester, _proposer, withdrawer, depositAmount);
 	}
 
-	function setRollup(address _rollup) external override onlyOwner {
-		rollup = IStakingCore(_rollup);
-	}
-
-	function setDepositAmount(uint256 _amount) external override onlyOwner {
-		depositAmount = _amount;
-	}
-
 	function setMinMintInterval(uint256 _interval) external override onlyOwner {
 		minMintInterval = _interval;
 	}
@@ -308,36 +274,16 @@ A separate EOA will be created for the bot, which will have the `canAddValidator
 
 #### Upgrades
 
-The handler will need to be upgraded to the new rollup address when a new rollup is made canonical.
-
-This will be done by manually by the person on the Aztec Labs team managing the discord bot.
-
-### Discord Bot
-
-The `/add-validator` command needs to be augmented to accept a block number and an archive merkle proof.
-
-When this command is invoked, it should:
-
-1. Ensure the user has not added `X` validators already (using a mapping based on the user's discord ID)
-2. Query L1 for the proven tip of the chain
-3. Ensure that proven tip's block number matches the block number provided by the user
-4. Verify the merkle proof
-5. Mint staking assets for itself
-6. Add the user's address to the validator set, specifying a configurable address as the withdrawer
-7. Grant a new "validator" role in discord to the user and bump the user's validator count by 1
-8. Confirm to the user that they were added successfully
+The handler will jump to the new rollup address when a new rollup is made canonical and added to the registry.
 
 #### Risks
 
-This doesn't ensure that the user's node is properly gossiping. There should be documentation asking the user to check that they see a non-zero peer count in their node's logs.
+This doesn't ensure that the user's node is properly gossiping.
+So we only limit the number of validators that can be added to the network, not maximizing the number of nodes that are actually running.
 
 #### Alternative design
 
-It may have been possible to not have the user provide a membership path, and instead just supply a validator address, and then have our node inspect the p2p network. That would have required augmenting our ENRs to include validator addresses, and more logic to search ENRs for an address. Plus it wouldn't have ensure that the user's node was synced.
-
-Separately, we could have just allowed this to remain a purely manual process, and required logs/challenges to be sent back and forth between a potential validator and someone at Aztec Labs.
-
-That sounds error prone and doesn't sound like a good use of anyone's time, especially when there could be tens to hundreds of validators going through this process.
+An alternative design is available in [11ff0c4](https://github.com/AztecProtocol/engineering-designs/commit/11ff0c45015027554f13d37f2df85e84090a55a4).
 
 ### Sequencer Client
 
