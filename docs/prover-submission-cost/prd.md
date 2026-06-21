@@ -41,7 +41,7 @@ The BaseFee calculation originally assumed sufficient mana utilization per block
 
 Provers were compensated with a share of both fees and rewards, allocated according to their provided quotes.
 
-Then the move to [Prover Coordination: Multiproofs](https://hackmd.io/Ivn9axP1SFyEHjpAXVn62g) happened and the costs morphed into the following (`M` is number of proofs):
+Then the move to [Prover Coordination: Multiproofs] >> (https://hackmd.io/Ivn9axP1SFyEHjpAXVn62g) happened and the costs morphed into the following (`M` is number of proofs):
 
 1. the cost to prove the transactions in the block `M` times
 2. the cost to submit the block
