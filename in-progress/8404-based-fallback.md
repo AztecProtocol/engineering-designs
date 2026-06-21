@@ -19,7 +19,7 @@ Since the consensus layer is only there for the ability to have fast ledger grow
 Therefore, we provide a fallback mechanism to handle the case where the committee fail to perform their duties - allowing anyone to grow the ledger.
 
 The nature in which they could fail to perform their duties varies widely.
-It could be an attack to try and censor the network, or it might be that a majority of the network is running a node that corrupts its state the 13 of August every year as an homage to the Aztec empire.
+It could be an attack to try and censor the network, or it might be that a majority of the network is running a node that corrupts its state on the 13th of August every year as an homage to the Aztec empire.
 
 Nevertheless, we need a mechanism to ensure the liveness of the chain, even if slower, in these events.
 
@@ -49,7 +49,7 @@ The based fallback is expected to have a significantly worse user experience sin
 
 Because of this, we really do not want to enter the fallback too often, but we need to make it happen often enough that it is usable.
 For applications that are dependent on users acting based on external data or oracle data, a low bar to enter based mode can be desirable since it will mean that they would be able to keep running more easily.
-Lending and trading falls into these catagories as they usually depend on external data sources, e.g., prices of CEX'es influence how people use a trading platform and lending platforms mostly use oracles to get prices.
+Lending and trading falls into these categories as they usually depend on external data sources, e.g., prices of CEX'es influence how people use a trading platform and lending platforms mostly use oracles to get prices.
 
 We suggest defining the time where Based fallback can be entered to be $T_{\textsf{fallback}, \textsf{enter}}$ after the last proven block. 
 The minimum acceptable value for $T_{\textsf{fallback}, \textsf{enter}}$ should therefore be if a committee fails to performs its proving duties as specified as a full epoch $E$ in https://github.com/AztecProtocol/engineering-designs/pull/22 * 2.
@@ -114,7 +114,7 @@ Furthermore, if they need to build an epoch proof without there being blocks on 
 A separate direction that I would like to entertain, is that we have two ways to "get out" of the based fallback, both based on time, similarly to how we ended up in here.
 
 1. If the last proven block is older than $T_{\textsf{fallback}, \textsf{exit}, \textsf{activity}}$ we allow exiting the based fallback.
-2. After $T_{\textsf{fallback}, \textsf{exit}}$ we allow exiting the fallback regardless of when the last proven block were.
+2. After $T_{\textsf{fallback}, \textsf{exit}}$ we allow exiting the fallback regardless of when the last proven block was.
 
 Option 1, ensures that we can quickly leave the based fallback if there is no activity, allowing a good experience for the happy path.
 Option 2, ensures that we will not be stuck forever in based fallback even if there is a malicious entity pushing blocks once in a while.

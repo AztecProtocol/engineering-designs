@@ -43,7 +43,7 @@ A deployment of the Aztec Network includes several contracts running on L1.
 
 TST will be an ERC20 asset that will be used to pay for transaction fees on the Aztec Network.
 
-It will also used on L1 as part of the validator selection process.
+It will also be used on L1 as part of the validator selection process.
 
 Protocol incentives are paid out in TST.
 
@@ -322,12 +322,12 @@ There will be penalties for proposers and provers who do not fulfill their dutie
   - committee members
   - proposers
   - provers
-- What is require to convince L1 that the conditions are met?
-- What is the "cost" of an enforcement action? e.g., if tiny penalty it might not be worth to enforce it.
+- What is required to convince L1 that the conditions are met?
+- What is the "cost" of an enforcement action? e.g., if the penalty is tiny it might not be worth to enforce it.
 - What are the penalties for proposers and provers?
 - How can it be ensured that the penalties are fair?
 - What should be burned, and what should be distributed?
-- Expected annual return for validators (mean, median)?
+- What is the expected annual return for validators (mean, median)?
 
 ## Disclaimer
 

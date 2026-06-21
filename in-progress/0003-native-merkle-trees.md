@@ -12,7 +12,7 @@ This design attempts to solve the problem of slow sync and merkle tree insertion
 
 ## Introduction
 
-We require high performance merkle tree implementations both to ensure nodes can stay synched to the network and sequencers/provers can advance the state as required to build blocks. Our cuirrent TS implementations are limited in their single-threaded nature and the unavoidable constraint of have to repeatedly call into WASM to perform a hash operation.
+We require high performance merkle tree implementations both to ensure nodes can stay synced to the network and sequencers/provers can advance the state as required to build blocks. Our current TS implementations are limited in their single-threaded nature and the unavoidable constraint of have to repeatedly call into WASM to perform a hash operation.
 
 Some analysis of the quantity of hashing and the time required can be found [here](https://hackmd.io/@aztec-network/HyfTK9U5a?type=view).
 
@@ -20,13 +20,13 @@ This design proposes the creation of a set of multi-threaded merkle tree impleme
 
 ## Implementation
 
-There are many parts to this design, we will walk through them individiually and discuss the choices made at each stage.
+There are many parts to this design, we will walk through them individually and discuss the choices made at each stage.
 
 ### Overall Architecture
 
-A new C++ binary, World State, will be created that will be started by the node software. It will be configured with the location in which Merkle Tree data should be stored. It will then accept and respond with msgpack-ed messages over one or more streams. The initial implementation will simply used stdio, but this will be absrtacted such that this could be replaced by other stream-based mechanisms.
+A new C++ binary, World State, will be created that will be started by the node software. It will be configured with the location in which Merkle Tree data should be stored. It will then accept and respond with msgpack-ed messages over one or more streams. The initial implementation will simply used stdio, but this will be abstracted such that this could be replaced by other stream-based mechanisms.
 
-To interface with the World State, an abstraction will be created at the `MerkleTreeDb` level. This accurately models the scope of functionality provided by the binary as owner of all the trees. It was considered that the abstraction could sit at the level of individual trees, but this creates difficulty whan we want to send an entire block to the World State to be inserted. This is an important use case as synching entire blocks is where signifcant performance optimisations can be made.
+To interface with the World State, an abstraction will be created at the `MerkleTreeDb` level. This accurately models the scope of functionality provided by the binary as owner of all the trees. It was considered that the abstraction could sit at the level of individual trees, but this creates difficulty when we want to send an entire block to the World State to be inserted. This is an important use case as synching entire blocks is where significant performance optimisations can be made.
 
 
 ``` TS
@@ -47,7 +47,7 @@ An abstract factory will then be created to construct the appropriate concrete t
 
 ### Interface
 
-The interface will be an asynchronous message based communication protocol. Each message is provided with meta data uniquely identiying it and is responded to inidividually. It is not necessary to wait for a response to a message before sending a subsequent message. A simple message specification will be created, some examples of which are shown here:
+The interface will be an asynchronous message based communication protocol. Each message is provided with meta data uniquely identifying it and is responded to individually. It is not necessary to wait for a response to a message before sending a subsequent message. A simple message specification will be created, some examples of which are shown here:
 
 ``` C++
 enum WorldStateMsgTypes {
@@ -144,7 +144,7 @@ As a sequencer/prover inserts transaction side-effects, the resulting new state 
 
 #### Commits
 
-When a block settles, the node performs a commit. It verifies any uncommitted state it may have against that published on chain to determine if that state is canonical. If it is not, the `uncommitted` state is dicarded and the node perform an `Update` operation using the newly published side effects.
+When a block settles, the node performs a commit. It verifies any uncommitted state it may have against that published on chain to determine if that state is canonical. If it is not, the `uncommitted` state is discarded and the node perform an `Update` operation using the newly published side effects.
 
 Once the node has the correct `uncommitted` state, it commits that state to disk. This is the only time that a write transaction is required against the database.
 
@@ -163,7 +163,7 @@ Indexed Trees require significantly more hashing than append only trees. In fact
 For each leaf being inserted:
 
 1. Identify the location of the leaf whose value immediately precedes that being inserted.
-2. Retrieve the sibling path of the preceeding leaf before any modification.
+2. Retrieve the sibling path of the preceding leaf before any modification.
 3. Set the 'next' value and index to point to the leaf being inserted.
 4. Set the 'next' value and index of the leaf being inserted to the leaf previously pointed to by the leaf just updated.
 5. Re-hash the updated leaf and update the leaf with this hash, requiring the tree to be re-hashed up to the root.
